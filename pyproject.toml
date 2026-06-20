@@ -21,7 +21,7 @@ dependencies = [
 
     # Agent orchestration
     "langgraph>=0.2.0",
-    "langchain-core>=0.3.0",
+    "langchain-core>=1.4.8",
 
     # Cache & Vector
     "redis>=5.2.0",
