@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/* ─── ARES AI Theme ─────────────────────────────────────────────
+ * Dark-terminal trading aesthetic.
+ * ──────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Background / Surface */
+  --color-bg-primary: oklch(0.13 0 0);
+  --color-bg-surface: oklch(0.18 0.01 145);
+  --color-bg-surface-hover: oklch(0.22 0.01 145);
+  --color-bg-elevated: oklch(0.2 0 0);
+
+  /* Text */
+  --color-text-primary: oklch(0.92 0 0);
+  --color-text-secondary: oklch(0.6 0 0);
+  --color-text-muted: oklch(0.38 0 0);
+
+  /* Accents */
+  --color-accent-green: oklch(0.62 0.19 145);
+  --color-accent-green-muted: oklch(0.25 0.08 145);
+  --color-accent-red: oklch(0.55 0.22 30);
+  --color-accent-red-muted: oklch(0.25 0.08 30);
+  --color-accent-blue: oklch(0.6 0.15 250);
+  --color-accent-yellow: oklch(0.7 0.18 85);
+
+  /* Borders */
+  --color-border-subtle: oklch(0.25 0 0);
+  --color-border-default: oklch(0.3 0 0);
+
+  /* Fonts */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+/* ─── Base Styles ─────────────────────────────────────────────── */
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar ───────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-default);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* ─── Utility Classes ─────────────────────────────────────────── */
+
+.text-green {
+  color: var(--color-accent-green);
+}
+
+.text-red {
+  color: var(--color-accent-red);
+}
+
+.text-blue {
+  color: var(--color-accent-blue);
+}
+
+.text-yellow {
+  color: var(--color-accent-yellow);
+}
+
+.bg-green-muted {
+  background-color: var(--color-accent-green-muted);
+}
+
+.bg-red-muted {
+  background-color: var(--color-accent-red-muted);
+}
