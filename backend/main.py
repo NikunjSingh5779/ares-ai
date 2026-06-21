@@ -61,10 +61,7 @@ setup_logging(level=settings.log_level.upper())
 
 # ── Middleware (order matters: outermost first) ────────────────────────
 
-# 1. Security headers — apply to every response
-app.add_middleware(SecurityHeadersMiddleware)
-
-# 2. CORS — must be early to handle preflight
+# 1. CORS — must be early to handle preflight
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.api_cors_origins.split(","),
@@ -72,6 +69,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 2. Security headers — apply to every response (after CORS for proper header order)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # 3. Rate limiting — per-endpoint token bucket
 app.add_middleware(RateLimitMiddleware, default_limit=settings.api_rate_limit_per_minute)

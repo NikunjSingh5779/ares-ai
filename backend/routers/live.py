@@ -109,6 +109,7 @@ async def set_mode(body: SetModeRequest) -> dict[str, Any]:
     """Change the trading mode.
 
     Blocked if kill switch is active or promotion gate hasn't passed.
+    AUTO and SEMI modes require promotion gate to pass.
     """
     engine = _get_engine()
 
@@ -127,13 +128,13 @@ async def set_mode(body: SetModeRequest) -> dict[str, Any]:
             detail=f"Invalid mode '{body.mode}'. Valid modes: {valid}",
         )
 
-    # Block auto mode if promotion gate not passed
-    if new_mode == TradingMode.AUTO:
+    # Block AUTO and SEMI modes if promotion gate not passed
+    if new_mode in (TradingMode.AUTO, TradingMode.SEMI):
         promo = engine.paper_record["promotion"]
         if not promo["passed"]:
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot switch to auto mode — paper record insufficient: "
+                detail=f"Cannot switch to {new_mode.value} mode — paper record insufficient: "
                 f"{promo['trades']['current']}/{promo['trades']['required']} trades, "
                 f"{promo['days']['current']}/{promo['days']['required']} days",
             )

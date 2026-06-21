@@ -38,6 +38,7 @@ def _make_mock_engine():
         auditor = OrderAuditor()
 
         is_running = False
+        _paper_record: dict = {}
 
         @property
         def is_connected(self):
@@ -48,10 +49,16 @@ def _make_mock_engine():
             return self.mode_manager.mode
 
         def set_paper_record(self, trades, days):
-            pass
+            self._paper_record = {
+                "trades": trades,
+                "days": days,
+                "promotion": self.promotion_gate.progress(trades, days),
+            }
 
         @property
         def paper_record(self):
+            if self._paper_record:
+                return self._paper_record
             return {
                 "trades": 0,
                 "days": 0,
@@ -95,9 +102,20 @@ class TestLiveStatus:
 class TestLiveMode:
     """POST /api/v1/live/mode tests."""
 
-    def test_set_mode_valid(self, client) -> None:
+    def test_set_mode_valid_human_approval(self, client) -> None:
+        """HUMAN_APPROVAL mode doesn't require promotion gate."""
         engine = _make_mock_engine()
         engine.mode_manager.set_mode = lambda m: None
+        with patch("backend.routers.live._get_engine", return_value=engine):
+            response = client.post("/api/v1/live/mode", json={"mode": "human_approval"})
+        assert response.status_code == 200
+        assert response.json()["mode"] == "human_approval"
+
+    def test_set_mode_valid_semi_with_promotion(self, client) -> None:
+        """SEMI mode requires promotion gate to pass."""
+        engine = _make_mock_engine()
+        engine.mode_manager.set_mode = lambda m: None
+        engine.set_paper_record(50, 30)  # Passes promotion gate
         with patch("backend.routers.live._get_engine", return_value=engine):
             response = client.post("/api/v1/live/mode", json={"mode": "semi"})
         assert response.status_code == 200

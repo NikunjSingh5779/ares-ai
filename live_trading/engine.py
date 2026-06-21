@@ -157,6 +157,8 @@ class LiveTradingEngine:
                 raise PromotionGateError(r.reason)
             if "not connected" in r.reason:
                 raise ExchangeConnectionError(r.reason)
+            if "human_approval" in r.reason and "confirmation required" in r.reason:
+                raise ModeError(r.reason)
 
     # ── Order execution ─────────────────────────────────────────────
 
@@ -212,6 +214,14 @@ class LiveTradingEngine:
                 "reason": "Human approval required — provide approval_id to proceed",
                 "order": None,
             }
+
+        # If approval_id is provided, filter out the mode check from safety results
+        # since approval has been granted
+        if approval_id:
+            safety_results = [
+                r for r in safety_results
+                if not ("human_approval" in r.reason and "confirmation required" in r.reason)
+            ]
 
         self._raise_if_blocked(safety_results)
 

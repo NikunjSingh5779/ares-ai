@@ -150,13 +150,12 @@ class ModeManager:
     def check(self) -> SafetyCheckResult:
         """Safe-guard check: does the current mode require approval?
 
-        Returns ``passed=True`` for all modes — this check does not block
-        the trade pipeline; it signals whether the engine should request
-        human approval before placing the order.
+        Returns ``passed=False`` for HUMAN_APPROVAL mode to block order
+        placement until explicit approval is provided. Other modes pass.
         """
         if self._mode == TradingMode.HUMAN_APPROVAL:
             return SafetyCheckResult(
-                passed=True,
+                passed=False,
                 reason="Mode is human_approval — human confirmation required before order",
             )
         return SafetyCheckResult(passed=True, reason=f"Mode is {self._mode.value}")

@@ -65,28 +65,21 @@ agents:
       - opencode/mimo-v2.5-free
     timeout_seconds: 60
 
-  memory:
-    primary: opencode/minimax-m3-free
-    fallbacks:
-      - opencode/nemotron-3-ultra-free
-      - open_router/nvidia/nemotron-nano-9b-v2:free
-    timeout_seconds: 30
-
   journal:
     # Journal is deterministic (no LLM), but supervisor needs config
     primary: opencode/qwen3.6-plus-free
     fallbacks: []
     timeout_seconds: 15
 
-  reflection:
-    primary: open_router/meta-llama/llama-3.3-70b-instruct:free
-    fallbacks:
-      - open_router/qwen/qwen3-next-80b-a3b-instruct:free
-      - opencode/mimo-v2.5-free
-    timeout_seconds: 30
-
   memory:
     # Memory is deterministic (no LLM), but supervisor needs config
+    primary: opencode/qwen3.6-plus-free
+    fallbacks: []
+    timeout_seconds: 15
+
+  execution:
+    # Execution is deterministic (no LLM), but the supervisor needs
+    # a model_config entry to satisfy config lookup before registry check.
     primary: opencode/qwen3.6-plus-free
     fallbacks: []
     timeout_seconds: 15
@@ -99,14 +92,6 @@ agents:
     # When all vision models are unavailable, system degrades gracefully:
     # returns available=False and uses rule-based pattern detection only.
     timeout_seconds: 30
-
-  execution:
-    # Execution is deterministic (no LLM), but the supervisor needs
-    # a model_config entry to satisfy config lookup before registry check.
-    primary: opencode/qwen3.6-plus-free
-    fallbacks:
-      - open_router/openrouter/free
-    timeout_seconds: 15
 
   fast:
     primary: opencode/qwen3.6-plus-free

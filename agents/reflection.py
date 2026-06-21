@@ -209,25 +209,51 @@ def _compute_confidence_accuracy(
     """Compute accuracy of confidence predictions.
 
     Returns a score from 0 (inaccurate) to 100 (accurate).
-    For executed trades, high confidence that was correct = high accuracy.
-    For rejected trades, low confidence that led to rejection = high accuracy.
+
+    Evaluation is based on whether the consensus approval outcome matched
+    confidence levels:
+    - If consensus.approved = True and trade executed → high accuracy if high confidence
+    - If consensus.approved = False and trade not executed → high accuracy (correct rejection)
+    - If consensus.approved = True but trade not executed (risk rejected) → high accuracy if agents were correctly confident
+    - If consensus.approved = False but trade executed (shouldn't happen) → low accuracy
+
+    The key insight: confidence accuracy measures how well the AGENTS' predictions
+    aligned with the CONSENSUS decision, not just execution.
     """
     ma_conf = float(market_analyst.get("confidence", 0)) if market_analyst else 0.0
+    quant_conf = float(consensus.get("agreement_metrics", {}).get("quant_confidence", 0)) if consensus else 0.0
     consensus_conf = float(consensus.get("composite_confidence", 0)) if consensus else 0.0
-    avg_conf = (ma_conf + consensus_conf) / 2 if ma_conf and consensus_conf else (ma_conf or consensus_conf)
+    consensus_approved = bool(consensus.get("approved", False)) if consensus else False
 
-    if not executed:
-        # Trade was not executed — if confidence was low, that's accurate (conservative)
-        if avg_conf < MIN_CONFIDENCE_THRESHOLD:
-            return 90.0  # Correctly cautious
-        # Confidence was high but trade was rejected — possible disagreement
-        return 50.0
+    # Average of MA and Quant confidence (the two agents that drive consensus)
+    avg_conf = (ma_conf + quant_conf) / 2 if (ma_conf or quant_conf) else 0.0
 
-    # Trade was executed — high confidence aligned with execution
-    if avg_conf >= MIN_CONFIDENCE_THRESHOLD:
-        return 85.0  # High confidence → acted → good
-    # Low confidence but still executed
-    return 60.0  # Some uncertainty in the signal
+    if consensus_approved:
+        # Consensus said GO — agents were confident and agreed
+        if executed:
+            # Trade executed: accurate if confidence was high
+            if avg_conf >= MIN_CONFIDENCE_THRESHOLD:
+                return 90.0  # High confidence → consensus approved → executed (correct)
+            else:
+                return 40.0  # Low confidence but consensus approved → questionable
+        else:
+            # Trade NOT executed (risk rejected): agents were correct to be confident
+            # but risk gate stopped it — this is accurate agent behavior
+            if avg_conf >= MIN_CONFIDENCE_THRESHOLD:
+                return 85.0  # Agents correctly identified opportunity, risk correctly filtered
+            else:
+                return 50.0  # Low confidence but consensus approved → risk correctly rejected
+    else:
+        # Consensus said NO — either confidence too low or direction mismatch
+        if not executed:
+            # Trade correctly not executed
+            if avg_conf < MIN_CONFIDENCE_THRESHOLD:
+                return 90.0  # Low confidence correctly led to no consensus → no trade (correct)
+            else:
+                return 80.0  # High confidence but direction mismatch correctly rejected
+        else:
+            # Trade executed despite no consensus — this shouldn't happen in normal flow
+            return 20.0  # System error: execution without consensus approval
 
 
 def _generate_suggestions(

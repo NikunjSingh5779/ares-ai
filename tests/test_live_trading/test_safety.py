@@ -104,10 +104,24 @@ class TestModeManager:
         mm.set_mode(TradingMode.AUTO)
         assert mm.mode == TradingMode.AUTO
 
-    def test_check_does_not_block(self) -> None:
-        mm = ModeManager()
+    def test_check_blocks_in_human_approval_mode(self) -> None:
+        mm = ModeManager(TradingMode.HUMAN_APPROVAL)
+        result = mm.check()
+        assert not result.passed
+        assert "human_approval" in result.reason
+        assert "confirmation required" in result.reason
+
+    def test_check_passes_in_auto_mode(self) -> None:
+        mm = ModeManager(TradingMode.AUTO)
         result = mm.check()
         assert result.passed
+        assert result.reason == "Mode is auto"
+
+    def test_check_passes_in_semi_mode(self) -> None:
+        mm = ModeManager(TradingMode.SEMI)
+        result = mm.check()
+        assert result.passed
+        assert result.reason == "Mode is semi"
 
 
 class TestPromotionGate:
