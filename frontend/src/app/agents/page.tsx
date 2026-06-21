@@ -69,17 +69,17 @@ export default function AgentsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-mono text-xl font-semibold text-[oklch(0.92_0_0)]">
+          <h1 className="text-heading text-xl text-white">
             Agents
           </h1>
-          <p className="font-mono text-xs text-[oklch(0.6_0_0)]">
+          <p className="text-label mt-1">
             Pipeline Monitor & Agent Outputs
           </p>
         </div>
         <button
           onClick={loadData}
           disabled={loading}
-          className="flex items-center gap-1.5 rounded-md bg-[oklch(0.62_0.19_145)] px-3 py-1.5 font-mono text-xs font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="btn-primary !py-2 !px-3 !text-xs !font-mono disabled:opacity-50"
         >
           <Cpu size={12} />
           {loading ? "Loading..." : "Refresh"}
@@ -87,8 +87,8 @@ export default function AgentsPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-[oklch(0.25_0.08_30)] bg-[oklch(0.25_0.08_30)] px-4 py-2">
-          <p className="font-mono text-xs text-[oklch(0.55_0.22_30)]">{error}</p>
+        <div className="rounded-xl border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.08)] px-4 py-3">
+          <p className="font-mono text-xs text-[#ef4444]">{error}</p>
         </div>
       )}
 
@@ -98,21 +98,21 @@ export default function AgentsPage() {
       {/* Summary */}
       {status && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-lg border border-[oklch(0.25_0_0)] bg-[oklch(0.18_0.01_145)] p-4">
-            <p className="mb-1 font-mono text-xs text-[oklch(0.6_0_0)]">Completed</p>
-            <p className="font-mono text-2xl font-semibold text-[oklch(0.62_0.19_145)]">
+          <div className="card-glass">
+            <p className="text-label mb-1">Completed</p>
+            <p className="font-sans text-2xl font-bold text-[#22c55e]">
               {pipelineStatus?.completed_nodes.length ?? 0}
             </p>
           </div>
-          <div className="rounded-lg border border-[oklch(0.25_0_0)] bg-[oklch(0.18_0.01_145)] p-4">
-            <p className="mb-1 font-mono text-xs text-[oklch(0.6_0_0)]">Failed</p>
-            <p className="font-mono text-2xl font-semibold text-[oklch(0.55_0.22_30)]">
+          <div className="card-glass">
+            <p className="text-label mb-1">Failed</p>
+            <p className="font-sans text-2xl font-bold text-[#ef4444]">
               {pipelineStatus?.failed_nodes.length ?? 0}
             </p>
           </div>
-          <div className="rounded-lg border border-[oklch(0.25_0_0)] bg-[oklch(0.18_0.01_145)] p-4">
-            <p className="mb-1 font-mono text-xs text-[oklch(0.6_0_0)]">Latency</p>
-            <p className="font-mono text-2xl font-semibold text-[oklch(0.92_0_0)]">
+          <div className="card-glass">
+            <p className="text-label mb-1">Latency</p>
+            <p className="font-sans text-2xl font-bold text-white">
               {status.total_latency_ms}ms
             </p>
           </div>
@@ -120,19 +120,19 @@ export default function AgentsPage() {
       )}
 
       {/* Agent Output List */}
-      <div className="rounded-lg border border-[oklch(0.25_0_0)] bg-[oklch(0.13_0_0)]">
-        <div className="border-b border-[oklch(0.25_0_0)] p-3">
-          <p className="font-mono text-xs font-medium text-[oklch(0.6_0_0)] uppercase tracking-wider">
+      <div className="card-glass !p-0 overflow-hidden">
+        <div className="border-b border-[rgba(255,255,255,0.06)] px-5 py-4">
+          <p className="text-label">
             Agent Outputs
           </p>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-8">
-            <RefreshCw size={16} className="animate-spin text-[oklch(0.6_0_0)]" />
+            <RefreshCw size={16} className="animate-spin text-[#6366f1]" />
           </div>
         ) : (
-          <div className="divide-y divide-[oklch(0.25_0_0)]">
+          <div className="divide-y divide-[rgba(255,255,255,0.04)]">
             {AGENT_NAMES.map((agent) => {
               const output = state?.[agent as keyof AgentState] as Record<string, unknown> | null | undefined;
               const isExpanded = selectedAgent === agent;
@@ -148,22 +148,22 @@ export default function AgentsPage() {
                 <div key={agent}>
                   <button
                     onClick={() => setSelectedAgent(isExpanded ? null : agent)}
-                    className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[oklch(0.22_0.01_145)]"
+                    className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="font-mono text-sm text-[oklch(0.92_0_0)]">
+                      <span className="font-sans text-sm font-medium text-white">
                         {agentLabels[agent]}
                       </span>
                       <StatusBadge status={agentStatus} />
                     </div>
-                    <span className="font-mono text-xs text-[oklch(0.38_0_0)]">
+                    <span className="font-mono text-xs text-[#52525b]">
                       {output ? "Has output" : "No output"}
                     </span>
                   </button>
 
                   {isExpanded && output && (
-                    <div className="border-t border-[oklch(0.25_0_0)] bg-[oklch(0.18_0.01_145)] px-4 py-3">
-                      <pre className="overflow-x-auto font-mono text-xs text-[oklch(0.88_0_0)] leading-relaxed">
+                    <div className="border-t border-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.02)] px-5 py-4">
+                      <pre className="overflow-x-auto font-mono text-xs text-[#e4e4e7] leading-relaxed">
                         {JSON.stringify(output, null, 2)}
                       </pre>
                     </div>

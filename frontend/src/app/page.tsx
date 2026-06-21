@@ -76,9 +76,7 @@ export default function DashboardPage() {
       render: (t) => (
         <span
           className={
-            t.side === "long"
-              ? "text-[oklch(0.62_0.19_145)]"
-              : "text-[oklch(0.55_0.22_30)]"
+            t.side === "long" ? "text-[#22c55e] font-semibold" : "text-[#ef4444] font-semibold"
           }
         >
           {t.side.toUpperCase()}
@@ -91,9 +89,7 @@ export default function DashboardPage() {
       render: (t) => (
         <span
           className={
-            t.pnl >= 0
-              ? "text-[oklch(0.62_0.19_145)]"
-              : "text-[oklch(0.55_0.22_30)]"
+            t.pnl >= 0 ? "text-[#22c55e] font-medium" : "text-[#ef4444] font-medium"
           }
         >
           ${t.pnl.toFixed(2)}
@@ -111,7 +107,7 @@ export default function DashboardPage() {
   if (loading && !portfolio) {
     return (
       <div className="flex items-center justify-center py-20">
-        <RefreshCw size={20} className="animate-spin text-[oklch(0.6_0_0)]" />
+        <RefreshCw size={20} className="animate-spin text-[#6366f1]" />
       </div>
     );
   }
@@ -121,17 +117,17 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-mono text-xl font-semibold text-[oklch(0.92_0_0)]">
+          <h1 className="text-heading text-xl text-white">
             Dashboard
           </h1>
-          <p className="font-mono text-xs text-[oklch(0.6_0_0)]">
+          <p className="text-label mt-1">
             Paper Trading Overview
           </p>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={loadData}
-            className="flex items-center gap-1.5 rounded-md border border-[oklch(0.25_0_0)] bg-[oklch(0.18_0.01_145)] px-3 py-1.5 font-mono text-xs text-[oklch(0.6_0_0)] transition-colors hover:text-[oklch(0.92_0_0)]"
+            className="btn-ghost !py-2 !px-3 !text-xs !font-mono"
           >
             <RefreshCw size={12} />
             Refresh
@@ -139,7 +135,7 @@ export default function DashboardPage() {
           <button
             onClick={handleRunAnalysis}
             disabled={running}
-            className="flex items-center gap-1.5 rounded-md bg-[oklch(0.62_0.19_145)] px-3 py-1.5 font-mono text-xs font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="btn-primary !py-2 !px-3 !text-xs !font-mono disabled:opacity-50"
           >
             <TrendingUp size={12} />
             {running ? "Running..." : "Run Analysis"}
@@ -149,9 +145,9 @@ export default function DashboardPage() {
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-[oklch(0.25_0.08_30)] bg-[oklch(0.25_0.08_30)] px-4 py-2">
-          <AlertTriangle size={14} className="text-[oklch(0.55_0.22_30)]" />
-          <span className="font-mono text-xs text-[oklch(0.55_0.22_30)]">
+        <div className="flex items-center gap-2 rounded-xl border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.08)] px-4 py-3">
+          <AlertTriangle size={14} className="text-[#ef4444]" />
+          <span className="font-mono text-xs text-[#ef4444]">
             {error}
           </span>
         </div>
@@ -185,8 +181,8 @@ export default function DashboardPage() {
           />
         </div>
       ) : (
-        <div className="flex items-center justify-center rounded-lg border border-dashed border-[oklch(0.25_0_0)] p-8">
-          <p className="font-mono text-sm text-[oklch(0.38_0_0)]">
+        <div className="flex items-center justify-center rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] p-8 bg-[rgba(255,255,255,0.02)]">
+          <p className="font-mono text-sm text-[#52525b]">
             No portfolio data yet. Run an analysis to get started.
           </p>
         </div>
@@ -197,55 +193,55 @@ export default function DashboardPage() {
         <PipelineFlow status={agentStatus?.pipeline_status ?? null} />
 
         {signal && (
-          <div className="rounded-lg border border-[oklch(0.25_0_0)] bg-[oklch(0.18_0.01_145)] p-4">
-            <p className="mb-3 font-mono text-xs font-medium text-[oklch(0.6_0_0)] uppercase tracking-wider">
+          <div className="card-glass">
+            <p className="text-label mb-3">
               Latest Signal
             </p>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-[oklch(0.6_0_0)]">
+                <span className="font-mono text-sm text-[#a1a1aa]">
                   {signal.symbol}
                 </span>
                 <StatusBadge
                   status={signal.approved ? "approved" : "rejected"}
                 />
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-6">
                 <div>
-                  <span className="font-mono text-xs text-[oklch(0.6_0_0)]">
+                  <span className="text-label">
                     Direction
-                                  </span>
+                  </span>
                   <p
-                    className={`font-mono text-lg font-semibold ${
+                    className={`font-sans text-lg font-bold ${
                       signal.direction === "long"
-                        ? "text-[oklch(0.62_0.19_145)]"
+                        ? "text-[#22c55e]"
                         : signal.direction === "short"
-                          ? "text-[oklch(0.55_0.22_30)]"
-                          : "text-[oklch(0.6_0_0)]"
+                          ? "text-[#ef4444]"
+                          : "text-[#a1a1aa]"
                     }`}
                   >
                     {signal.direction.toUpperCase()}
                   </p>
                 </div>
                 <div>
-                  <span className="font-mono text-xs text-[oklch(0.6_0_0)]">
+                  <span className="text-label">
                     Confidence
                   </span>
-                  <p className="font-mono text-lg font-semibold text-[oklch(0.92_0_0)]">
+                  <p className="font-sans text-lg font-bold text-white">
                     {signal.confidence.toFixed(0)}%
                   </p>
                 </div>
                 <div>
-                  <span className="font-mono text-xs text-[oklch(0.6_0_0)]">
+                  <span className="text-label">
                     Executed
                   </span>
-                  <p className="font-mono text-lg font-semibold text-[oklch(0.92_0_0)]">
+                  <p className="font-sans text-lg font-bold text-white">
                     {signal.executed ? "Yes" : "No"}
                   </p>
                 </div>
               </div>
               {signal.rationale && (
-                <p className="font-mono text-xs text-[oklch(0.5_0_0)]">
+                <p className="font-mono text-xs text-[#71717a] leading-relaxed border-t border-[rgba(255,255,255,0.06)] pt-3 mt-2">
                   {signal.rationale}
                 </p>
               )}
@@ -256,7 +252,7 @@ export default function DashboardPage() {
 
       {/* Recent Trades */}
       <div>
-        <h2 className="mb-3 font-mono text-sm font-medium text-[oklch(0.92_0_0)]">
+        <h2 className="mb-3 font-sans text-sm font-semibold text-white">
           Recent Trades
         </h2>
         <DataTable

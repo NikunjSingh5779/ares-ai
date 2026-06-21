@@ -22,8 +22,8 @@ export function DataTable<T extends object>({
 }: DataTableProps<T>) {
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center rounded-lg border border-dashed border-[oklch(0.25_0_0)] p-8">
-        <p className="font-mono text-sm text-[oklch(0.38_0_0)]">
+      <div className="flex items-center justify-center rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] p-8 bg-[rgba(255,255,255,0.02)]">
+        <p className="font-mono text-sm text-[#52525b]">
           {emptyMessage}
         </p>
       </div>
@@ -31,14 +31,14 @@ export function DataTable<T extends object>({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-[oklch(0.25_0_0)]">
+    <div className="overflow-x-auto rounded-xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] backdrop-blur-sm">
       <table className="w-full text-left text-sm">
         <thead>
-          <tr className="border-b border-[oklch(0.25_0_0)] bg-[oklch(0.13_0_0)]">
+          <tr className="border-b border-[rgba(255,255,255,0.08)]">
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-4 py-2.5 font-mono text-xs font-medium text-[oklch(0.6_0_0)] uppercase tracking-wider ${col.className || ""}`}
+                className={`px-4 py-3 text-label ${col.className || ""}`}
               >
                 {col.label}
               </th>
@@ -49,12 +49,12 @@ export function DataTable<T extends object>({
           {data.map((item, i) => (
             <tr
               key={i}
-              className="border-b border-[oklch(0.25_0_0)] transition-colors last:border-0 hover:bg-[oklch(0.22_0.01_145)]"
+              className="border-b border-[rgba(255,255,255,0.04)] transition-colors last:border-0 hover:bg-[rgba(255,255,255,0.03)]"
             >
               {columns.map((col) => (
                 <td
                   key={col.key}
-                  className={`px-4 py-2.5 font-mono text-sm text-[oklch(0.88_0_0)] ${col.className || ""}`}
+                  className={`px-4 py-3 font-mono text-sm text-[#e4e4e7] ${col.className || ""}`}
                 >
                   {col.render
                     ? col.render(item)

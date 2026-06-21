@@ -43,33 +43,34 @@ export default function MarketsPage() {
       const chart = createChart(chartRef.current, {
         layout: {
           background: { type: ColorType.Solid, color: "transparent" },
-          textColor: "#6b7280",
+          textColor: "#52525b",
+          fontFamily: "JetBrains Mono, monospace",
         },
         grid: {
-          vertLines: { color: "#1f2937" },
-          horzLines: { color: "#1f2937" },
+          vertLines: { color: "rgba(255,255,255,0.04)" },
+          horzLines: { color: "rgba(255,255,255,0.04)" },
         },
         width: chartRef.current.clientWidth,
         height: 400,
         crosshair: {
-          vertLine: { color: "#374151" },
-          horzLine: { color: "#374151" },
+          vertLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
+          horzLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
         },
         timeScale: {
-          borderColor: "#374151",
+          borderColor: "rgba(255,255,255,0.08)",
           timeVisible: true,
         },
         rightPriceScale: {
-          borderColor: "#374151",
+          borderColor: "rgba(255,255,255,0.08)",
         },
       });
 
       const series = chart.addCandlestickSeries({
-        upColor: "#4ade80",
+        upColor: "#22c55e",
         downColor: "#ef4444",
-        borderUpColor: "#4ade80",
+        borderUpColor: "#22c55e",
         borderDownColor: "#ef4444",
-        wickUpColor: "#4ade80",
+        wickUpColor: "#22c55e",
         wickDownColor: "#ef4444",
       });
 
@@ -123,17 +124,17 @@ export default function MarketsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-mono text-xl font-semibold text-[oklch(0.92_0_0)]">
+          <h1 className="text-heading text-xl text-white">
             Markets
           </h1>
-          <p className="font-mono text-xs text-[oklch(0.6_0_0)]">
+          <p className="text-label mt-1">
             Market Analysis & Price Data
           </p>
         </div>
         <button
           onClick={runAnalysis}
           disabled={loading}
-          className="flex items-center gap-1.5 rounded-md bg-[oklch(0.62_0.19_145)] px-3 py-1.5 font-mono text-xs font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="btn-primary !py-2 !px-3 !text-xs !font-mono disabled:opacity-50"
         >
           <TrendingUp size={12} />
           {loading ? "Analyzing..." : "Analyze"}
@@ -146,10 +147,10 @@ export default function MarketsPage() {
           <button
             key={sym}
             onClick={() => setSymbol(sym)}
-            className={`rounded-md px-3 py-1.5 font-mono text-xs transition-colors ${
+            className={`rounded-lg px-3 py-1.5 font-mono text-xs transition-all duration-200 ${
               symbol === sym
-                ? "bg-[oklch(0.62_0.19_145)] text-black font-medium"
-                : "border border-[oklch(0.25_0_0)] text-[oklch(0.6_0_0)] hover:border-[oklch(0.62_0.19_145)] hover:text-[oklch(0.92_0_0)]"
+                ? "bg-[#6366f1] text-black font-semibold shadow-lg shadow-[rgba(99,102,241,0.25)]"
+                : "border border-[rgba(255,255,255,0.08)] text-[#a1a1aa] hover:border-[#6366f1] hover:text-white"
             }`}
           >
             {sym}
@@ -159,53 +160,55 @@ export default function MarketsPage() {
 
       {/* Error */}
       {error && (
-        <div className="rounded-lg border border-[oklch(0.25_0.08_30)] bg-[oklch(0.25_0.08_30)] px-4 py-2">
-          <p className="font-mono text-xs text-[oklch(0.55_0.22_30)]">{error}</p>
+        <div className="rounded-xl border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.08)] px-4 py-3">
+          <p className="font-mono text-xs text-[#ef4444]">{error}</p>
         </div>
       )}
 
       {/* Price Chart */}
-      <div className="rounded-lg border border-[oklch(0.25_0_0)] bg-[oklch(0.13_0_0)] p-4">
-        <p className="mb-3 font-mono text-xs font-medium text-[oklch(0.6_0_0)] uppercase tracking-wider">
-          {symbol} — Price Chart
-        </p>
-        <div ref={chartRef} className="w-full" />
+      <div className="card-glass !p-0 overflow-hidden">
+        <div className="px-6 pt-5 pb-3">
+          <p className="text-label">
+            {symbol} — Price Chart
+          </p>
+        </div>
+        <div ref={chartRef} className="w-full px-2 pb-2" />
       </div>
 
       {/* Analysis Output */}
       {ma ? (
-        <div className="rounded-lg border border-[oklch(0.25_0_0)] bg-[oklch(0.18_0.01_145)] p-4">
-          <p className="mb-3 font-mono text-xs font-medium text-[oklch(0.6_0_0)] uppercase tracking-wider">
+        <div className="card-glass">
+          <p className="text-label mb-4">
             Market Analysis
           </p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
             <div>
-              <p className="font-mono text-xs text-[oklch(0.6_0_0)]">Direction</p>
+              <p className="text-label">Direction</p>
               <p
-                className={`font-mono text-lg font-semibold ${
+                className={`font-sans text-xl font-bold mt-1 ${
                   ma.direction === "long"
-                    ? "text-[oklch(0.62_0.19_145)]"
+                    ? "text-[#22c55e]"
                     : ma.direction === "short"
-                      ? "text-[oklch(0.55_0.22_30)]"
-                      : "text-[oklch(0.6_0_0)]"
+                      ? "text-[#ef4444]"
+                      : "text-[#a1a1aa]"
                 }`}
               >
                 {ma.direction.toUpperCase()}
               </p>
             </div>
             <div>
-              <p className="font-mono text-xs text-[oklch(0.6_0_0)]">Confidence</p>
-              <p className="font-mono text-lg font-semibold text-[oklch(0.92_0_0)]">
+              <p className="text-label">Confidence</p>
+              <p className="font-sans text-xl font-bold text-white mt-1">
                 {ma.confidence.toFixed(1)}%
               </p>
             </div>
             <div>
-              <p className="font-mono text-xs text-[oklch(0.6_0_0)]">Indicators</p>
-              <div className="flex flex-wrap gap-1.5 mt-1">
+              <p className="text-label">Indicators</p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
                 {Object.entries(ma.indicators).map(([key, val]) => (
                   <span
                     key={key}
-                    className="rounded bg-[oklch(0.2_0_0)] px-2 py-0.5 font-mono text-xs text-[oklch(0.6_0_0)]"
+                    className="rounded-lg bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] px-2 py-1 font-mono text-xs text-[#a1a1aa]"
                   >
                     {key.toUpperCase()}: {typeof val === "number" ? val.toFixed(2) : val}
                   </span>
@@ -213,13 +216,13 @@ export default function MarketsPage() {
               </div>
             </div>
           </div>
-          <p className="mt-3 font-mono text-xs text-[oklch(0.5_0_0)] leading-relaxed">
+          <p className="mt-4 font-mono text-xs text-[#71717a] leading-relaxed border-t border-[rgba(255,255,255,0.06)] pt-3">
             {ma.rationale}
           </p>
         </div>
       ) : loading ? (
         <div className="flex items-center justify-center py-8">
-          <RefreshCw size={16} className="animate-spin text-[oklch(0.6_0_0)]" />
+          <RefreshCw size={16} className="animate-spin text-[#6366f1]" />
         </div>
       ) : null}
     </div>

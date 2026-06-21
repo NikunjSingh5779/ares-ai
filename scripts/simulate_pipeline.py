@@ -8,6 +8,7 @@ Uses mock/test data, no real API calls.
 import asyncio
 import sys
 import os
+from typing import Any
 from unittest.mock import AsyncMock
 
 # Add project root to path
@@ -64,6 +65,7 @@ class MockExchangeConnector(ExchangeConnector):
         quantity: float,
         order_type: str,
         price: float | None = None,
+        params: dict[str, Any] | None = None,
     ) -> ExchangeOrder:
         order_id = f"mock-order-{asyncio.get_event_loop().time():.0f}"
         return ExchangeOrder(
@@ -80,6 +82,54 @@ class MockExchangeConnector(ExchangeConnector):
 
     async def cancel_order(self, order_id: str, symbol: str) -> bool:
         return True
+
+    async def fetch_ohlcv(
+        self,
+        symbol: str,
+        timeframe: str = "1d",
+        limit: int = 100,
+    ) -> list[list[float]]:
+        """Return mock OHLCV candles."""
+        # Return a small list of mock candles [timestamp, open, high, low, close, volume]
+        now = int(asyncio.get_event_loop().time())
+        candles = []
+        base_price = 50000.0 if "BTC" in symbol else 3000.0
+        for i in range(min(limit, 10)):
+            timestamp = now - (9 - i) * 86400
+            open_price = base_price + (i * 100)
+            high = open_price + 200
+            low = open_price - 100
+            close = open_price + 50
+            volume = 1000.0 + i * 100
+            candles.append([timestamp, open_price, high, low, close, volume])
+        return candles
+
+    async def get_order_status(self, order_id: str, symbol: str) -> ExchangeOrder:
+        """Return a mock order status matching create_order pattern."""
+        return ExchangeOrder(
+            id=order_id,
+            symbol=symbol,
+            side="buy",
+            type="market",
+            quantity=0.1,
+            price=50000.0,
+            filled=0.1,
+            remaining=0.0,
+            status="closed",
+        )
+
+    async def get_ticker(self, symbol: str) -> dict[str, Any]:
+        """Return a mock ticker dict."""
+        return {
+            "symbol": symbol,
+            "price": 50000.0,
+            "bid": 49990.0,
+            "ask": 50010.0,
+            "volume": 100000.0,
+            "high": 51000.0,
+            "low": 49000.0,
+            "change_pct": 2.5,
+        }
 
     @property
     def is_connected(self) -> bool:

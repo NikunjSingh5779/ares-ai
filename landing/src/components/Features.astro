@@ -1,0 +1,92 @@
+---
+const features = [
+  {
+    icon: "🧠",
+    title: "Multi-Agent Pipeline",
+    description:
+      "10 specialized AI agents collaborate in a directed graph — market analyst, quant, news, vision, consensus, risk, execution, journal, reflection, and memory.",
+    bg: "rgba(99, 102, 241, 0.08)",
+    span: "bento-col-2",
+  },
+  {
+    icon: "📊",
+    title: "Quantitative Analysis",
+    description:
+      "Technical indicators, statistical models, and strategy-driven signals powered by configurable quant agents.",
+    bg: "rgba(34, 197, 94, 0.08)",
+    span: "",
+  },
+  {
+    icon: "🛡️",
+    title: "Risk Management",
+    description:
+      "Kill switch, drawdown limits, position sizing, and promotion gates ensure safety at every level.",
+    bg: "rgba(239, 68, 68, 0.08)",
+    span: "",
+  },
+  {
+    icon: "⚡",
+    title: "Live Trading Engine",
+    description:
+      "Exchange-agnostic execution with human approval, semi-autonomous, and full-auto modes. Audit every order.",
+    bg: "rgba(245, 158, 11, 0.08)",
+    span: "bento-col-2",
+  },
+  {
+    icon: "📓",
+    title: "Trading Journal & Memory",
+    description:
+      "Agents learn from past trades. Journal entries capture mistakes and lessons; memory consolidates insights.",
+    bg: "rgba(16, 185, 129, 0.08)",
+    span: "",
+  },
+  {
+    icon: "🔄",
+    title: "Paper Trading",
+    description:
+      "Full backtesting and paper trading engine with equity curves, position tracking, and P&L attribution.",
+    bg: "rgba(99, 102, 241, 0.08)",
+    span: "",
+  },
+  {
+    icon: "👁️",
+    title: "Chart Vision",
+    description:
+      "Visual chart pattern recognition with support/resistance detection and confidence scoring.",
+    bg: "rgba(34, 197, 94, 0.08)",
+    span: "",
+  },
+];
+---
+
+<section class="features-section" id="features">
+  <div class="container">
+    <div class="features-header" data-reveal>
+      <p class="text-label">Capabilities</p>
+      <h2 class="text-heading">
+        Everything you need for<br />
+        <span class="gradient-text">autonomous trading</span>
+      </h2>
+    </div>
+
+    <div class="bento-grid">
+      {features.map((f, i) => (
+        <div
+          class={`bento-cell ${f.span}`}
+          data-reveal
+          class:list={[`delay-${Math.min(i + 1, 5)}`]}
+        >
+          <div
+            class="bento-icon"
+            style={`background: ${f.bg};`}
+            aria-hidden="true"
+          >
+            {f.icon}
+          </div>
+          <h3 class="bento-title">{f.title}</h3>
+          <p class="bento-desc">{f.description}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

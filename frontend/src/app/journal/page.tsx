@@ -55,17 +55,17 @@ export default function JournalPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-mono text-xl font-semibold text-[oklch(0.92_0_0)]">
+          <h1 className="text-heading text-xl text-white">
             Journal
           </h1>
-          <p className="font-mono text-xs text-[oklch(0.6_0_0)]">
+          <p className="text-label mt-1">
             Post-Trade Journal & Memory
           </p>
         </div>
         <button
           onClick={loadData}
           disabled={loading}
-          className="flex items-center gap-1.5 rounded-md bg-[oklch(0.62_0.19_145)] px-3 py-1.5 font-mono text-xs font-medium text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="btn-primary !py-2 !px-3 !text-xs !font-mono disabled:opacity-50"
         >
           <BookOpen size={12} />
           {loading ? "Loading..." : "Refresh"}
@@ -73,99 +73,97 @@ export default function JournalPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-[oklch(0.25_0.08_30)] bg-[oklch(0.25_0.08_30)] px-4 py-2">
-          <p className="font-mono text-xs text-[oklch(0.55_0.22_30)]">{error}</p>
+        <div className="rounded-xl border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.08)] px-4 py-3">
+          <p className="font-mono text-xs text-[#ef4444]">{error}</p>
         </div>
       )}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <RefreshCw size={20} className="animate-spin text-[oklch(0.6_0_0)]" />
+          <RefreshCw size={20} className="animate-spin text-[#6366f1]" />
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Journal Entry */}
-          <div className="rounded-lg border border-[oklch(0.25_0_0)] bg-[oklch(0.18_0.01_145)] p-4">
-            <p className="mb-3 font-mono text-xs font-medium text-[oklch(0.6_0_0)] uppercase tracking-wider">
+          <div className="card-glass">
+            <p className="text-label mb-4">
               Journal Entry
             </p>
             {journal ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs text-[oklch(0.6_0_0)]">Entry ID</span>
-                  <span className="font-mono text-xs text-[oklch(0.92_0_0)]">
+                  <span className="font-mono text-xs text-[#a1a1aa]">Entry ID</span>
+                  <span className="font-mono text-xs text-white font-medium">
                     {journal.entry_id?.slice(0, 8) || "N/A"}...
                   </span>
                 </div>
 
                 <div>
-                  <p className="mb-2 font-mono text-xs font-medium text-[oklch(0.6_0_0)]">
+                  <p className="text-label mb-2">
                     Mistakes ({journal.mistakes.length})
                   </p>
                   {journal.mistakes.length > 0 ? (
-                    <ul className="space-y-1">
+                    <ul className="space-y-1.5">
                       {journal.mistakes.map((m, i) => (
                         <li
                           key={i}
-                          className="rounded bg-[oklch(0.25_0.08_30)] px-2 py-1 font-mono text-xs text-[oklch(0.55_0.22_30)]"
+                          className="rounded-lg bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.15)] px-3 py-2 font-mono text-xs text-[#ef4444]"
                         >
                           • {m}
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="font-mono text-xs text-[oklch(0.38_0_0)]">No mistakes recorded</p>
+                    <p className="font-mono text-xs text-[#52525b]">No mistakes recorded</p>
                   )}
                 </div>
 
                 <div>
-                  <p className="mb-2 font-mono text-xs font-medium text-[oklch(0.6_0_0)]">
+                  <p className="text-label mb-2">
                     Lessons ({journal.lessons.length})
                   </p>
                   {journal.lessons.length > 0 ? (
-                    <ul className="space-y-1">
+                    <ul className="space-y-1.5">
                       {journal.lessons.map((l, i) => (
                         <li
                           key={i}
-                          className="rounded bg-[oklch(0.25_0.08_145)] px-2 py-1 font-mono text-xs text-[oklch(0.62_0.19_145)]"
+                          className="rounded-lg bg-[rgba(34,197,94,0.08)] border border-[rgba(34,197,94,0.15)] px-3 py-2 font-mono text-xs text-[#22c55e]"
                         >
                           • {l}
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="font-mono text-xs text-[oklch(0.38_0_0)]">No lessons extracted</p>
+                    <p className="font-mono text-xs text-[#52525b]">No lessons extracted</p>
                   )}
                 </div>
 
-                <div>
-                  <p className="mb-1 font-mono text-xs font-medium text-[oklch(0.6_0_0)]">Rationale</p>
-                  <p className="font-mono text-xs text-[oklch(0.5_0_0)] leading-relaxed">
+                <div className="border-t border-[rgba(255,255,255,0.06)] pt-3">
+                  <p className="text-label mb-1">Rationale</p>
+                  <p className="font-mono text-xs text-[#71717a] leading-relaxed">
                     {journal.rationale}
                   </p>
                 </div>
               </div>
             ) : (
-              <p className="font-mono text-sm text-[oklch(0.38_0_0)] py-4">
+              <p className="font-mono text-sm text-[#52525b] py-4">
                 No journal entries yet. Run a pipeline to generate journal data.
               </p>
             )}
           </div>
 
           {/* Memory Records */}
-          <div className="rounded-lg border border-[oklch(0.25_0_0)] bg-[oklch(0.18_0.01_145)] p-4">
-            <p className="mb-3 font-mono text-xs font-medium text-[oklch(0.6_0_0)] uppercase tracking-wider">
+          <div className="card-glass">
+            <p className="text-label mb-4">
               Memory Records
             </p>
             {memory ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs text-[oklch(0.6_0_0)]">Consolidated</span>
+                  <span className="font-mono text-xs text-[#a1a1aa]">Consolidated</span>
                   <span
-                    className={`font-mono text-xs ${
-                      memory.consolidated
-                        ? "text-[oklch(0.62_0.19_145)]"
-                        : "text-[oklch(0.55_0.22_30)]"
+                    className={`font-mono text-xs font-medium ${
+                      memory.consolidated ? "text-[#22c55e]" : "text-[#ef4444]"
                     }`}
                   >
                     {memory.consolidated ? "Yes" : "No"}
@@ -173,7 +171,7 @@ export default function JournalPage() {
                 </div>
 
                 <div>
-                  <p className="mb-2 font-mono text-xs font-medium text-[oklch(0.6_0_0)]">
+                  <p className="text-label mb-2">
                     Records ({memory.relevant_memories.length})
                   </p>
                   {memory.relevant_memories.length > 0 ? (
@@ -181,29 +179,29 @@ export default function JournalPage() {
                       {memory.relevant_memories.map((mem, i) => (
                         <div
                           key={i}
-                          className="rounded border border-[oklch(0.25_0_0)] bg-[oklch(0.13_0_0)] p-3"
+                          className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] p-3"
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-mono text-xs text-[oklch(0.6_0_0)]">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="font-mono text-xs text-[#a1a1aa]">
                               {mem.type || "unknown"}
                             </span>
-                            <span className="font-mono text-xs text-[oklch(0.38_0_0)]">
+                            <span className="font-mono text-[10px] text-[#52525b]">
                               importance: {mem.importance ?? "N/A"}
                             </span>
                           </div>
-                          <p className="font-mono text-xs text-[oklch(0.88_0_0)] leading-relaxed">
+                          <p className="font-mono text-xs text-[#e4e4e7] leading-relaxed">
                             {mem.content}
                           </p>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="font-mono text-xs text-[oklch(0.38_0_0)]">No memory records</p>
+                    <p className="font-mono text-xs text-[#52525b]">No memory records</p>
                   )}
                 </div>
               </div>
             ) : (
-              <p className="font-mono text-sm text-[oklch(0.38_0_0)] py-4">
+              <p className="font-mono text-sm text-[#52525b] py-4">
                 No memory records yet.
               </p>
             )}

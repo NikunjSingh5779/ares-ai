@@ -49,31 +49,32 @@ export default function PortfolioPage() {
       const chart = createChart(chartRef.current, {
         layout: {
           background: { type: ColorType.Solid, color: "transparent" },
-          textColor: "#6b7280",
+          textColor: "#52525b",
+          fontFamily: "JetBrains Mono, monospace",
         },
         grid: {
-          vertLines: { color: "#1f2937" },
-          horzLines: { color: "#1f2937" },
+          vertLines: { color: "rgba(255,255,255,0.04)" },
+          horzLines: { color: "rgba(255,255,255,0.04)" },
         },
         width: chartRef.current.clientWidth,
         height: 300,
         crosshair: {
-          vertLine: { color: "#374151" },
-          horzLine: { color: "#374151" },
+          vertLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
+          horzLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
         },
         timeScale: {
-          borderColor: "#374151",
+          borderColor: "rgba(255,255,255,0.08)",
         },
         rightPriceScale: {
-          borderColor: "#374151",
+          borderColor: "rgba(255,255,255,0.08)",
         },
       });
 
       const series = chart.addLineSeries({
-        color: "#4ade80",
+        color: "#22c55e",
         lineWidth: 2,
-        crosshairMarkerBackgroundColor: "#4ade80",
-        crosshairMarkerBorderColor: "#4ade80",
+        crosshairMarkerBackgroundColor: "#22c55e",
+        crosshairMarkerBorderColor: "#22c55e",
         lastValueVisible: true,
         priceFormat: {
           type: "price",
@@ -130,13 +131,7 @@ export default function PortfolioPage() {
       key: "side",
       label: "Side",
       render: (p) => (
-        <span
-          className={
-            p.side === "long"
-              ? "text-[oklch(0.62_0.19_145)]"
-              : "text-[oklch(0.55_0.22_30)]"
-          }
-        >
+        <span className={p.side === "long" ? "text-[#22c55e] font-semibold" : "text-[#ef4444] font-semibold"}>
           {p.side.toUpperCase()}
         </span>
       ),
@@ -156,13 +151,7 @@ export default function PortfolioPage() {
       key: "side",
       label: "Side",
       render: (t) => (
-        <span
-          className={
-            t.side === "long"
-              ? "text-[oklch(0.62_0.19_145)]"
-              : "text-[oklch(0.55_0.22_30)]"
-          }
-        >
+        <span className={t.side === "long" ? "text-[#22c55e] font-semibold" : "text-[#ef4444] font-semibold"}>
           {t.side.toUpperCase()}
         </span>
       ),
@@ -173,13 +162,7 @@ export default function PortfolioPage() {
       key: "pnl",
       label: "PnL",
       render: (t) => (
-        <span
-          className={
-            t.pnl >= 0
-              ? "text-[oklch(0.62_0.19_145)]"
-              : "text-[oklch(0.55_0.22_30)]"
-          }
-        >
+        <span className={t.pnl >= 0 ? "text-[#22c55e] font-medium" : "text-[#ef4444] font-medium"}>
           ${t.pnl.toFixed(2)}
         </span>
       ),
@@ -196,16 +179,16 @@ export default function PortfolioPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-mono text-xl font-semibold text-[oklch(0.92_0_0)]">
+          <h1 className="text-heading text-xl text-white">
             Portfolio
           </h1>
-          <p className="font-mono text-xs text-[oklch(0.6_0_0)]">
+          <p className="text-label mt-1">
             Paper Trading Account
           </p>
         </div>
         <button
           onClick={loadData}
-          className="flex items-center gap-1.5 rounded-md border border-[oklch(0.25_0_0)] bg-[oklch(0.18_0.01_145)] px-3 py-1.5 font-mono text-xs text-[oklch(0.6_0_0)] transition-colors hover:text-[oklch(0.92_0_0)]"
+          className="btn-ghost !py-2 !px-3 !text-xs !font-mono"
         >
           <RefreshCw size={12} />
           Refresh
@@ -214,8 +197,8 @@ export default function PortfolioPage() {
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-[oklch(0.25_0.08_30)] bg-[oklch(0.25_0.08_30)] px-4 py-2">
-          <span className="font-mono text-xs text-[oklch(0.55_0.22_30)]">
+        <div className="flex items-center gap-2 rounded-xl border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.08)] px-4 py-3">
+          <span className="font-mono text-xs text-[#ef4444]">
             {error}
           </span>
         </div>
@@ -223,7 +206,7 @@ export default function PortfolioPage() {
 
       {loading && !portfolio ? (
         <div className="flex items-center justify-center py-20">
-          <RefreshCw size={20} className="animate-spin text-[oklch(0.6_0_0)]" />
+          <RefreshCw size={20} className="animate-spin text-[#6366f1]" />
         </div>
       ) : portfolio ? (
         <>
@@ -236,14 +219,16 @@ export default function PortfolioPage() {
           </div>
 
           {/* Equity Curve */}
-          <div className="rounded-lg border border-[oklch(0.25_0_0)] bg-[oklch(0.13_0_0)] p-4">
-            <p className="mb-3 font-mono text-xs font-medium text-[oklch(0.6_0_0)] uppercase tracking-wider">
-              Equity Curve
-            </p>
-            <div ref={chartRef} className="w-full" />
+          <div className="card-glass !p-0 overflow-hidden">
+            <div className="px-6 pt-5 pb-3">
+              <p className="text-label">
+                Equity Curve
+              </p>
+            </div>
+            <div ref={chartRef} className="w-full px-2 pb-2" />
             {orders.length === 0 && (
               <div className="flex items-center justify-center py-10">
-                <p className="font-mono text-sm text-[oklch(0.38_0_0)]">
+                <p className="font-mono text-sm text-[#52525b]">
                   No trades yet — equity curve will appear here
                 </p>
               </div>
@@ -252,7 +237,7 @@ export default function PortfolioPage() {
 
           {/* Open Positions */}
           <div>
-            <h2 className="mb-3 font-mono text-sm font-medium text-[oklch(0.92_0_0)]">
+            <h2 className="mb-3 font-sans text-sm font-semibold text-white">
               Open Positions ({positions.length})
             </h2>
             <DataTable
@@ -264,7 +249,7 @@ export default function PortfolioPage() {
 
           {/* Trade History */}
           <div>
-            <h2 className="mb-3 font-mono text-sm font-medium text-[oklch(0.92_0_0)]">
+            <h2 className="mb-3 font-sans text-sm font-semibold text-white">
               Trade History ({orders.length})
             </h2>
             <DataTable
@@ -275,8 +260,8 @@ export default function PortfolioPage() {
           </div>
         </>
       ) : (
-        <div className="flex items-center justify-center rounded-lg border border-dashed border-[oklch(0.25_0_0)] p-12">
-          <p className="font-mono text-sm text-[oklch(0.38_0_0)]">
+        <div className="flex items-center justify-center rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] p-12 bg-[rgba(255,255,255,0.02)]">
+          <p className="font-mono text-sm text-[#52525b]">
             No portfolio data — run an analysis from the Dashboard
           </p>
         </div>
