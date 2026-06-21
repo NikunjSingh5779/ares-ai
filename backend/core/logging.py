@@ -7,6 +7,7 @@ message fields suitable for ingestion by Promtail/Loki, Datadog, etc.
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import sys
@@ -17,8 +18,9 @@ class JsonFormatter(logging.Formatter):
     """Format log records as JSON objects, one per line."""
 
     def format(self, record: logging.LogRecord) -> str:
+        dt = datetime.datetime.fromtimestamp(record.created, datetime.timezone.utc)
         payload: dict[str, Any] = {
-            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S.%fZ"),
+            "timestamp": dt.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "level": record.levelname,
             "module": record.module,
             "name": record.name,
