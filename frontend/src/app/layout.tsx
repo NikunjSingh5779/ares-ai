@@ -30,8 +30,9 @@ export default function RootLayout({
     <html
       lang="en"
       className={`dark ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
     >
-      <body className="flex h-screen overflow-hidden bg-[var(--color-bg)]">
+      <body className="flex h-screen overflow-hidden bg-[var(--color-bg)]" suppressHydrationWarning>
         <Sidebar />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </body>

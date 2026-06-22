@@ -58,6 +58,12 @@ agents:
       - open_router/nvidia/nemotron-nano-9b-v2:free
     timeout_seconds: 45
 
+  consensus:
+    # Consensus is deterministic (no LLM), but supervisor needs config
+    primary: opencode/qwen3.6-plus-free
+    fallbacks: []
+    timeout_seconds: 15
+
   reflection:
     primary: open_router/meta-llama/llama-3.3-70b-instruct:free
     fallbacks:

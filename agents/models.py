@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-from configs.settings import get_settings
+from configs.settings import get_settings, PROJECT_ROOT
 
 
 class AgentModelConfig:
@@ -101,9 +101,8 @@ def load_model_roster(path: str | None = None) -> ModelRoster:
     Returns:
         ModelRoster with all agent model configs.
     """
-    settings = get_settings()
-    # Use PROJECT_ROOT / configs / models.yaml
-    config_path = Path(path) if path else settings.PROJECT_ROOT / "configs" / "models.yaml"
+    # Use the module-level PROJECT_ROOT constant (not a Settings attribute)
+    config_path = Path(path) if path else PROJECT_ROOT / "configs" / "models.yaml"
 
     if not config_path.exists():
         raise FileNotFoundError(f"Model roster not found at {config_path}")

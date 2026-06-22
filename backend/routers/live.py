@@ -43,8 +43,13 @@ class KillSwitchRequest(BaseModel):
 _engine: LiveTradingEngine | None = None
 
 
-def _get_engine() -> LiveTradingEngine:
-    """Get or create the live trading engine singleton."""
+def _get_engine() -> LiveTradingEngine | None:
+    """Get or create the live trading engine singleton.
+
+    Returns ``None`` when the exchange connector cannot be created
+    (e.g. missing ``ccxt`` library or empty API keys).  Callers must
+    handle the ``None`` case gracefully.
+    """
     global _engine
     if _engine is not None:
         return _engine
@@ -58,14 +63,22 @@ def _get_engine() -> LiveTradingEngine:
         min_paper_days=settings.minimum_paper_days,
     )
 
-    exchange = create_exchange(
-        settings.exchange_name,
-        {
-            "api_key": settings.exchange_api_key,
-            "secret": settings.exchange_secret_key,
-            "testnet": settings.exchange_testnet,
-        },
-    )
+    try:
+        exchange = create_exchange(
+            settings.exchange_name,
+            {
+                "api_key": settings.exchange_api_key,
+                "secret": settings.exchange_secret_key,
+                "testnet": settings.exchange_testnet,
+            },
+        )
+    except (ImportError, ValueError) as exc:
+        logger.warning(
+            "Exchange connector unavailable (%s): %s — live trading disabled",
+            type(exc).__name__,
+            exc,
+        )
+        return None
 
     auditor = OrderAuditor()
     engine = LiveTradingEngine(exchange, kill_switch, mode_manager, promotion_gate, auditor)
@@ -81,6 +94,29 @@ class _LiveStatusResponse(dict[str, Any]):
     """Response model for /status endpoint."""
 
 
+_NOT_CONFIGURED_STATUS: dict[str, Any] = {
+    "running": False,
+    "connected": False,
+    "mode": "paper",
+    "kill_switch": {
+        "active": False,
+        "triggered_by": None,
+        "triggered_at": None,
+        "max_drawdown_pct": 20.0,
+    },
+    "exchange": "not_configured",
+    "paper_record": {
+        "promotion": {
+            "passed": False,
+            "trades": {"current": 0, "required": 50},
+            "days": {"current": 0, "required": 30},
+        }
+    },
+    "message": "No exchange configured. Running in paper trading mode. "
+    "Set exchange API keys in .env to enable live trading.",
+}
+
+
 # ── Endpoints ───────────────────────────────────────────────────────────────
 
 
@@ -88,6 +124,8 @@ class _LiveStatusResponse(dict[str, Any]):
 async def live_status() -> dict[str, Any]:
     """Return engine state: mode, kill switch, connection, paper record."""
     engine = _get_engine()
+    if engine is None:
+        return _NOT_CONFIGURED_STATUS
     ks = engine.kill_switch
     return {
         "running": engine.is_running,
@@ -104,6 +142,9 @@ async def live_status() -> dict[str, Any]:
     }
 
 
+_NO_ENGINE_MSG = "Exchange not configured. Set API keys in .env first."
+
+
 @router.post("/mode")
 async def set_mode(body: SetModeRequest) -> dict[str, Any]:
     """Change the trading mode.
@@ -112,6 +153,8 @@ async def set_mode(body: SetModeRequest) -> dict[str, Any]:
     AUTO and SEMI modes require promotion gate to pass.
     """
     engine = _get_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail=_NO_ENGINE_MSG)
 
     if engine.kill_switch.is_active:
         raise HTTPException(
@@ -148,6 +191,8 @@ async def set_mode(body: SetModeRequest) -> dict[str, Any]:
 async def start_engine() -> dict[str, Any]:
     """Connect to the exchange and start the live engine."""
     engine = _get_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail=_NO_ENGINE_MSG)
     if engine.is_running:
         return {"status": "already_running", "connected": engine.is_connected}
 
@@ -162,6 +207,8 @@ async def start_engine() -> dict[str, Any]:
 async def stop_engine() -> dict[str, Any]:
     """Disconnect from the exchange and stop the engine."""
     engine = _get_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail=_NO_ENGINE_MSG)
     if not engine.is_running:
         return {"status": "already_stopped"}
     await engine.stop()
@@ -173,6 +220,8 @@ async def stop_engine() -> dict[str, Any]:
 async def activate_kill_switch(body: KillSwitchRequest) -> dict[str, Any]:
     """Activate the kill switch — halts all live order placement immediately."""
     engine = _get_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail=_NO_ENGINE_MSG)
     engine.kill_switch.activate(reason=body.reason)
     logger.warning("Kill switch activated: %s", body.reason)
     return {"status": "kill_switch_active", "triggered_by": body.reason}
@@ -182,6 +231,8 @@ async def activate_kill_switch(body: KillSwitchRequest) -> dict[str, Any]:
 async def arm_kill_switch() -> dict[str, Any]:
     """Re-arm the kill switch — human confirmation required."""
     engine = _get_engine()
+    if engine is None:
+        raise HTTPException(status_code=503, detail=_NO_ENGINE_MSG)
     engine.kill_switch.arm()
     logger.info("Kill switch re-armed")
     return {"status": "kill_switch_armed"}
@@ -197,6 +248,8 @@ async def live_positions() -> list[dict[str, Any]]:
 async def live_orders() -> list[dict[str, Any]]:
     """Return live order history from the audit log."""
     engine = _get_engine()
+    if engine is None:
+        return []
     return engine.auditor.to_dicts(limit=50)
 
 
@@ -204,6 +257,8 @@ async def live_orders() -> list[dict[str, Any]]:
 async def audit_log(limit: int = 50) -> list[dict[str, Any]]:
     """Return recent audit log entries."""
     engine = _get_engine()
+    if engine is None:
+        return []
     return engine.auditor.to_dicts(limit=min(limit, 500))
 
 
@@ -211,4 +266,6 @@ async def audit_log(limit: int = 50) -> list[dict[str, Any]]:
 async def paper_record() -> dict[str, Any]:
     """Return paper trading stats for promotion check."""
     engine = _get_engine()
+    if engine is None:
+        return _NOT_CONFIGURED_STATUS["paper_record"]
     return engine.paper_record

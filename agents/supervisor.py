@@ -396,10 +396,14 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
         agent.model_available = True
 
     try:
-        result = await agent.run(VisionInput(
+        raw_result = await agent.run(VisionInput(
             symbol=state.symbol,
             candles=candles,
         ))
+        
+        # Convert Pydantic FlexibleSchema to dict
+        result = raw_result.model_dump() if hasattr(raw_result, "model_dump") else raw_result
+        
         result["fallback_model"] = fallback_model
         result["available"] = model_available
         return {"vision": VisionOutput(**result)}
