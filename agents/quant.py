@@ -18,11 +18,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from agents.state import QuantOutput
 from agents.base import AgentContext, BaseAgent
 from agents.indicators import compute_all_indicators
 from agents.router import ModelRouter, RouterResult
 from backend.data.ingestor import MarketDataIngestor
-from backend.data.models import OHLCVData
+from backend.data.models import OHLCVData, MarketDataRequest
 
 
 # ---------------------------------------------------------------------------
@@ -561,7 +562,7 @@ def _parse_quant_response(
 # QuantAgent
 # ---------------------------------------------------------------------------
 
-class QuantAgent(BaseAgent[QuantInput, dict]):
+class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
     """Quantitative analysis agent combining technical indicators with LLM-based
     strategy generation and expected return projection.
 
@@ -578,6 +579,7 @@ class QuantAgent(BaseAgent[QuantInput, dict]):
 
     agent_name: str = "quant"
     input_schema: type[BaseModel] = QuantInput
+    output_schema: type[BaseModel] = QuantOutput
 
     def __init__(
         self,
@@ -639,12 +641,13 @@ class QuantAgent(BaseAgent[QuantInput, dict]):
 
         if self.ingestor is not None:
             try:
-                result = await self.ingestor.ingest(
+                request = MarketDataRequest(
                     symbol=inputs.symbol,
                     source="yahoo",
                     interval=inputs.interval,
                     limit=inputs.lookback,
                 )
+                result = await self.ingestor.ingest(request)
                 return result.candles
             except Exception:
                 return []

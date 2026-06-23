@@ -17,6 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from agents.state import VisionOutput
 from agents.base import AgentContext, BaseAgent
 
 
@@ -62,7 +63,7 @@ PATTERN_MIN_CONSECUTIVE: int = 3
 # ---------------------------------------------------------------------------
 
 
-class VisionAgent(BaseAgent[VisionInput, dict]):
+class VisionAgent(BaseAgent[VisionInput, VisionOutput]):
     """Chart pattern analysis agent — advisory, non-blocking.
 
     Rule-based analysis (always available):
@@ -83,6 +84,7 @@ class VisionAgent(BaseAgent[VisionInput, dict]):
 
     agent_name: str = "vision"
     input_schema: type[BaseModel] = VisionInput
+    output_schema: type[BaseModel] = VisionOutput
 
     def __init__(
         self,

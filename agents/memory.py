@@ -14,6 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agents.state import MemoryOutput
 from agents.base import AgentContext, BaseAgent
 
 
@@ -52,7 +53,7 @@ MEMORY_TYPE_MAP: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-class MemoryAgent(BaseAgent[MemoryInput, dict]):
+class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
     """Post-trade memory consolidation agent.
 
     Extracts key information from each pipeline output and builds
@@ -66,8 +67,9 @@ class MemoryAgent(BaseAgent[MemoryInput, dict]):
 
     agent_name: str = "memory"
     input_schema: type[BaseModel] = MemoryInput
+    output_schema: type[BaseModel] = MemoryOutput
 
-    def __init__(self, context: AgentContext | None = None) -> None:
+    def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
         super().__init__(context=context)
 
     async def process(self, inputs: MemoryInput) -> dict[str, Any]:

@@ -176,9 +176,30 @@ async def main():
     # Update registry with router
     registry._router = router
 
+    from backend.data.ingestor import MarketDataIngestor
+    from agents.market_analyst import MarketAnalystAgent
+    from agents.quant import QuantAgent
+    from agents.risk import RiskAgent
+    from agents.execution import ExecutionAgent
+    from agents.journal import JournalAgent
+    from agents.reflection import ReflectionAgent
+    from agents.memory import MemoryAgent
+
+    shared_ingestor = MarketDataIngestor()
+
+    agent_instances = {
+        "market_analyst": MarketAnalystAgent(router=router, ingestor=shared_ingestor),
+        "quant": QuantAgent(router=router, ingestor=shared_ingestor),
+        "risk": RiskAgent(router=router, ingestor=shared_ingestor),
+        "execution": ExecutionAgent(engine=None),
+        "journal": JournalAgent(),
+        "reflection": ReflectionAgent(),
+        "memory": MemoryAgent(),
+    }
+
     # Register all agents
     for name in model_roster.agent_names:
-        registry.register(name)
+        registry.register(name, agent=agent_instances.get(name))
 
     # Create logger
     logger = AgentLogger()

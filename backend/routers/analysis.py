@@ -78,8 +78,35 @@ def _get_supervisor() -> Supervisor:
         breaker_registry=breaker_registry,
         queue_registry=queue_registry,
     )
-    for agent_name in PIPELINE_ORDER:
-        registry.register(agent_name)
+    
+    from agents.market_analyst import MarketAnalystAgent
+    from agents.quant import QuantAgent
+    from agents.risk import RiskAgent
+    from agents.execution import ExecutionAgent
+    from agents.journal import JournalAgent
+    from agents.reflection import ReflectionAgent
+    from agents.memory import MemoryAgent
+    from backend.routers.trading import _get_engine
+    from backend.data.ingestor import MarketDataIngestor
+
+    shared_paper_engine = _get_engine()
+    shared_ingestor = MarketDataIngestor()
+
+    registry.register("market_analyst", agent=MarketAnalystAgent(router=router_model, ingestor=shared_ingestor))
+    registry.register("quant", agent=QuantAgent(router=router_model, ingestor=shared_ingestor))
+    registry.register("risk", agent=RiskAgent(router=router_model, ingestor=shared_ingestor))
+    registry.register("execution", agent=ExecutionAgent(engine=shared_paper_engine))
+    registry.register("journal", agent=JournalAgent())
+    registry.register("reflection", agent=ReflectionAgent())
+    registry.register("memory", agent=MemoryAgent())
+
+    # Special cased / missing implementation
+    registry.register("consensus")
+    registry.register("vision")
+    
+    # "news" is advisory and lacks a real implementation currently.
+    # Leaving it unregistered with no agent.
+    registry.register("news")
 
     # 6. Supervisor
     supervisor = Supervisor(

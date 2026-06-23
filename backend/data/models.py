@@ -140,6 +140,7 @@ class MarketDataResult(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     elapsed_ms: int = 0
+    candles: list[Any] = Field(default_factory=list, exclude=True)
 
 
 class MarketDataQuery(BaseModel):

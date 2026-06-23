@@ -14,11 +14,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from agents.state import RiskOutput
 from agents.base import AgentContext, BaseAgent
 from agents.indicators import compute_all_indicators, compute_atr, _extract_closes
 from agents.router import ModelRouter, RouterResult
 from backend.data.ingestor import MarketDataIngestor
-from backend.data.models import OHLCVData
+from backend.data.models import OHLCVData, MarketDataRequest
 
 
 # ---------------------------------------------------------------------------
@@ -375,7 +376,7 @@ def _parse_risk_response(
 # RiskAgent
 # ---------------------------------------------------------------------------
 
-class RiskAgent(BaseAgent[RiskInput, dict]):
+class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
     """Risk assessment agent for trade approval.
 
     Two-tier analysis:
@@ -391,6 +392,7 @@ class RiskAgent(BaseAgent[RiskInput, dict]):
 
     agent_name: str = "risk"
     input_schema: type[BaseModel] = RiskInput
+    output_schema: type[BaseModel] = RiskOutput
 
     def __init__(
         self,
@@ -438,12 +440,13 @@ class RiskAgent(BaseAgent[RiskInput, dict]):
             return inputs.candles
         if self.ingestor is not None:
             try:
-                result = await self.ingestor.ingest(
+                req = MarketDataRequest(
                     symbol=inputs.symbol,
                     source="yahoo",
                     interval=inputs.interval,
                     limit=inputs.lookback,
                 )
+                result = await self.ingestor.ingest(req)
                 return result.candles
             except Exception:
                 return []

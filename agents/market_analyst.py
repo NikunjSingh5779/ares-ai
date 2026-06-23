@@ -17,11 +17,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from agents.state import MarketAnalystOutput
 from agents.base import AgentContext, BaseAgent
 from agents.indicators import compute_all_indicators
 from agents.router import ModelRouter, RouterResult
 from backend.data.ingestor import MarketDataIngestor
-from backend.data.models import OHLCVData
+from backend.data.models import OHLCVData, MarketDataRequest
 
 
 # ---------------------------------------------------------------------------
@@ -313,7 +314,7 @@ def _parse_llm_response(
 # MarketAnalystAgent
 # ---------------------------------------------------------------------------
 
-class MarketAnalystAgent(BaseAgent[MarketAnalystInput, dict]):
+class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
     """Market analysis agent combining technical indicators with LLM analysis.
 
     Two-tier analysis:
@@ -330,6 +331,7 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, dict]):
 
     agent_name: str = "market_analyst"
     input_schema: type[BaseModel] = MarketAnalystInput
+    output_schema: type[BaseModel] = MarketAnalystOutput
 
     def __init__(
         self,
@@ -379,12 +381,13 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, dict]):
 
         if self.ingestor is not None:
             try:
-                result = await self.ingestor.ingest(
+                request = MarketDataRequest(
                     symbol=inputs.symbol,
                     source="yahoo",
                     interval=inputs.interval,
                     limit=inputs.lookback,
                 )
+                result = await self.ingestor.ingest(request)
                 return result.candles
             except Exception:
                 return []

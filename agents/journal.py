@@ -12,6 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agents.state import JournalOutput
 from agents.base import AgentContext, BaseAgent
 
 
@@ -37,7 +38,7 @@ class JournalInput(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class JournalAgent(BaseAgent[JournalInput, dict]):
+class JournalAgent(BaseAgent[JournalInput, JournalOutput]):
     """Post-trade journaling and lesson extraction agent.
 
     Fully deterministic — no LLM calls. Examines pipeline outputs
@@ -52,8 +53,9 @@ class JournalAgent(BaseAgent[JournalInput, dict]):
 
     agent_name: str = "journal"
     input_schema: type[BaseModel] = JournalInput
+    output_schema: type[BaseModel] = JournalOutput
 
-    def __init__(self, context: AgentContext | None = None) -> None:
+    def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
         super().__init__(context=context)
 
     async def process(self, inputs: JournalInput) -> dict[str, Any]:

@@ -15,6 +15,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agents.state import ReflectionOutput
 from agents.base import AgentContext, BaseAgent
 
 
@@ -71,7 +72,7 @@ class ReflectionInput(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class ReflectionAgent(BaseAgent[ReflectionInput, dict]):
+class ReflectionAgent(BaseAgent[ReflectionInput, ReflectionOutput]):
     """Post-trade reflection and evaluation agent.
 
     Rule-based evaluation:
@@ -89,8 +90,9 @@ class ReflectionAgent(BaseAgent[ReflectionInput, dict]):
 
     agent_name: str = "reflection"
     input_schema: type[BaseModel] = ReflectionInput
+    output_schema: type[BaseModel] = ReflectionOutput
 
-    def __init__(self, context: AgentContext | None = None) -> None:
+    def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
         super().__init__(context=context)
 
     async def process(self, inputs: ReflectionInput) -> dict[str, Any]:

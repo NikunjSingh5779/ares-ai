@@ -94,6 +94,7 @@ class MarketDataIngestor:
             result.cached = True
             result.count = len(cached)
             result.from_cache = len(cached)
+            result.candles = cached
             result.elapsed_ms = int((time.monotonic() - start) * 1000)
             return result
 
@@ -139,6 +140,7 @@ class MarketDataIngestor:
             logger.warning("Cache write failed", extra={"error": str(e)})
 
         result.count = len(candles)
+        result.candles = candles
         result.elapsed_ms = int((time.monotonic() - start) * 1000)
         return result
 

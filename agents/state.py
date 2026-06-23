@@ -143,6 +143,7 @@ class AgentState(BaseModel):
     symbol: str = ""
     request: str = ""
     request_type: str = "analysis"
+    candles: Optional[list[Any]] = None
 
     # Agent outputs (populated as pipeline executes)
     market_analyst: Optional[MarketAnalystOutput] = None

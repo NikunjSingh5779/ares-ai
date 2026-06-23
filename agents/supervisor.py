@@ -13,6 +13,7 @@ Per RELIABILITY section:
 
 from __future__ import annotations
 
+import copy
 import json
 import uuid
 from datetime import UTC, datetime
@@ -276,9 +277,8 @@ def _make_node_fn(agent_name: str):
         if registry and registry.has_agent(agent_name):
             reg = registry.get(agent_name)
             if reg.agent is not None and not reg.agent.__class__.__name__.startswith("Stub"):
-                agent_class = type(reg.agent) if not isinstance(reg.agent, type) else reg.agent
                 return await _execute_agent_impl(
-                    agent_name, state, agent_class, model_config, router,
+                    agent_name, state, reg.agent, model_config, router,
                 )
 
         return await _execute_agent_node(agent_name, state, router, model_config)
@@ -292,11 +292,22 @@ def _merge_pipeline_status(
     skipped: list[str] | None = None,
 ) -> PipelineStatus:
     """Merge new status entries into existing pipeline status."""
+    new_comp = state.pipeline_status.completed_nodes + (completed or [])
+    new_fail = state.pipeline_status.failed_nodes + (failed or [])
+    new_skip = list(state.pipeline_status.skipped_nodes + (skipped or []))
+    
+    current_node = (completed or failed or [""])[-1]
+    if current_node in PIPELINE_ORDER:
+        idx = PIPELINE_ORDER.index(current_node)
+        for prev_agent in PIPELINE_ORDER[:idx]:
+            if prev_agent not in new_comp and prev_agent not in new_fail and prev_agent not in new_skip:
+                new_skip.append(prev_agent)
+
     return PipelineStatus(
         current_node="",
-        completed_nodes=state.pipeline_status.completed_nodes + (completed or []),
-        failed_nodes=state.pipeline_status.failed_nodes + (failed or []),
-        skipped_nodes=state.pipeline_status.skipped_nodes + (skipped or []),
+        completed_nodes=new_comp,
+        failed_nodes=new_fail,
+        skipped_nodes=new_skip,
         start_time=state.pipeline_status.start_time,
     )
 
@@ -355,7 +366,10 @@ async def _consensus_node_fn(state: AgentState) -> dict[str, Any]:
     q = state.quant.model_dump() if state.quant else None
     result = ConsensusEngine.evaluate(state.symbol, ma, q)
 
-    return {"consensus": ConsensusOutput(**result)}
+    return {
+        "consensus": ConsensusOutput(**result),
+        "pipeline_status": _merge_pipeline_status(state, completed=["consensus"])
+    }
 
 
 async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
@@ -406,7 +420,10 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
         
         result["fallback_model"] = fallback_model
         result["available"] = model_available
-        return {"vision": VisionOutput(**result)}
+        return {
+            "vision": VisionOutput(**result),
+            "pipeline_status": _merge_pipeline_status(state, completed=["vision"])
+        }
     except Exception as e:
         # Vision never blocks — return degraded result on any error
         return {
@@ -419,6 +436,7 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
                 fallback_model=fallback_model,
                 rationale=f"Vision analysis unavailable: {e}",
             ),
+            "pipeline_status": _merge_pipeline_status(state, failed=["vision"])
         }
 
 class _GraphContext:
@@ -452,7 +470,7 @@ def _get_agent_context(state: AgentState) -> dict[str, Any]:
 async def _execute_agent_impl(
     agent_name: str,
     state: AgentState,
-    agent_class: type[BaseAgent[Any, Any]],
+    base_agent: BaseAgent[Any, Any],
     model_config: AgentModelConfig,
     router: ModelRouter,
 ) -> dict[str, Any]:
@@ -487,6 +505,8 @@ async def _execute_agent_impl(
         "lookback": 100,
         "request": state.request,
     }
+    if getattr(state, "candles", None) is not None:
+        input_data["candles"] = state.candles
     for prev in PIPELINE_ORDER:
         if prev == agent_name:
             break
@@ -495,7 +515,24 @@ async def _execute_agent_impl(
             input_data[f"{prev}_output"] = output.model_dump()
 
     try:
-        agent_instance = agent_class(router=router, context=agent_ctx)
+        agent_class = type(base_agent)
+        if agent_name in ("market_analyst", "quant", "risk"):
+            agent_instance = agent_class(
+                router=router,
+                ingestor=getattr(base_agent, "ingestor", None),
+                context=agent_ctx
+            )
+        elif agent_name == "execution":
+            agent_instance = agent_class(
+                engine=getattr(base_agent, "engine", None),
+                context=agent_ctx
+            )
+        elif agent_name in ("journal", "reflection", "memory"):
+            agent_instance = agent_class(context=agent_ctx)
+        else:
+            # Fallback
+            agent_instance = agent_class(router=router, context=agent_ctx)
+        
         output = await agent_instance.run(input_data)
 
         # Set the output

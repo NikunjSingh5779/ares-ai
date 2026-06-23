@@ -16,6 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from agents.state import ExecutionOutput
 from agents.base import AgentContext, BaseAgent
 from backend.data.models import OHLCVData
 from paper_trading.engine import PaperTradingEngine
@@ -57,7 +58,7 @@ class ExecutionInput(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class ExecutionAgent(BaseAgent[ExecutionInput, dict]):
+class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
     """Deterministic paper trade execution agent.
 
     No LLM calls — purely rule-based execution that:
@@ -76,6 +77,7 @@ class ExecutionAgent(BaseAgent[ExecutionInput, dict]):
 
     agent_name: str = "execution"
     input_schema: type[BaseModel] = ExecutionInput
+    output_schema: type[BaseModel] = ExecutionOutput
 
     def __init__(
         self,
