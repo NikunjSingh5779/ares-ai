@@ -538,9 +538,17 @@ class BacktestEngine:
         commission_pct: float,
     ) -> float:
         """Calculate cash after closing a position."""
-        proceeds = position.quantity * exit_price
-        commission_cost = proceeds * commission_pct
-        return proceeds - commission_cost
+        if position.side == "long":
+            proceeds = position.quantity * exit_price
+            commission_cost = proceeds * commission_pct
+            return proceeds - commission_cost
+        else:
+            # For short positions, return initial entry value + PnL
+            entry_value = position.quantity * position.entry_price
+            pnl = position.quantity * (position.entry_price - exit_price)
+            exit_value = position.quantity * exit_price
+            commission_cost = exit_value * commission_pct
+            return entry_value + pnl - commission_cost
 
     @staticmethod
     def _compute_equity(
@@ -551,8 +559,14 @@ class BacktestEngine:
         """Compute total equity (cash + position market value)."""
         if position is None:
             return cash
-        market_value = position.quantity * candle.close
-        return cash + market_value
+        
+        if position.side == "long":
+            market_value = position.quantity * candle.close
+            return cash + market_value
+        else:
+            entry_value = position.quantity * position.entry_price
+            pnl = position.quantity * (position.entry_price - candle.close)
+            return cash + entry_value + pnl
 
     @staticmethod
     def _trade_to_dict(trade: SimulatedTrade) -> dict[str, Any]:
