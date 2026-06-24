@@ -277,3 +277,6 @@ class BybitConnector(ExchangeConnector):
         else:
             s = s + "/USDT"
         return s
+
+    async def cancel_all_orders(self, symbol: str) -> bool:
+        raise NotImplementedError("cancel_all_orders not yet implemented for Bybit")

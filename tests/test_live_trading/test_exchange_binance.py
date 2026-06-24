@@ -223,8 +223,9 @@ class TestBinanceConnectorErrors:
         conn = BinanceConnector({"api_key": "key", "secret": "secret", "testnet": True})
         await conn.connect()
 
-        with pytest.raises(ExchangeConnectionError):
-            await conn.create_order("BTC-USD", "buy", 0.01)
+        result = await conn.create_order("BTC-USD", "buy", 0.01)
+        assert result.status == "failed"
+        assert result.raw is not None and "error" in result.raw
 
     @patch("live_trading.exchange.binance.ccxt.binance")
     async def test_create_order_insufficient_funds(self, mock_binance_ctor) -> None:
@@ -239,8 +240,9 @@ class TestBinanceConnectorErrors:
         conn = BinanceConnector({"api_key": "key", "secret": "secret", "testnet": True})
         await conn.connect()
 
-        with pytest.raises(OrderRejectedError):
-            await conn.create_order("BTC-USD", "buy", 1000.0)
+        result = await conn.create_order("BTC-USD", "buy", 1000.0)
+        assert result.status == "failed"
+        assert result.raw is not None and "error" in result.raw
 
     @patch("live_trading.exchange.binance.ccxt.binance")
     async def test_operation_when_not_connected(self, mock_binance_ctor) -> None:

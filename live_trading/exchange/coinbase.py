@@ -262,3 +262,6 @@ class CoinbaseConnector(ExchangeConnector):
         if s.endswith("USD"):
             return s[:-3] + "/USD"
         return s + "/USD"
+
+    async def cancel_all_orders(self, symbol: str) -> bool:
+        raise NotImplementedError("cancel_all_orders not yet implemented for Coinbase")

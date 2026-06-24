@@ -68,13 +68,13 @@ class TestRetryableErrorDetection:
     def test_retryable_http_status(self) -> None:
         """429, 500, 502, 503, 504 are retryable."""
         for code in [429, 500, 502, 503, 504]:
-            err = _make_http_error(code)
+            err = HTTPStatusError(code)
             assert is_retryable_error(err), f"Status {code} should be retryable"
 
     def test_non_retryable_http_status(self) -> None:
         """400, 401, 403, 404 are not retryable."""
         for code in [400, 401, 403, 404]:
-            err = _make_http_error(code)
+            err = HTTPStatusError(code)
             assert not is_retryable_error(err), f"Status {code} should not be retryable"
 
     def test_value_error_not_retryable(self) -> None:
@@ -84,7 +84,7 @@ class TestRetryableErrorDetection:
         assert not is_retryable_error(KeyError("missing key"))
 
 
-class _MockHTTPError(Exception):
+class HTTPStatusError(Exception):
     """Mock of httpx.HTTPStatusError for testing."""
 
     def __init__(self, status_code: int) -> None:
@@ -98,7 +98,8 @@ class _MockResponse:
 
 
 def _make_http_error(code: int) -> Exception:
-    return _MockHTTPError(code)
+    """Helper to create an HTTPStatusError for testing."""
+    return HTTPStatusError(code)
 
 
 class TestWithRetry:

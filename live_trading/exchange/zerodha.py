@@ -62,3 +62,6 @@ class ZerodhaStubConnector(ExchangeConnector):
         limit: int = 100,
     ) -> list[list[float]]:
         return []
+
+    async def cancel_all_orders(self, symbol: str) -> bool:
+        raise NotImplementedError("cancel_all_orders not yet implemented")

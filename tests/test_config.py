@@ -62,10 +62,12 @@ def test_vision_agent_fallback_count() -> None:
     data = yaml.safe_load(MODELS_YAML_PATH.read_text())
     vision = data["agents"].get("vision", {})
     fallbacks = vision.get("fallbacks", [])
-    # At least one VL fallback should be configured; if the primary is down,
-    # the system degrades gracefully (skips, not blocks).
-    assert len(fallbacks) >= 1, (
-        "Vision agent should have at least one VL fallback configured. "
+    # The Vision Agent requires VL (Vision-Language) capabilities.
+    # Currently, there are no reliable free-tier VL fallbacks. If the primary
+    # VL model is down, it is intentional that it degrades gracefully (skips)
+    # without trying an incompatible text-only model.
+    assert len(fallbacks) == 0, (
+        "Vision agent should have exactly 0 fallbacks intentionally configured. "
         f"Got: {fallbacks}"
     )
 

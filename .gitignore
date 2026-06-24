@@ -39,6 +39,7 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+pytest_results.txt
 
 # ChromaDB
 chromadb/
