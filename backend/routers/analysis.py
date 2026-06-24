@@ -24,6 +24,7 @@ from agents.state import AgentState
 from agents.supervisor import PIPELINE_ORDER, Supervisor
 from configs.settings import settings
 from database.connection import async_session_factory
+from sqlalchemy import text
 
 router = APIRouter(prefix="/api/v1", tags=["trading"])
 
@@ -81,15 +82,17 @@ def _get_supervisor() -> Supervisor:
     from agents.reflection import ReflectionAgent
     from agents.memory import MemoryAgent
     from backend.routers.trading import _get_engine
+    from backend.routers.live import _get_engine as get_live_engine
     from backend.data.ingestor import MarketDataIngestor
 
     shared_paper_engine = _get_engine()
+    live_engine = get_live_engine()
     shared_ingestor = MarketDataIngestor()
 
     registry.register("market_analyst", agent=MarketAnalystAgent(router=router_model, ingestor=shared_ingestor))
     registry.register("quant", agent=QuantAgent(router=router_model, ingestor=shared_ingestor))
     registry.register("risk", agent=RiskAgent(router=router_model, ingestor=shared_ingestor))
-    registry.register("execution", agent=ExecutionAgent(engine=shared_paper_engine, session_factory=async_session_factory))
+    registry.register("execution", agent=ExecutionAgent(engine=shared_paper_engine, live_engine=live_engine, session_factory=async_session_factory))
     registry.register("journal", agent=JournalAgent(session_factory=async_session_factory))
     registry.register("reflection", agent=ReflectionAgent())
     registry.register("memory", agent=MemoryAgent())

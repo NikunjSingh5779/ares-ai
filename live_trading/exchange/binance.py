@@ -17,13 +17,27 @@ from live_trading.exchange.base import (
     ExchangeOrder,
 )
 
-try:
-    import ccxt
+import typing
+if typing.TYPE_CHECKING:
+    import ccxt.async_support as ccxt
     import ccxt.pro as ccxt_pro
-
     HAS_CCXT = True
-except ImportError:  # pragma: no cover
-    HAS_CCXT = False
+else:
+    try:
+        import ccxt.async_support as ccxt
+        import ccxt.pro as ccxt_pro
+
+        HAS_CCXT = True
+    except ImportError:  # pragma: no cover
+        HAS_CCXT = False
+        import sys
+        class _Dummy:
+            pass
+        ccxt = _Dummy()
+        ccxt.AuthenticationError = Exception
+        ccxt.NetworkError = Exception
+        ccxt.InsufficientFunds = Exception
+        ccxt.InvalidOrder = Exception
 
 
 TESTNET_URLS = {
@@ -152,24 +166,34 @@ class BinanceConnector(ExchangeConnector):
         try:
             raw = await self._client.create_order(  # type: ignore[union-attr]
                 symbol=ccxt_symbol,
-                type=order_type,
+                type=order_type,  # type: ignore[arg-type]
                 side=side,
                 amount=quantity,
                 price=price,
                 params=params or {},
             )
-        except ccxt.InsufficientFunds as exc:
-            raise OrderRejectedError(
-                f"Insufficient funds for {symbol}: {exc}"
-            ) from exc
-        except ccxt.InvalidOrder as exc:
-            raise OrderRejectedError(
-                f"Order rejected by Binance: {exc}"
-            ) from exc
-        except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Network error placing order on {symbol}: {exc}"
-            ) from exc
+        except (ccxt.InsufficientFunds, ccxt.InvalidOrder, ccxt.NetworkError, ccxt.AuthenticationError) as exc:
+            return ExchangeOrder(
+                id="",
+                symbol=symbol,
+                side=side,
+                type=order_type,
+                quantity=quantity,
+                price=price,
+                status="failed",
+                raw={"error": str(exc), "code": exc.__class__.__name__},
+            )
+        except Exception as exc:
+            return ExchangeOrder(
+                id="",
+                symbol=symbol,
+                side=side,
+                type=order_type,
+                quantity=quantity,
+                price=price,
+                status="failed",
+                raw={"error": str(exc), "code": "unknown_error"},
+            )
 
         return ExchangeOrder(
             id=str(raw.get("id", "")),
@@ -193,6 +217,17 @@ class BinanceConnector(ExchangeConnector):
         except ccxt.NetworkError as exc:
             raise ExchangeConnectionError(
                 f"Failed to cancel order {order_id}: {exc}"
+            ) from exc
+
+    async def cancel_all_orders(self, symbol: str) -> bool:
+        self._require_connected()
+        ccxt_symbol = self._to_ccxt_symbol(symbol)
+        try:
+            await self._client.cancel_all_orders(ccxt_symbol)  # type: ignore[union-attr]
+            return True
+        except ccxt.NetworkError as exc:
+            raise ExchangeConnectionError(
+                f"Failed to cancel all orders for {symbol}: {exc}"
             ) from exc
 
     async def get_order_status(self, order_id: str, symbol: str) -> ExchangeOrder:

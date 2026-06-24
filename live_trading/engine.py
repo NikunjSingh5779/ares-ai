@@ -273,6 +273,32 @@ class LiveTradingEngine:
             "order": order_dict,
         }
 
+    async def evaluate_drawdown(self, current_drawdown_pct: float, symbol: str) -> bool:
+        """Evaluate if drawdown breached the kill switch threshold.
+        
+        If it does:
+        1. Force TradingMode to PAPER.
+        2. Emit emergency log.
+        3. Attempt to cancel all open orders for the symbol.
+        """
+        import logging
+        logger = logging.getLogger("ares")
+        
+        tripped = self.kill_switch.auto_trigger(current_drawdown_pct)
+        if tripped:
+            self.mode_manager.set_mode(TradingMode.HUMAN_APPROVAL)
+            logger.critical(f"EMERGENCY: Kill Switch tripped due to {current_drawdown_pct:.1f}% drawdown! Mode forced to HUMAN_APPROVAL.")
+            try:
+                if self.is_connected and hasattr(self.exchange, "cancel_all_orders"):
+                    await self.exchange.cancel_all_orders(symbol)
+                    logger.critical(f"EMERGENCY: All open orders for {symbol} cancelled successfully.")
+            except Exception as e:
+                logger.error(f"Failed to cancel open orders during emergency halt: {e}")
+            return True
+        return False
+
+    # ── Inspection ──────────────────────────────────────────────────
+
     # ── Convenience wrappers ────────────────────────────────────────
 
     async def get_balance(self) -> dict[str, float]:

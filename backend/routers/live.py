@@ -64,14 +64,12 @@ def _get_engine() -> LiveTradingEngine | None:
     )
 
     try:
-        exchange = create_exchange(
-            settings.exchange_name,
-            {
-                "api_key": settings.exchange_api_key,
-                "secret": settings.exchange_secret_key,
-                "testnet": settings.exchange_testnet,
-            },
-        )
+        exchange_config = {
+            "api_key": settings.exchange_api_key,
+            "secret": settings.exchange_secret_key,
+            "testnet": settings.exchange_testnet,
+        }
+        exchange = create_exchange(settings.exchange_name, config=exchange_config)
     except (ImportError, ValueError) as exc:
         logger.warning(
             "Exchange connector unavailable (%s): %s — live trading disabled",

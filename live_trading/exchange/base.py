@@ -142,6 +142,10 @@ class ExchangeConnector(ABC):
         """
 
     @abstractmethod
+    async def cancel_all_orders(self, symbol: str) -> bool:
+        """Cancel all open orders for a specific symbol."""
+
+    @abstractmethod
     async def get_order_status(self, order_id: str, symbol: str) -> ExchangeOrder:
         """Get the current status of an order."""
 
