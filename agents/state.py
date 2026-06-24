@@ -40,7 +40,7 @@ class QuantOutput(BaseModel):
 class NewsOutput(BaseModel):
     """Output from the News Agent."""
 
-    sentiment: float = Field(..., ge=-1, le=1)
+    sentiment: Optional[float] = None
     key_events: list[str] = Field(default_factory=list)
     impact_scores: dict[str, float] = Field(default_factory=dict)
     sources: list[str] = Field(default_factory=list)

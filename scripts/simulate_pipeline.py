@@ -231,7 +231,11 @@ async def main():
     for agent in ["market_analyst", "quant", "news", "vision", "consensus", "risk", "execution"]:
         output = getattr(state, agent, None)
         if output:
-            print(f"    {agent}: {output.model_dump_json(indent=6)}")
+            output_json = output.model_dump_json(indent=6)
+            try:
+                print(f"    {agent}: {output_json}")
+            except UnicodeEncodeError:
+                print(f"    {agent}: {output_json.encode('ascii', errors='replace').decode('ascii')}")
         else:
             print(f"    {agent}: (not executed)")
 

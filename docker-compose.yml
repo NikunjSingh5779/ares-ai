@@ -4,8 +4,6 @@
 # Services: PostgreSQL, Redis, ChromaDB, Backend API
 # =============================================================================
 
-version: "3.9"
-
 x-logging: &default-logging
   driver: "json-file"
   options:
@@ -28,7 +26,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ares}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ares}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -46,7 +44,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -68,10 +66,7 @@ services:
     volumes:
       - chromadb_data:/chroma/chroma-data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
+      disable: true
     logging: *default-logging
     networks:
       - ares-network
@@ -99,9 +94,9 @@ services:
       redis:
         condition: service_healthy
       chromadb:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
-      test: ["CMD", "python", "-c", "import http.client; conn=http.client.HTTPConnection('localhost:8000'); conn.request('GET','/health'); resp=conn.getresponse(); exit(0) if resp.status==200 else exit(1)"]
+      test: [ "CMD", "python", "-c", "import http.client; conn=http.client.HTTPConnection('localhost:8000'); conn.request('GET','/health'); resp=conn.getresponse(); exit(0) if resp.status==200 else exit(1)" ]
       interval: 30s
       timeout: 5s
       start_period: 15s

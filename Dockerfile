@@ -36,6 +36,9 @@ COPY backend/ ./backend/
 COPY configs/ ./configs/
 COPY database/ ./database/
 COPY agents/ ./agents/
+COPY paper_trading/ ./paper_trading/
+COPY live_trading/ ./live_trading/
+COPY backtesting/ ./backtesting/
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

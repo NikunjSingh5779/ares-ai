@@ -73,8 +73,15 @@ class LLMClient:
         """
         client = await self._get_client()
 
+        # Strip provider prefixes if present (e.g. "open_router/google/..." -> "google/...")
+        clean_model = model
+        if clean_model.startswith("open_router/"):
+            clean_model = clean_model.replace("open_router/", "", 1)
+        elif clean_model.startswith("opencode/"):
+            clean_model = clean_model.replace("opencode/", "", 1)
+
         payload: dict[str, Any] = {
-            "model": model,
+            "model": clean_model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
