@@ -41,7 +41,6 @@ dependencies = [
     
     # Trading & Exchange
     "ccxt>=4.0.0",
-    "locust>=2.0.0",
 ]
 
 [project.optional-dependencies]
