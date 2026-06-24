@@ -3,14 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw, TrendingUp } from "lucide-react";
 import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, ColorType } from "lightweight-charts";
-import { analyze } from "@/lib/api";
-import type { AgentState } from "@/types/api";
+import { analyze, getAgentStatus } from "@/lib/api";
+import type { AgentStatusResponse } from "@/types/api";
 
 const SYMBOLS = ["BTC-USD", "ETH-USD", "SOL-USD", "AAPL", "TSLA", "MSFT"];
 
 export default function MarketsPage() {
   const [symbol, setSymbol] = useState("BTC-USD");
-  const [analysis, setAnalysis] = useState<AgentState | null>(null);
+  const [analysis, setAnalysis] = useState<AgentStatusResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
@@ -21,8 +21,9 @@ export default function MarketsPage() {
     setLoading(true);
     setError(null);
     try {
-      const result = await analyze(symbol);
-      setAnalysis(result);
+      await analyze(symbol);
+      const s = await getAgentStatus();
+      setAnalysis(s);
     } catch {
       setError(`Analysis failed for ${symbol}`);
     } finally {

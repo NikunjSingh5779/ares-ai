@@ -23,6 +23,7 @@ from agents.router import ModelRouter
 from agents.state import AgentState
 from agents.supervisor import PIPELINE_ORDER, Supervisor
 from configs.settings import settings
+from database.connection import async_session_factory
 
 router = APIRouter(prefix="/api/v1", tags=["trading"])
 
@@ -81,7 +82,6 @@ def _get_supervisor() -> Supervisor:
     from agents.memory import MemoryAgent
     from backend.routers.trading import _get_engine
     from backend.data.ingestor import MarketDataIngestor
-    from database.connection import async_session_factory
 
     shared_paper_engine = _get_engine()
     shared_ingestor = MarketDataIngestor()
@@ -89,7 +89,7 @@ def _get_supervisor() -> Supervisor:
     registry.register("market_analyst", agent=MarketAnalystAgent(router=router_model, ingestor=shared_ingestor))
     registry.register("quant", agent=QuantAgent(router=router_model, ingestor=shared_ingestor))
     registry.register("risk", agent=RiskAgent(router=router_model, ingestor=shared_ingestor))
-    registry.register("execution", agent=ExecutionAgent(engine=shared_paper_engine))
+    registry.register("execution", agent=ExecutionAgent(engine=shared_paper_engine, session_factory=async_session_factory))
     registry.register("journal", agent=JournalAgent(session_factory=async_session_factory))
     registry.register("reflection", agent=ReflectionAgent())
     registry.register("memory", agent=MemoryAgent())
@@ -112,6 +112,46 @@ def _get_supervisor() -> Supervisor:
 
     _supervisor = supervisor
     return _supervisor
+
+
+@router.get("/signals/history")
+async def signals_history(limit: int = 50) -> list[dict[str, Any]]:
+    """Get historical signals."""
+    query = text("""
+        SELECT 
+            id, symbol, direction, confidence, composite_confidence, 
+            market_analyst_confidence, quant_confidence, news_sentiment,
+            risk_score, risk_approved, is_consensus, rationale, is_executed,
+            created_at, agent_outputs
+        FROM signals
+        ORDER BY created_at DESC
+        LIMIT :limit
+    """)
+    async with async_session_factory() as session:
+        result = await session.execute(query, {"limit": limit})
+        rows = result.fetchall()
+
+    entries = []
+    for row in rows:
+        entries.append({
+            "id": str(row.id),
+            "symbol": row.symbol,
+            "direction": row.direction,
+            "confidence": float(row.confidence) if row.confidence is not None else 0.0,
+            "composite_confidence": float(row.composite_confidence) if row.composite_confidence is not None else 0.0,
+            "market_analyst_confidence": float(row.market_analyst_confidence) if row.market_analyst_confidence is not None else 0.0,
+            "quant_confidence": float(row.quant_confidence) if row.quant_confidence is not None else 0.0,
+            "news_sentiment": float(row.news_sentiment) if row.news_sentiment is not None else 0.0,
+            "risk_score": float(row.risk_score) if row.risk_score is not None else 0.0,
+            "risk_approved": row.risk_approved,
+            "is_consensus": row.is_consensus,
+            "rationale": row.rationale,
+            "is_executed": row.is_executed,
+            "created_at": row.created_at.isoformat() if hasattr(row.created_at, "isoformat") else str(row.created_at),
+            "agent_outputs": row.agent_outputs,
+        })
+
+    return entries
 
 
 def get_last_state() -> AgentState | None:

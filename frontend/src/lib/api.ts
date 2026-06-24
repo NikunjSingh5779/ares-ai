@@ -17,6 +17,9 @@ import type {
   PortfolioSummary,
   RiskOutput,
   SignalResponse,
+  SignalHistoryEntry,
+  AnalyzeResponse,
+  JournalHistoryEntry,
 } from "@/types/api";
 
 const BASE = "http://localhost:8000";
@@ -38,8 +41,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export async function analyze(
   symbol: string,
   requestText = "Analyze",
-): Promise<AgentState> {
-  return request<AgentState>("/api/v1/analyze", {
+): Promise<AnalyzeResponse> {
+  return request<AnalyzeResponse>("/api/v1/analyze", {
     method: "POST",
     body: JSON.stringify({ symbol, request: requestText }),
   });
@@ -53,6 +56,10 @@ export async function getSignal(
     method: "POST",
     body: JSON.stringify({ symbol, request: requestText }),
   });
+}
+
+export async function getSignalHistory(): Promise<SignalHistoryEntry[]> {
+  return request<SignalHistoryEntry[]>("/api/v1/signals/history");
 }
 
 // ─── Trading ────────────────────────────────────────────────────
@@ -93,6 +100,10 @@ export async function getJournal(): Promise<{
   rationale: string;
 }> {
   return request("/api/v1/journal");
+}
+
+export async function getJournalHistory(): Promise<JournalHistoryEntry[]> {
+  return request<JournalHistoryEntry[]>("/api/v1/journal/history");
 }
 
 export async function getMemory(): Promise<{

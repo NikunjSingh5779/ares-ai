@@ -41,18 +41,16 @@ async def agent_status() -> dict[str, Any]:
             "has_run": False,
         }
 
+    state_dict = state.model_dump() if hasattr(state, "model_dump") else getattr(state, "dict", lambda: {})()
+    if not state_dict and hasattr(state, "__dict__"):
+        state_dict = {k: v for k, v in state.__dict__.items() if not k.startswith("_")}
+        # Handle Pydantic models inside state
+        for k, v in state_dict.items():
+            if hasattr(v, "model_dump"):
+                state_dict[k] = v.model_dump()
+
     return {
-        "pipeline_status": state.pipeline_status.model_dump()
-        if hasattr(state.pipeline_status, "model_dump")
-        else {
-            "current_node": state.pipeline_status.current_node,
-            "completed_nodes": state.pipeline_status.completed_nodes,
-            "failed_nodes": state.pipeline_status.failed_nodes,
-            "skipped_nodes": state.pipeline_status.skipped_nodes,
-        },
-        "model_chain_used": state.model_chain_used,
-        "degraded": state.degraded,
-        "total_latency_ms": state.total_latency_ms,
+        **state_dict,
         "has_run": True,
     }
 

@@ -31,7 +31,6 @@ const agentLabels: Record<string, string> = {
 
 export default function AgentsPage() {
   const [status, setStatus] = useState<AgentStatusResponse | null>(null);
-  const [state, setState] = useState<AgentState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -45,12 +44,9 @@ export default function AgentsPage() {
 
       // Run a quick analysis to get full state if none exists
       if (!s?.has_run) {
-        const result = await analyze("BTC-USD", "Agent status check").catch(() => null);
-        setState(result);
-        const s2 = await getAgentStatus().catch(() => null);
-        setStatus(s2);
-      } else {
-        setState(null);
+        await analyze("BTC-USD", "Agent status check").catch(() => null);
+        // We do not await getAgentStatus immediately since it's a background task. 
+        // Just let the user refresh manually or it will be picked up next refresh.
       }
     } catch {
       setError("Could not fetch agent data");
@@ -63,7 +59,7 @@ export default function AgentsPage() {
     loadData();
   }, []);
 
-  const pipelineStatus = status?.pipeline_status ?? state?.pipeline_status ?? null;
+  const pipelineStatus = status?.pipeline_status ?? null;
 
   return (
     <div className="space-y-6">
@@ -134,7 +130,7 @@ export default function AgentsPage() {
         ) : (
           <div className="divide-y divide-[rgba(255,255,255,0.04)]">
             {AGENT_NAMES.map((agent) => {
-              const output = state?.[agent as keyof AgentState] as Record<string, unknown> | null | undefined;
+              const output = status?.[agent as keyof AgentStatusResponse] as Record<string, unknown> | null | undefined;
               const isExpanded = selectedAgent === agent;
               const agentStatus = pipelineStatus?.completed_nodes.includes(agent)
                 ? ("completed" as const)

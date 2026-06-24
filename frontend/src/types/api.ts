@@ -181,13 +181,33 @@ export interface SignalResponse {
   errors: Array<{ agent: string; error: string; error_type: string }>;
 }
 
+export interface SignalHistoryEntry {
+  id: string;
+  symbol: string;
+  direction: string;
+  confidence: number;
+  composite_confidence: number;
+  market_analyst_confidence: number;
+  quant_confidence: number;
+  news_sentiment: number;
+  risk_score: number;
+  risk_approved: boolean;
+  is_consensus: boolean;
+  rationale: string;
+  is_executed: boolean;
+  created_at: string;
+  agent_outputs?: Record<string, unknown>;
+}
+
+export interface AnalyzeResponse {
+  status: string;
+  message: string;
+  session_id: string;
+}
+
 // ─── Agent Status ───────────────────────────────────────────────
 
-export interface AgentStatusResponse {
-  pipeline_status: PipelineStatus;
-  model_chain_used: Record<string, string[]>;
-  degraded: boolean;
-  total_latency_ms: number;
+export interface AgentStatusResponse extends AgentState {
   has_run: boolean;
 }
 
@@ -200,6 +220,19 @@ export interface MetricsResponse {
   total_failures: number;
   degraded: boolean;
   total_latency_ms: number;
+}
+
+// ─── Journal & History ──────────────────────────────────────────
+
+export interface JournalHistoryEntry {
+  id: string;
+  entry_type: string;
+  title: string;
+  content: string;
+  sentiment: string;
+  mistakes_detected: string[];
+  lessons_learned: string[];
+  created_at: string;
 }
 
 // ─── Live Trading ──────────────────────────────────────────────

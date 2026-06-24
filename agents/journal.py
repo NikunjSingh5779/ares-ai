@@ -65,7 +65,7 @@ class AsyncBatchWriter:
         if not batch or not self.session_factory:
             return
 
-        insert_sql = text("""
+        insert_journal_sql = text("""
             INSERT INTO journal (
                 entry_type, title, content, sentiment, mistakes_detected, lessons_learned, tags
             ) VALUES (
@@ -73,9 +73,25 @@ class AsyncBatchWriter:
             )
         """)
 
-        params = []
+        insert_signal_sql = text("""
+            INSERT INTO signals (
+                symbol, direction, confidence, composite_confidence, 
+                market_analyst_confidence, quant_confidence, news_sentiment,
+                risk_score, risk_approved, is_consensus, rationale, is_executed,
+                agent_outputs
+            ) VALUES (
+                :symbol, :direction, :confidence, :composite_confidence,
+                :market_analyst_confidence, :quant_confidence, :news_sentiment,
+                :risk_score, :risk_approved, :is_consensus, :rationale, :is_executed,
+                :agent_outputs
+            )
+        """)
+
+        journal_params = []
+        signal_params = []
+        
         for item in batch:
-            params.append({
+            journal_params.append({
                 "entry_type": "reflection",
                 "title": "Pipeline Journal Entry",
                 "content": item.get("rationale", ""),
@@ -85,15 +101,34 @@ class AsyncBatchWriter:
                 "tags": [],
             })
 
+            sig = item.get("signal_data")
+            if sig:
+                signal_params.append({
+                    "symbol": sig.get("symbol", "unknown"),
+                    "direction": sig.get("direction", "flat"),
+                    "confidence": sig.get("confidence", 0),
+                    "composite_confidence": sig.get("composite_confidence", 0),
+                    "market_analyst_confidence": sig.get("market_analyst_confidence", 0),
+                    "quant_confidence": sig.get("quant_confidence", 0),
+                    "news_sentiment": sig.get("news_sentiment", 0),
+                    "risk_score": sig.get("risk_score", 0),
+                    "risk_approved": sig.get("risk_approved", False),
+                    "is_consensus": sig.get("is_consensus", False),
+                    "rationale": sig.get("rationale", ""),
+                    "is_executed": sig.get("is_executed", False),
+                    "agent_outputs": json.dumps(sig.get("agent_outputs", {})),
+                })
+
         async with self.session_factory() as session:
             try:
-                await session.execute(insert_sql, params)
+                if journal_params:
+                    await session.execute(insert_journal_sql, journal_params)
+                if signal_params:
+                    await session.execute(insert_signal_sql, signal_params)
                 await session.commit()
             except Exception as e:
                 await session.rollback()
-                # If DB insert fails, fallback to local file write? We can just log it, but we don't have logger here.
-                # For now just raise or ignore.
-                print(f"Failed to insert journal batch: {e}")
+                print(f"Failed to insert journal/signal batch: {e}")
 
     async def flush_remaining(self) -> None:
         """Flush any remaining entries in the queue (call on shutdown)."""
@@ -181,6 +216,21 @@ class JournalAgent(BaseAgent[JournalInput, JournalOutput]):
             "mistakes": mistakes,
             "lessons": lessons,
             "rationale": rationale,
+            "signal_data": {
+                "symbol": symbol,
+                "direction": market_analyst.get("direction", "flat"),
+                "confidence": output_map.get("consensus", {}).get("composite_confidence", 0),
+                "composite_confidence": output_map.get("consensus", {}).get("composite_confidence", 0),
+                "market_analyst_confidence": market_analyst.get("confidence", 0),
+                "quant_confidence": output_map.get("quant", {}).get("confidence", 0),
+                "news_sentiment": output_map.get("news", {}).get("sentiment", 0),
+                "risk_score": risk.get("risk_score", 0),
+                "risk_approved": risk.get("approved", False),
+                "is_consensus": output_map.get("consensus", {}).get("approved", False),
+                "rationale": execution.get("rationale", rationale),
+                "is_executed": executed,
+                "agent_outputs": output_map,
+            }
         }
         
         # Async push to batch writer

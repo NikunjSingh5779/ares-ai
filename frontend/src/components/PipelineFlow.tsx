@@ -5,6 +5,7 @@ import {
   XCircle,
   SkipForward,
   Play,
+  Loader2,
   type LucideIcon,
 } from "lucide-react";
 import type { PipelineStatus } from "@/types/api";
@@ -39,17 +40,17 @@ const agentLabels: Record<string, string> = {
   memory: "Memory",
 };
 
-type NodeStatus = "completed" | "failed" | "skipped" | "pending";
+type NodeStatus = "completed" | "failed" | "skipped" | "pending" | "active";
 
 function getNodeStatus(
   agent: string,
   status: PipelineStatus | null
 ): NodeStatus {
   if (!status) return "pending";
+  if (status.current_node === agent) return "active";
   if (status.failed_nodes.includes(agent)) return "failed";
   if (status.completed_nodes.includes(agent)) return "completed";
   if (status.skipped_nodes.includes(agent)) return "skipped";
-  if (status.current_node === agent) return "completed";
   return "pending";
 }
 
@@ -58,6 +59,7 @@ const statusIcons: Record<NodeStatus, LucideIcon> = {
   failed: XCircle,
   skipped: SkipForward,
   pending: Play,
+  active: Loader2,
 };
 
 const statusColors: Record<NodeStatus, string> = {
@@ -65,6 +67,7 @@ const statusColors: Record<NodeStatus, string> = {
   failed: "text-[#ef4444]",
   skipped: "text-[#52525b]",
   pending: "text-[#3f3f46]",
+  active: "text-[#6366f1]",
 };
 
 const statusBg: Record<NodeStatus, string> = {
@@ -72,6 +75,7 @@ const statusBg: Record<NodeStatus, string> = {
   failed: "bg-[rgba(239,68,68,0.1)] border-[rgba(239,68,68,0.2)]",
   skipped: "bg-[rgba(255,255,255,0.02)] border-[rgba(255,255,255,0.06)]",
   pending: "bg-[rgba(255,255,255,0.02)] border-[rgba(255,255,255,0.04)]",
+  active: "bg-[rgba(99,102,241,0.1)] border-[rgba(99,102,241,0.2)]",
 };
 
 export function PipelineFlow({ status }: PipelineFlowProps) {
@@ -90,9 +94,9 @@ export function PipelineFlow({ status }: PipelineFlowProps) {
                 className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-all duration-200 ${statusBg[nodeStatus]}`}
                 title={agentLabels[agent]}
               >
-                <Icon size={12} className={statusColors[nodeStatus]} />
+                <Icon size={12} className={`${statusColors[nodeStatus]} ${nodeStatus === 'active' ? 'animate-spin' : ''}`} />
                 <span
-                  className={`font-mono text-xs ${statusColors[nodeStatus]}`}
+                  className={`font-mono text-xs ${statusColors[nodeStatus]} ${nodeStatus === 'active' ? 'animate-pulse' : ''}`}
                 >
                   {agentLabels[agent]}
                 </span>

@@ -2,14 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { RefreshCw, BookOpen } from "lucide-react";
-import { getJournal, getMemory, analyze } from "@/lib/api";
-
-interface JournalEntry {
-  entry_id: string | null;
-  mistakes: string[];
-  lessons: string[];
-  rationale: string;
-}
+import { getJournalHistory, getMemory } from "@/lib/api";
+import type { JournalHistoryEntry } from "@/types/api";
 
 interface MemoryEntry {
   relevant_memories: Array<{
@@ -23,7 +17,7 @@ interface MemoryEntry {
 }
 
 export default function JournalPage() {
-  const [journal, setJournal] = useState<JournalEntry | null>(null);
+  const [history, setHistory] = useState<JournalHistoryEntry[]>([]);
   const [memory, setMemory] = useState<MemoryEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,13 +26,11 @@ export default function JournalPage() {
     setLoading(true);
     setError(null);
     try {
-      // Run analysis first to generate journal/memory data
-      await analyze("BTC-USD", "Journal check").catch(() => {});
-      const [j, m] = await Promise.all([
-        getJournal().catch(() => null),
+      const [h, m] = await Promise.all([
+        getJournalHistory().catch(() => []),
         getMemory().catch(() => null),
       ]);
-      setJournal(j);
+      setHistory(h);
       setMemory(m);
     } catch {
       setError("Could not fetch journal data");
@@ -84,66 +76,71 @@ export default function JournalPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Journal Entry */}
-          <div className="card-glass">
-            <p className="text-label mb-4">
-              Journal Entry
+          {/* Journal History */}
+          <div className="card-glass flex flex-col gap-4">
+            <p className="text-label">
+              Journal History ({history.length})
             </p>
-            {journal ? (
+            {history.length > 0 ? (
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs text-[#a1a1aa]">Entry ID</span>
-                  <span className="font-mono text-xs text-white font-medium">
-                    {journal.entry_id?.slice(0, 8) || "N/A"}...
-                  </span>
-                </div>
+                {history.map((entry) => (
+                  <div key={entry.id} className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-mono text-xs text-[#a1a1aa]">{new Date(entry.created_at).toLocaleString()}</span>
+                      <span className="font-mono text-[10px] text-[#52525b]">
+                        ID: {entry.id.slice(0, 8)}
+                      </span>
+                    </div>
 
-                <div>
-                  <p className="text-label mb-2">
-                    Mistakes ({journal.mistakes.length})
-                  </p>
-                  {journal.mistakes.length > 0 ? (
-                    <ul className="space-y-1.5">
-                      {journal.mistakes.map((m, i) => (
-                        <li
-                          key={i}
-                          className="rounded-lg bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.15)] px-3 py-2 font-mono text-xs text-[#ef4444]"
-                        >
-                          • {m}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="font-mono text-xs text-[#52525b]">No mistakes recorded</p>
-                  )}
-                </div>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-label mb-1.5 text-[10px]">
+                          Mistakes ({entry.mistakes_detected?.length || 0})
+                        </p>
+                        {entry.mistakes_detected && entry.mistakes_detected.length > 0 ? (
+                          <ul className="space-y-1">
+                            {entry.mistakes_detected.map((m, i) => (
+                              <li
+                                key={i}
+                                className="rounded-md bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.15)] px-2 py-1.5 font-mono text-[11px] text-[#ef4444]"
+                              >
+                                • {m}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="font-mono text-[11px] text-[#52525b]">None</p>
+                        )}
+                      </div>
 
-                <div>
-                  <p className="text-label mb-2">
-                    Lessons ({journal.lessons.length})
-                  </p>
-                  {journal.lessons.length > 0 ? (
-                    <ul className="space-y-1.5">
-                      {journal.lessons.map((l, i) => (
-                        <li
-                          key={i}
-                          className="rounded-lg bg-[rgba(34,197,94,0.08)] border border-[rgba(34,197,94,0.15)] px-3 py-2 font-mono text-xs text-[#22c55e]"
-                        >
-                          • {l}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="font-mono text-xs text-[#52525b]">No lessons extracted</p>
-                  )}
-                </div>
+                      <div>
+                        <p className="text-label mb-1.5 text-[10px]">
+                          Lessons ({entry.lessons_learned?.length || 0})
+                        </p>
+                        {entry.lessons_learned && entry.lessons_learned.length > 0 ? (
+                          <ul className="space-y-1">
+                            {entry.lessons_learned.map((l, i) => (
+                              <li
+                                key={i}
+                                className="rounded-md bg-[rgba(34,197,94,0.08)] border border-[rgba(34,197,94,0.15)] px-2 py-1.5 font-mono text-[11px] text-[#22c55e]"
+                              >
+                                • {l}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="font-mono text-[11px] text-[#52525b]">None</p>
+                        )}
+                      </div>
 
-                <div className="border-t border-[rgba(255,255,255,0.06)] pt-3">
-                  <p className="text-label mb-1">Rationale</p>
-                  <p className="font-mono text-xs text-[#71717a] leading-relaxed">
-                    {journal.rationale}
-                  </p>
-                </div>
+                      <div className="border-t border-[rgba(255,255,255,0.06)] pt-2">
+                        <p className="font-mono text-xs text-[#71717a] leading-relaxed">
+                          {entry.content}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <p className="font-mono text-sm text-[#52525b] py-4">

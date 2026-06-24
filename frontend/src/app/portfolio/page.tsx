@@ -5,13 +5,14 @@ import { RefreshCw } from "lucide-react";
 import { createChart, type IChartApi, type ISeriesApi, type LineData, ColorType } from "lightweight-charts";
 import { MetricCard } from "@/components/MetricCard";
 import { DataTable, type Column } from "@/components/DataTable";
-import { getPortfolio, getPositions, getOrders } from "@/lib/api";
-import type { PortfolioSummary, OpenPosition, ClosedTrade } from "@/types/api";
+import { getPortfolio, getPositions, getOrders, getPaperRecord } from "@/lib/api";
+import type { PortfolioSummary, OpenPosition, ClosedTrade, PaperRecord } from "@/types/api";
 
 export default function PortfolioPage() {
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [positions, setPositions] = useState<OpenPosition[]>([]);
   const [orders, setOrders] = useState<ClosedTrade[]>([]);
+  const [paperRecord, setPaperRecord] = useState<PaperRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
@@ -22,14 +23,16 @@ export default function PortfolioPage() {
     setLoading(true);
     setError(null);
     try {
-      const [p, pos, o] = await Promise.all([
+      const [p, pos, o, pr] = await Promise.all([
         getPortfolio().catch(() => null),
         getPositions().catch(() => []),
         getOrders().catch(() => []),
+        getPaperRecord().catch(() => null),
       ]);
       setPortfolio(p);
       setPositions(Array.isArray(pos) ? pos : []);
       setOrders(Array.isArray(o) ? o : []);
+      setPaperRecord(pr);
     } catch {
       setError("Could not connect to backend");
     } finally {
@@ -210,6 +213,60 @@ export default function PortfolioPage() {
         </div>
       ) : portfolio ? (
         <>
+          {/* Promotion Gate */}
+          {paperRecord && (
+            <div className="card-glass">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-label">
+                  Promotion Gate Progress
+                </p>
+                <div
+                  className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase border ${
+                    paperRecord.promotion.passed
+                      ? "bg-[rgba(34,197,94,0.1)] text-[#22c55e] border-[rgba(34,197,94,0.2)]"
+                      : "bg-[rgba(245,158,11,0.1)] text-[#f59e0b] border-[rgba(245,158,11,0.2)]"
+                  }`}
+                >
+                  {paperRecord.promotion.passed ? "PASSED" : "LOCKED"}
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {/* Trades Progress */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs font-mono">
+                    <span className="text-[#a1a1aa]">Required Trades</span>
+                    <span className="text-white">
+                      {paperRecord.promotion.trades.current} / {paperRecord.promotion.trades.required}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full bg-[rgba(255,255,255,0.04)] rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-[#6366f1] rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, (paperRecord.promotion.trades.current / paperRecord.promotion.trades.required) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Days Progress */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs font-mono">
+                    <span className="text-[#a1a1aa]">Trading Days</span>
+                    <span className="text-white">
+                      {paperRecord.promotion.days.current} / {paperRecord.promotion.days.required}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full bg-[rgba(255,255,255,0.04)] rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-[#ec4899] rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, (paperRecord.promotion.days.current / paperRecord.promotion.days.required) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Metrics */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <MetricCard label="Total PnL" value={`$${portfolio.total_pnl.toLocaleString()}`} change={portfolio.total_return_pct} />

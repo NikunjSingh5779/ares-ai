@@ -2,31 +2,87 @@
 
 import { useEffect, useState } from "react";
 import { TrendingUp, RefreshCw } from "lucide-react";
-import { StatusBadge } from "@/components/StatusBadge";
-import { getSignal } from "@/lib/api";
-import type { SignalResponse } from "@/types/api";
+import { DataTable, type Column } from "@/components/DataTable";
+import { getSignalHistory } from "@/lib/api";
+import type { SignalHistoryEntry } from "@/types/api";
 
 export default function SignalsPage() {
-  const [signal, setSignal] = useState<SignalResponse | null>(null);
+  const [history, setHistory] = useState<SignalHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadSignal() {
+  async function loadHistory() {
     setLoading(true);
     setError(null);
     try {
-      const result = await getSignal("BTC-USD", "Signal analysis");
-      setSignal(result);
+      const result = await getSignalHistory();
+      setHistory(result);
     } catch {
-      setError("Could not fetch signal");
+      setError("Could not fetch signal history");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadSignal();
+    loadHistory();
   }, []);
+
+  const columns: Column<SignalHistoryEntry>[] = [
+    { 
+      key: "created_at", 
+      label: "Date",
+      render: (s) => new Date(s.created_at).toLocaleString()
+    },
+    { key: "symbol", label: "Symbol", className: "font-medium" },
+    {
+      key: "direction",
+      label: "Direction",
+      render: (s) => (
+        <span
+          className={`font-semibold ${
+            s.direction === "long"
+              ? "text-[#22c55e]"
+              : s.direction === "short"
+              ? "text-[#ef4444]"
+              : "text-[#a1a1aa]"
+          }`}
+        >
+          {s.direction.toUpperCase()}
+        </span>
+      ),
+    },
+    { 
+      key: "market_analyst_confidence", 
+      label: "MA Conf.",
+      render: (s) => `${s.market_analyst_confidence.toFixed(0)}%`
+    },
+    { 
+      key: "quant_confidence", 
+      label: "Quant Conf.",
+      render: (s) => `${s.quant_confidence.toFixed(0)}%`
+    },
+    { 
+      key: "composite_confidence", 
+      label: "Overall Conf.",
+      render: (s) => <span className="font-bold text-white">{s.composite_confidence.toFixed(0)}%</span>
+    },
+    {
+      key: "is_executed",
+      label: "Executed",
+      render: (s) => (
+        <span
+          className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase ${
+            s.is_executed
+              ? "bg-[rgba(34,197,94,0.1)] text-[#22c55e] border border-[rgba(34,197,94,0.2)]"
+              : "bg-[rgba(239,68,68,0.1)] text-[#ef4444] border border-[rgba(239,68,68,0.2)]"
+          }`}
+        >
+          {s.is_executed ? "YES" : "NO"}
+        </span>
+      )
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -36,16 +92,16 @@ export default function SignalsPage() {
             Signals
           </h1>
           <p className="text-label mt-1">
-            Agent Pipeline Signal History
+            Historical Buy/Sell Signals
           </p>
         </div>
         <button
-          onClick={loadSignal}
+          onClick={loadHistory}
           disabled={loading}
           className="btn-primary !py-2 !px-3 !text-xs !font-mono disabled:opacity-50"
         >
           <TrendingUp size={12} />
-          {loading ? "Loading..." : "Run Signal"}
+          {loading ? "Loading..." : "Refresh"}
         </button>
       </div>
 
@@ -55,131 +111,18 @@ export default function SignalsPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Signal Status Card */}
-        <div className="card-glass">
-          <p className="text-label mb-4">
-            Signal Status
-          </p>
-          {signal ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-[#a1a1aa]">Status</span>
-                <StatusBadge status={signal.approved ? "approved" : "rejected"} />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-[#a1a1aa]">Direction</span>
-                <span
-                  className={`font-mono text-sm font-bold ${
-                    signal.direction === "long"
-                      ? "text-[#22c55e]"
-                      : signal.direction === "short"
-                        ? "text-[#ef4444]"
-                        : "text-[#a1a1aa]"
-                  }`}
-                >
-                  {signal.direction.toUpperCase()}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-[#a1a1aa]">Confidence</span>
-                <span className="font-mono text-sm font-bold text-white">
-                  {signal.confidence.toFixed(0)}%
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-[#a1a1aa]">Executed</span>
-                <StatusBadge status={signal.executed ? "ok" : "skipped"} label={signal.executed ? "Yes" : "No"} />
-              </div>
-              {signal.rationale && (
-                <>
-                  <hr className="border-[rgba(255,255,255,0.06)]" />
-                  <p className="font-mono text-xs text-[#71717a] leading-relaxed">
-                    {signal.rationale}
-                  </p>
-                </>
-              )}
-            </div>
-          ) : loading ? (
-            <div className="flex justify-center py-8">
-              <RefreshCw size={16} className="animate-spin text-[#6366f1]" />
-            </div>
-          ) : (
-            <p className="font-mono text-sm text-[#52525b] py-4">
-              No signal data yet. Run a signal to see results.
-            </p>
-          )}
-        </div>
-
-        {/* Pipeline Status */}
-        <div className="card-glass">
-          <p className="text-label mb-4">
-            Pipeline Status
-          </p>
-          {signal?.pipeline_status ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-[#a1a1aa]">Completed</span>
-                <span className="font-mono text-sm font-bold text-[#22c55e]">
-                  {signal.pipeline_status.completed_nodes.length}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-[#a1a1aa]">Failed</span>
-                <span className="font-mono text-sm font-bold text-[#ef4444]">
-                  {signal.pipeline_status.failed_nodes.length}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-[#a1a1aa]">Skipped</span>
-                <span className="font-mono text-sm font-bold text-[#52525b]">
-                  {signal.pipeline_status.skipped_nodes.length}
-                </span>
-              </div>
-              {signal.errors.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {signal.errors.map((err, i) => (
-                    <div
-                      key={i}
-                      className="rounded-lg bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.15)] px-2 py-1.5 font-mono text-xs text-[#ef4444]"
-                    >
-                      {err.agent}: {err.error}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="font-mono text-sm text-[#52525b] py-4">
-              No pipeline has run yet.
-            </p>
-          )}
-        </div>
-
-        {/* Agent Outputs */}
-        <div className="card-glass">
-          <p className="text-label mb-4">
-            Latest Run
-          </p>
-          {signal ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-[#a1a1aa]">Symbol</span>
-                <span className="font-mono text-sm font-medium text-white">{signal.symbol}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-[#a1a1aa]">Degraded</span>
-                <span className={`font-mono text-sm font-medium ${signal.status === "ok" ? "text-[#22c55e]" : "text-[#ef4444]"}`}>
-                  {signal.status === "ok" ? "No" : "Yes"}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <p className="font-mono text-sm text-[#52525b] py-4">
-              No analysis runs recorded.
-            </p>
-          )}
-        </div>
+      <div className="card-glass p-0 overflow-hidden">
+        {loading && history.length === 0 ? (
+          <div className="flex justify-center py-8">
+            <RefreshCw size={16} className="animate-spin text-[#6366f1]" />
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={history}
+            emptyMessage="No historical signals recorded yet. Run a pipeline to generate signals."
+          />
+        )}
       </div>
     </div>
   );

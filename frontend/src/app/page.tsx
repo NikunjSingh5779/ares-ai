@@ -6,18 +6,16 @@ import { MetricCard } from "@/components/MetricCard";
 import { DataTable, type Column } from "@/components/DataTable";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PipelineFlow } from "@/components/PipelineFlow";
-import { getPortfolio, getAgentStatus, getOrders, getSignal } from "@/lib/api";
+import { getPortfolio, getAgentStatus, getOrders, analyze } from "@/lib/api";
 import type {
   PortfolioSummary,
   AgentStatusResponse,
   ClosedTrade,
-  SignalResponse,
 } from "@/types/api";
 
 export default function DashboardPage() {
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [agentStatus, setAgentStatus] = useState<AgentStatusResponse | null>(null);
-  const [signal, setSignal] = useState<SignalResponse | null>(null);
   const [orders, setOrders] = useState<ClosedTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,24 +44,51 @@ export default function DashboardPage() {
     loadData();
   }, []);
 
+  // Polling mechanism
+  useEffect(() => {
+    if (!running) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const status = await getAgentStatus();
+        setAgentStatus(status);
+
+        // Check if pipeline is finished
+        const completed = status.pipeline_status.completed_nodes;
+        const failed = status.pipeline_status.failed_nodes;
+        const skipped = status.pipeline_status.skipped_nodes;
+        
+        // Memory is the last node
+        if (completed.includes("memory") || failed.includes("memory") || skipped.includes("memory") || 
+            (status.pipeline_status.current_node === "" && status.has_run)) {
+          setRunning(false);
+          // Refresh portfolio and orders now that we are done
+          const [p, o] = await Promise.all([
+            getPortfolio().catch(() => null),
+            getOrders().catch(() => []),
+          ]);
+          setPortfolio(p);
+          setOrders(Array.isArray(o) ? o : []);
+        }
+      } catch (err) {
+        console.error("Polling error", err);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [running]);
+
   async function handleRunAnalysis() {
+    if (running) return;
     setRunning(true);
     setError(null);
     try {
-      const sig = await getSignal("BTC-USD", "Quick dashboard analysis");
-      setSignal(sig);
-      // Refresh portfolio and orders after signal
-      const [p, a, o] = await Promise.all([
-        getPortfolio().catch(() => null),
-        getAgentStatus().catch(() => null),
-        getOrders().catch(() => []),
-      ]);
-      setPortfolio(p);
-      setAgentStatus(a);
-      setOrders(Array.isArray(o) ? o : []);
+      await analyze("BTC-USD", "Quick dashboard analysis");
+      // Initial ping to immediately show "pending" pipeline 
+      const initialStatus = await getAgentStatus();
+      setAgentStatus(initialStatus);
     } catch {
       setError("Analysis request failed");
-    } finally {
       setRunning(false);
     }
   }
@@ -192,59 +217,42 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <PipelineFlow status={agentStatus?.pipeline_status ?? null} />
 
-        {signal && (
+        {agentStatus?.has_run && agentStatus.pipeline_status.completed_nodes.length > 0 && !running && (
           <div className="card-glass">
             <p className="text-label mb-3">
-              Latest Signal
+              Latest Signal Status
             </p>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-sm text-[#a1a1aa]">
-                  {signal.symbol}
+              <div className="flex justify-between border-b border-[rgba(255,255,255,0.04)] pb-2 font-mono text-xs">
+                <span className="text-[#a1a1aa]">Confidence</span>
+                <span className="text-[#6366f1] font-bold">
+                  {(agentStatus as any)?.consensus?.composite_confidence || "—"}%
                 </span>
-                <StatusBadge
-                  status={signal.approved ? "approved" : "rejected"}
+              </div>
+              <div className="flex justify-between border-b border-[rgba(255,255,255,0.04)] pb-2 font-mono text-xs">
+                <span className="text-[#a1a1aa]">Direction</span>
+                <span className="text-white font-medium capitalize">
+                  {(agentStatus as any)?.market_analyst?.direction || "—"}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-[rgba(255,255,255,0.04)] pb-2 font-mono text-xs">
+                <span className="text-[#a1a1aa]">Approved</span>
+                <StatusBadge 
+                  status={(agentStatus as any)?.consensus?.approved ? "approved" : "rejected"} 
                 />
               </div>
-              <div className="flex items-center gap-6">
-                <div>
-                  <span className="text-label">
-                    Direction
-                  </span>
-                  <p
-                    className={`font-sans text-lg font-bold ${
-                      signal.direction === "long"
-                        ? "text-[#22c55e]"
-                        : signal.direction === "short"
-                          ? "text-[#ef4444]"
-                          : "text-[#a1a1aa]"
-                    }`}
-                  >
-                    {signal.direction.toUpperCase()}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-label">
-                    Confidence
-                  </span>
-                  <p className="font-sans text-lg font-bold text-white">
-                    {signal.confidence.toFixed(0)}%
-                  </p>
-                </div>
-                <div>
-                  <span className="text-label">
-                    Executed
-                  </span>
-                  <p className="font-sans text-lg font-bold text-white">
-                    {signal.executed ? "Yes" : "No"}
-                  </p>
-                </div>
+              <div className="flex justify-between border-b border-[rgba(255,255,255,0.04)] pb-2 font-mono text-xs">
+                <span className="text-[#a1a1aa]">Executed</span>
+                <span className="text-white font-bold">
+                  {(agentStatus as any)?.execution?.executed ? "Yes" : "No"}
+                </span>
               </div>
-              {signal.rationale && (
-                <p className="font-mono text-xs text-[#71717a] leading-relaxed border-t border-[rgba(255,255,255,0.06)] pt-3 mt-2">
-                  {signal.rationale}
-                </p>
-              )}
+              <div className="flex justify-between pt-1 font-mono text-xs">
+                <span className="text-[#a1a1aa]">Rationale</span>
+                <span className="text-[#52525b] text-right max-w-[200px] truncate" title={(agentStatus as any)?.execution?.rationale || "No trade"}>
+                  {(agentStatus as any)?.execution?.rationale || "No trade"}
+                </span>
+              </div>
             </div>
           </div>
         )}
