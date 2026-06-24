@@ -91,16 +91,10 @@ class BinanceConnector(ExchangeConnector):
             "options": {"defaultType": "spot"},
         }
 
-        if is_testnet:
-            options["urls"] = {
-                "api": {
-                    "public": TESTNET_URLS["binance"]["url"],
-                    "private": TESTNET_URLS["binance"]["url"],
-                },
-            }
-
         try:
             self._client = ccxt.binance(options)  # type: ignore[arg-type]
+            if is_testnet:
+                self._client.set_sandbox_mode(True)
 
             # Verify connectivity and auth
             if api_key and secret:
