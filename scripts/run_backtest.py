@@ -31,7 +31,7 @@ from agents.models import load_model_roster
 from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.queue import QueueRegistry
 from agents.retry import RetryConfig
-from agents.client import LLMClient
+from agents.client import LLMClient, create_llm_client
 
 from agents.market_analyst import MarketAnalystAgent
 from agents.quant import QuantAgent
@@ -56,18 +56,9 @@ async def main():
     queue_registry = QueueRegistry()
     logger = AgentLogger()
     
-    api_key = settings.openrouter_api_key or settings.opencode_api_key or ""
-    if not api_key:
+    llm_client = create_llm_client()
+    if isinstance(llm_client, LLMClient) and not llm_client.providers:
         print("    [!] WARNING: No API key configured. Pipeline will run in degraded mode (rule-based fallback).")
-        
-    llm_client = LLMClient(
-        api_key=api_key,
-        base_url=(
-            settings.openrouter_base_url
-            if settings.openrouter_api_key
-            else settings.opencode_base_url
-        ),
-    )
     
     router_model = ModelRouter(
         llm_client=llm_client,
@@ -106,11 +97,11 @@ async def main():
     print("[2] Fetching historical market data for ETH-USD...")
     ingestor = MarketDataIngestor()
     end_date = datetime.now(UTC)
-    start_date = end_date - timedelta(days=40)
+    start_date = end_date - timedelta(days=365)
     
     req = MarketDataRequest(
         symbol="ETH-USD",
-        interval=Interval.HOUR_1,
+        interval=Interval.DAY_1,
         source=Source.BINANCE,
         start_date=start_date,
         end_date=end_date,
@@ -130,6 +121,8 @@ async def main():
     
     print(f"\n[3] Running true walk-forward simulation on last {total_to_test} candles...")
     signals = []
+    confidence_distribution = {"ma": [], "quant": []}
+    dual_consensus_count = 0
 
     for i in range(lookback, len(test_candles)):
         current_idx = i
@@ -166,6 +159,7 @@ async def main():
                 "confidence": out_state.consensus.composite_confidence
             }
             signals.append(signal)
+            dual_consensus_count += 1
             print(f"      -> GENERATED SIGNAL: {direction.upper()} at {current_candle.close}")
         else:
             reason = "No signal"
@@ -173,10 +167,15 @@ async def main():
                 reason = f"Pipeline degraded/errors: {out_state.errors}"
             elif out_state.consensus and not out_state.consensus.approved:
                 reason = "Consensus Rejected"
-            print(f"      -> {reason}")
+            
+            ma_conf = getattr(out_state.market_analyst, "confidence", 0.0) if out_state.market_analyst else 0.0
+            q_conf = getattr(out_state.quant, "confidence", 0.0) if out_state.quant else 0.0
+            print(f"      -> {reason} | MA Conf: {ma_conf:.1f}%, Quant Conf: {q_conf:.1f}%")
 
-        print("      -> Sleeping 20 seconds to respect free tier API rate limits...")
-        await asyncio.sleep(20)
+        ma_conf = getattr(out_state.market_analyst, "confidence", 0.0) if out_state.market_analyst else 0.0
+        q_conf = getattr(out_state.quant, "confidence", 0.0) if out_state.quant else 0.0
+        confidence_distribution["ma"].append(ma_conf)
+        confidence_distribution["quant"].append(q_conf)
 
     print(f"\n[4] Running BacktestEngine with {len(signals)} true signals...")
     engine = BacktestEngine()
@@ -201,6 +200,15 @@ async def main():
     print(f"Win Rate:        {metrics.get('win_rate'):.2f}%")
     print(f"Max Drawdown:    {metrics.get('max_drawdown_pct'):.2f}%")
     print(f"Profit Factor:   {metrics.get('profit_factor'):.2f}")
+    
+    ma_confs = confidence_distribution['ma']
+    q_confs = confidence_distribution['quant']
+    avg_ma = sum(ma_confs) / len(ma_confs) if ma_confs else 0.0
+    avg_q = sum(q_confs) / len(q_confs) if q_confs else 0.0
+    print("\n--- Confidence Distribution ---")
+    print(f"Market Analyst Average: {avg_ma:.1f}%")
+    print(f"Quant Average:          {avg_q:.1f}%")
+    print(f"80%+ Dual Consensus Occurrences: {dual_consensus_count}")
     print("==============================")
     
     if metrics.get('total_trades', 0) >= 50 and metrics.get('total_return_pct', 0) > 0:
@@ -208,6 +216,13 @@ async def main():
         print("          (> 50 trades and positive PnL achieved)")
     else:
         print("\n[FAILED] Promotion gate criteria not met (need 50 trades + positive PnL).")
+
+    # Gracefully close all HTTPX clients and flush journal
+    await llm_client.close()
+    
+    journal_agent = registry.get("journal")
+    if journal_agent and hasattr(journal_agent, "writer"):
+        await journal_agent.writer.flush_remaining()
 
 
 if __name__ == "__main__":

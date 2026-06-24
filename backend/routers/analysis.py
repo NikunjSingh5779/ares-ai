@@ -12,7 +12,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from agents.circuit_breaker import CircuitBreakerRegistry
-from agents.client import LLMClient
+from agents.client import LLMClient, create_llm_client
 from agents.log import AgentLogger
 from agents.models import load_model_roster
 from agents.queue import QueueRegistry
@@ -53,15 +53,7 @@ def _get_supervisor() -> Supervisor:
 
     # 3. LLM client — use real API key if configured, otherwise fall back
     #    to a stub so local development doesn't crash
-    api_key = settings.openrouter_api_key or settings.opencode_api_key or ""
-    llm_client = LLMClient(
-        api_key=api_key,
-        base_url=(
-            settings.openrouter_base_url
-            if settings.openrouter_api_key
-            else settings.opencode_base_url
-        ),
-    )
+    llm_client = create_llm_client()
 
     # 4. Model router with retry chain
     router_model = ModelRouter(

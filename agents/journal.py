@@ -7,6 +7,8 @@ Fully deterministic — no LLM calls.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import uuid
 from typing import Any
 
@@ -34,6 +36,50 @@ class JournalInput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Async Batch Writer
+# ---------------------------------------------------------------------------
+
+class AsyncBatchWriter:
+    """Buffers journal entries and flushes them to disk asynchronously."""
+
+    def __init__(self, batch_size: int = 100, filepath: str = "journal_logs.jsonl") -> None:
+        self.batch_size = batch_size
+        self.filepath = filepath
+        self._queue: list[dict[str, Any]] = []
+        self._lock = asyncio.Lock()
+
+    async def push(self, entry: dict[str, Any]) -> None:
+        """Push an entry to the queue and flush if batch size is met."""
+        async with self._lock:
+            self._queue.append(entry)
+            if len(self._queue) >= self.batch_size:
+                batch = list(self._queue)
+                self._queue.clear()
+                # Spawn background task to avoid blocking event loop
+                asyncio.create_task(self._flush(batch))
+
+    async def _flush(self, batch: list[dict[str, Any]]) -> None:
+        """Flush a batch of entries to disk using a thread pool."""
+        if not batch:
+            return
+            
+        def _write() -> None:
+            with open(self.filepath, "a", encoding="utf-8") as f:
+                for item in batch:
+                    f.write(json.dumps(item) + "\n")
+                    
+        await asyncio.to_thread(_write)
+
+    async def flush_remaining(self) -> None:
+        """Flush any remaining entries in the queue (call on shutdown)."""
+        async with self._lock:
+            if self._queue:
+                batch = list(self._queue)
+                self._queue.clear()
+                await self._flush(batch)
+
+
+# ---------------------------------------------------------------------------
 # Journal Agent
 # ---------------------------------------------------------------------------
 
@@ -57,6 +103,7 @@ class JournalAgent(BaseAgent[JournalInput, JournalOutput]):
 
     def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
         super().__init__(context=context)
+        self.writer = AsyncBatchWriter(batch_size=100)
 
     async def process(self, inputs: JournalInput) -> dict[str, Any]:
         """Generate a structured journal entry from pipeline outputs.
@@ -104,12 +151,17 @@ class JournalAgent(BaseAgent[JournalInput, JournalOutput]):
 
         rationale = " | ".join(rationale_parts)
 
-        return {
+        entry = {
             "entry_id": str(uuid.uuid4()),
             "mistakes": mistakes,
             "lessons": lessons,
             "rationale": rationale,
         }
+        
+        # Async push to batch writer
+        await self.writer.push(entry)
+        
+        return entry
 
 
 # ---------------------------------------------------------------------------

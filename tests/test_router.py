@@ -139,7 +139,7 @@ class TestModelRouterWithRealClient:
         from agents.client import LLMClient
         client = LLMClient(api_key="sk-test")
         # Don't call the real API — just verify the error handling path
-        assert client.api_key == "sk-test"
+        assert client.providers["open_router"]["api_key"] == "sk-test"
 
     @pytest.mark.asyncio
     async def test_close_cleanup(self) -> None:

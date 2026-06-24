@@ -65,12 +65,18 @@ def is_retryable_error(exception: Exception) -> bool:
     """Check if an exception should trigger a retry."""
     if isinstance(exception, RETRYABLE_EXCEPTIONS):
         return True
-    # httpx-specific
-    if type(exception).__name__ in ("HTTPStatusError", "HTTPError", "ConnectError", "RemoteProtocolError"):
+    # Handle httpx network errors explicitly
+    exc_name = type(exception).__name__
+    
+    if exc_name == "HTTPStatusError":
+        # Only retry specific status codes (e.g. 429, 500, 503)
+        if hasattr(exception, "response") and hasattr(exception.response, "status_code"):
+            return exception.response.status_code in RETRYABLE_STATUSES
+        return False
+        
+    if exc_name in ("ConnectError", "RemoteProtocolError", "ReadTimeout", "WriteTimeout", "PoolTimeout"):
         return True
-    # Check for status code in HTTPStatusError
-    if hasattr(exception, "response") and hasattr(exception.response, "status_code"):
-        return exception.response.status_code in RETRYABLE_STATUSES
+        
     return False
 
 

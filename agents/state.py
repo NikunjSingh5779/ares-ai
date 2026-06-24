@@ -99,6 +99,7 @@ class MemoryOutput(BaseModel):
     """Output from the Memory Agent."""
 
     relevant_memories: list[dict[str, Any]] = Field(default_factory=list)
+    rolling_memory: list[dict[str, Any]] = Field(default_factory=list)
     consolidated: bool = False
     rationale: str = Field(...)
 
@@ -163,3 +164,4 @@ class AgentState(BaseModel):
     model_chain_used: dict[str, list[str]] = Field(default_factory=dict)
     degraded: bool = False
     total_latency_ms: int = 0
+    rolling_memory: list[dict[str, Any]] = Field(default_factory=list)

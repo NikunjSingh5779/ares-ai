@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     opencode_api_key: str = ""
     opencode_base_url: str = "https://api.opencode.ai/v1"
 
+    # Google AI Studio (Gemini)
+    gemini_api_key: str = ""
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+    # Mistral AI
+    mistral_api_key: str = ""
+    mistral_base_url: str = "https://api.mistral.ai/v1"
+
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8000

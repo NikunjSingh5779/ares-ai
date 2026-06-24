@@ -9,8 +9,7 @@ from agents.client import LLMClient, NoOpLLMClient, create_llm_client
 class TestLLMClientInit:
     def test_initializes_with_defaults(self) -> None:
         client = LLMClient()
-        assert client.api_key == ""  # no env var set
-        assert client.base_url == "https://openrouter.ai/api/v1"
+        assert not client.providers.get("open_router", {}).get("api_key")
         assert client.default_timeout == 60
 
     def test_initializes_with_custom_values(self) -> None:
@@ -19,8 +18,8 @@ class TestLLMClientInit:
             base_url="https://api.test.com/v1",
             default_timeout=120,
         )
-        assert client.api_key == "sk-test-key"
-        assert client.base_url == "https://api.test.com/v1"
+        assert client.providers["open_router"]["api_key"] == "sk-test-key"
+        assert client.providers["open_router"]["base_url"] == "https://api.test.com/v1"
         assert client.default_timeout == 120
 
 
@@ -63,7 +62,18 @@ class TestNoOpLLMClient:
 
 
 class TestCreateLLMClient:
-    def test_creates_noop_without_api_key(self) -> None:
-        """Without env vars, create_llm_client returns NoOpLLMClient."""
+    def test_creates_noop_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Without env vars or settings, create_llm_client returns NoOpLLMClient."""
+        # Unset env vars
+        for k in ["OPENROUTER_API_KEY", "OPENCODE_API_KEY", "GEMINI_API_KEY", "MISTRAL_API_KEY"]:
+            monkeypatch.delenv(k, raising=False)
+            
+        # Also mock settings since create_llm_client uses it now
+        from backend.core.config import settings
+        monkeypatch.setattr(settings, "openrouter_api_key", "")
+        monkeypatch.setattr(settings, "opencode_api_key", "")
+        monkeypatch.setattr(settings, "gemini_api_key", "")
+        monkeypatch.setattr(settings, "mistral_api_key", "")
+        
         client = create_llm_client()
         assert isinstance(client, NoOpLLMClient)

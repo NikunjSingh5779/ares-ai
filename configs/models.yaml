@@ -11,14 +11,16 @@ defaults:
   max_retries: 3
   circuit_breaker_threshold: 3
   circuit_breaker_reset_seconds: 300
-  rate_limit_rpm: 20
+  rate_limit_rpm: 4
 
 agents:
   supervisor:
     # Needs fast, low-latency routing decisions
-    primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
+    primary: google/gemini-1.5-flash
     fallbacks:
-      - open_router/google/gemma-4-31b-it:free
+      - mistral/mistral-small-latest
+      - open_router/nvidia/nemotron-3-nano-30b-a3b:free
+      - opencode/deepseek-v4-flash-free # [UNVERIFIED]
     timeout_seconds: 30
     max_retries: 3
 
@@ -27,65 +29,77 @@ agents:
     primary: open_router/nvidia/nemotron-3-super-120b-a12b:free
     fallbacks:
       - open_router/google/gemma-4-31b-it:free
+      - opencode/north-mini-code-free # [UNVERIFIED]
     timeout_seconds: 120
 
   market_analyst:
     # Needs strong reasoning, chart pattern recognition, and strict JSON output
-    primary: open_router/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+    primary: mistral/mistral-small-latest
     fallbacks:
-      - open_router/nvidia/nemotron-3-super-120b-a12b:free
+      - google/gemini-2.5-flash
+      - open_router/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
     timeout_seconds: 60
 
   quant:
     # Needs rigorous math logic, volatility calculations, and perfect JSON compliance
-    primary: open_router/nvidia/nemotron-3-super-120b-a12b:free
+    primary: google/gemini-2.5-flash
     fallbacks:
-      - open_router/google/gemma-4-31b-it:free
+      - mistral/mistral-small-latest
+      - open_router/nvidia/nemotron-3-super-120b-a12b:free
     timeout_seconds: 90
 
   risk:
     # Needs strict rule adherence, no hallucinations, and flawless JSON output
-    primary: open_router/google/gemma-4-31b-it:free
+    primary: mistral/mistral-small-latest
     fallbacks:
-      - open_router/nvidia/nemotron-3-nano-30b-a3b:free
+      - google/gemini-1.5-flash
+      - open_router/google/gemma-4-31b-it:free
     timeout_seconds: 45
 
   news:
     # Needs large context windows and strong text sentiment analysis
-    primary: open_router/nvidia/nemotron-3-super-120b-a12b:free
+    primary: google/gemini-1.5-flash
     fallbacks:
-      - open_router/google/gemma-4-31b-it:free
+      - mistral/mistral-small-latest
+      - open_router/nvidia/nemotron-3-super-120b-a12b:free
     timeout_seconds: 45
 
   consensus:
     # Consensus is deterministic (no LLM), but needs a config entry
     primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
-    fallbacks: []
+    fallbacks:
+      - opencode/qwen3.6-plus-free # [UNVERIFIED]
     timeout_seconds: 15
 
   reflection:
     # Needs strong post-trade reasoning and evaluation capabilities
-    primary: open_router/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+    primary: google/gemini-2.5-flash
     fallbacks:
-      - open_router/nvidia/nemotron-3-super-120b-a12b:free
+      - mistral/mistral-small-latest
+      - open_router/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+      - opencode/mimo-v2.5-free # [UNVERIFIED]
     timeout_seconds: 60
 
   journal:
     # Journal is deterministic (no LLM)
     primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
-    fallbacks: []
+    fallbacks:
+      - opencode/qwen3.6-plus-free # [UNVERIFIED]
     timeout_seconds: 15
 
   memory:
     # Memory is deterministic (no LLM)
     primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
-    fallbacks: []
+    fallbacks:
+      - opencode/minimax-m3-free # [UNVERIFIED]
+      - opencode/qwen3.6-plus-free # [UNVERIFIED]
     timeout_seconds: 15
 
   execution:
     # Execution is deterministic (no LLM)
     primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
-    fallbacks: []
+    fallbacks:
+      - opencode/qwen3.6-plus-free # [UNVERIFIED]
     timeout_seconds: 15
 
   vision:
@@ -96,7 +110,9 @@ agents:
 
   fast:
     # Fallback for fast generic tasks
-    primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
+    primary: google/gemini-1.5-flash
     fallbacks:
-      - open_router/google/gemma-4-31b-it:free
+      - mistral/mistral-small-latest
+      - open_router/nvidia/nemotron-3-nano-30b-a3b:free
+      - opencode/qwen3.6-plus-free # [UNVERIFIED]
     timeout_seconds: 15

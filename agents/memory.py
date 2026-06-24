@@ -32,6 +32,7 @@ class MemoryInput(BaseModel):
 
     symbol: str = Field(default="", description="Ticker symbol")
     request: str = Field(default="", description="Original user request")
+    rolling_memory: list[dict[str, Any]] = Field(default_factory=list, description="Historical memory rolling window")
     model_config = ConfigDict(extra="allow")
 
 
@@ -153,8 +154,15 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                 "Executed" if execution.get("executed") else "Not executed",
             )
 
+        # --- Update Rolling Window ---
+        rolling_memory = inputs.rolling_memory.copy() if inputs.rolling_memory else []
+        rolling_memory.extend(memories)
+        # Enforce strict 10-item window
+        rolling_memory = rolling_memory[-10:]
+
         return {
             "relevant_memories": memories,
+            "rolling_memory": rolling_memory,
             "consolidated": True,
             "rationale": " | ".join(rationale_parts),
         }

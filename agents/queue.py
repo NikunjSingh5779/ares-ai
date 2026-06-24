@@ -32,6 +32,7 @@ class ModelRequestQueue:
         self._slots: list[float] = []  # Timestamps of recent requests
         self._pending: int = 0
         self._lock = asyncio.Lock()
+        self._last_request_time: float = 0.0
 
     async def acquire(self) -> float:
         """Wait for a rate-limit slot and return the wait time.
@@ -56,6 +57,14 @@ class ModelRequestQueue:
         """Wait until a slot is available. Returns wait time in seconds."""
         async with self._lock:
             now = time.monotonic()
+            
+            # Enforce minimal stagger to prevent API burst limit 429s
+            time_since_last = now - self._last_request_time
+            if time_since_last < 0.25:
+                stagger_wait = 0.25 - time_since_last
+                await asyncio.sleep(stagger_wait)
+                now = time.monotonic()
+            
             # Remove timestamps older than 60 seconds
             window_start = now - 60.0
             self._slots = [t for t in self._slots if t > window_start]
@@ -63,6 +72,7 @@ class ModelRequestQueue:
             # If we're under the limit, permit immediately
             if len(self._slots) < self.rpm:
                 self._slots.append(now)
+                self._last_request_time = now
                 return 0.0
 
             # Need to wait — oldest slot expires in `oldest + 60 - now` seconds
@@ -72,7 +82,9 @@ class ModelRequestQueue:
                 await asyncio.sleep(wait_time)
 
             # After waiting, add a new slot
-            self._slots.append(time.monotonic())
+            new_now = time.monotonic()
+            self._slots.append(new_now)
+            self._last_request_time = new_now
             return wait_time
 
     async def release(self) -> None:
