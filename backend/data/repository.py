@@ -21,7 +21,7 @@ class MarketDataRepository:
     INSERT_SQL = text("""
         INSERT INTO market_data (symbol, source, interval, timestamp, open, high, low, close, volume, vwap, trades_count)
         VALUES (:symbol, :source, :interval, :timestamp, :open, :high, :low, :close, :volume, :vwap, :trades_count)
-        ON CONFLICT ON CONSTRAINT idx_market_data_unique
+        ON CONFLICT (symbol, source, interval, timestamp)
         DO UPDATE SET
             open = EXCLUDED.open,
             high = EXCLUDED.high,

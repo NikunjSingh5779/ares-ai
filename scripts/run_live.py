@@ -85,7 +85,8 @@ async def persist_closed_trade(session: AsyncSession, trade, account_id: str, po
 async def main():
     logger.info("Initializing Live Runner...")
     
-    ingestor = MarketDataIngestor()
+    from backend.data.repository import MarketDataRepository
+    ingestor = MarketDataIngestor(repository=MarketDataRepository(session_factory=async_session_factory))
     engine = _get_engine()
     live_engine = _get_live_engine()
     

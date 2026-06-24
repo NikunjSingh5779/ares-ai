@@ -130,7 +130,7 @@ class MarketDataIngestor:
         except Exception as e:
             self._stats["errors"] += 1
             result.errors.append(f"DB store failed: {e!s}")
-            logger.error("DB store error", extra={"error": str(e)})
+            logger.error("DB store error", extra={"error": str(e)}, exc_info=True)
             # Still try to cache what we fetched
 
         # 4. Cache what we fetched

@@ -84,10 +84,12 @@ def _get_supervisor() -> Supervisor:
     from backend.routers.trading import _get_engine
     from backend.routers.live import _get_engine as get_live_engine
     from backend.data.ingestor import MarketDataIngestor
+    from backend.data.repository import MarketDataRepository
+    from database.connection import async_session_factory
 
     shared_paper_engine = _get_engine()
     live_engine = get_live_engine()
-    shared_ingestor = MarketDataIngestor()
+    shared_ingestor = MarketDataIngestor(repository=MarketDataRepository(session_factory=async_session_factory))
 
     registry.register("market_analyst", agent=MarketAnalystAgent(router=router_model, ingestor=shared_ingestor))
     registry.register("quant", agent=QuantAgent(router=router_model, ingestor=shared_ingestor))
