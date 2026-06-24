@@ -1,0 +1,49 @@
+PHASE 5 — FIRST REAL TESTNET ORDER (after all above confirmed)
+═══════════════════════════════════════════════════════════
+
+Only if Phase 4 shows the pipeline ran end-to-end without crashing:
+
+Temporarily inject a test signal to force one order through the 
+testnet exchange in HUMAN_APPROVAL mode. This is the only way to 
+verify the execution chain works before waiting for a real consensus 
+signal (which may never come given the 80% confidence threshold).
+
+The injection should:
+  - Bypass the consensus agents ONLY for this test (use a flag or 
+    test entry point — do not lower the threshold or change production code)
+  - Place a minimum-size BTC order on testnet (0.001 BTC or whatever 
+    the exchange minimum is)
+  - Require manual approval (mode must stay HUMAN_APPROVAL)
+  - Log the order ID returned by the testnet exchange API
+
+After the order is placed, verify it appears in the Binance testnet 
+order history UI at https://testnet.binance.vision
+
+Report: the order ID, the order size, the price, and a screenshot 
+description of what you see in the testnet UI.
+
+STOP — this is the final checkpoint. After this the system is verified.
+
+═══════════════════════════════════════════════════════════
+STANDING RULES FOR ALL PHASES
+═══════════════════════════════════════════════════════════
+
+- Never modify agents/consensus.py, agents/risk.py, live_trading/safety.py 
+  threshold values
+- Never set TRADING_MODE to anything other than HUMAN_APPROVAL during 
+  this entire sequence
+- Never auto-proceed past a STOP marker
+- Never commit .env or any file containing real or testnet API keys
+- If anything fails unexpectedly, stop and report the full error — 
+  do not attempt to work around it silently
+- git push origin master after every commit
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-25T02:31:18+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\ASUS\ares-ai\pyproject.toml (LANGUAGE_TOML)
+Cursor is on line: 75
+Other open documents:
+- c:\Users\ASUS\ares-ai\pyproject.toml (LANGUAGE_TOML)
+</ADDITIONAL_METADATA>
