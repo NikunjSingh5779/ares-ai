@@ -717,6 +717,24 @@ class Supervisor:
             request_type="analysis",
         )
 
+    async def stream_analysis(self, symbol: str, request: str):
+        """Run a full analysis pipeline and stream state updates incrementally."""
+        from agents.state import AgentState
+        
+        if self.graph is None:
+            self.build_graph()
+
+        state = AgentState(
+            symbol=symbol,
+            request=request,
+            request_type="analysis",
+            request_id=str(uuid.uuid4()),
+            session_id=str(uuid.uuid4()),
+        )
+
+        async for event in self.graph.astream(state, stream_mode="values"):
+            yield AgentState.model_validate(event)
+
     def run_sync(self, **kwargs: Any) -> AgentState:
         """Synchronous convenience wrapper for testing."""
         import asyncio

@@ -48,6 +48,14 @@ class LLMClient:
 
         self._clients: dict[str, httpx.AsyncClient] = {}
 
+    def _is_valid_key(self, key: str | None) -> bool:
+        if not key:
+            return False
+        k = key.strip().lower()
+        if not k or k in ["", "changeme", "placeholder", "dummy", "your_api_key_here"]:
+            return False
+        return True
+
     def _populate_from_env(self) -> None:
         env_map = {
             "open_router": ("OPENROUTER_API_KEY", "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
@@ -58,9 +66,9 @@ class LLMClient:
         for provider, (key_env, url_env, default_url) in env_map.items():
             if provider not in self.providers:
                 key = os.getenv(key_env)
-                if key:
+                if self._is_valid_key(key):
                     self.providers[provider] = {
-                        "api_key": key,
+                        "api_key": key.strip(), # type: ignore[union-attr]
                         "base_url": os.getenv(url_env, default_url).rstrip("/")
                     }
 
@@ -74,10 +82,12 @@ class LLMClient:
                     "base_url": "https://openrouter.ai/api/v1"
                 }
             
+            api_key = config.get("api_key", "").strip()
             headers = {
-                "Authorization": f"Bearer {config.get('api_key', '')}",
                 "Content-Type": "application/json",
             }
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
             if provider == "open_router":
                 headers["HTTP-Referer"] = "https://localhost:3000"
                 headers["X-Title"] = "BacktestEngine"
@@ -267,18 +277,26 @@ class NoOpLLMClient:
         pass
 
 
+def _is_valid_key(key: str | None) -> bool:
+    if not key:
+        return False
+    k = key.strip().lower()
+    if not k or k in ["", "changeme", "placeholder", "dummy", "your_api_key_here"]:
+        return False
+    return True
+
 def create_llm_client() -> LLMClient | NoOpLLMClient:
     """Create the appropriate LLM client based on available configuration."""
     from backend.core.config import settings
     providers = {}
-    if settings.openrouter_api_key:
-        providers["open_router"] = {"api_key": settings.openrouter_api_key, "base_url": settings.openrouter_base_url}
-    if settings.opencode_api_key:
-        providers["opencode"] = {"api_key": settings.opencode_api_key, "base_url": settings.opencode_base_url}
-    if getattr(settings, "gemini_api_key", ""):
-        providers["google"] = {"api_key": settings.gemini_api_key, "base_url": settings.gemini_base_url}
-    if getattr(settings, "mistral_api_key", ""):
-        providers["mistral"] = {"api_key": settings.mistral_api_key, "base_url": settings.mistral_base_url}
+    if _is_valid_key(settings.openrouter_api_key):
+        providers["open_router"] = {"api_key": settings.openrouter_api_key.strip(), "base_url": settings.openrouter_base_url}  # type: ignore[union-attr]
+    if _is_valid_key(settings.opencode_api_key):
+        providers["opencode"] = {"api_key": settings.opencode_api_key.strip(), "base_url": settings.opencode_base_url}  # type: ignore[union-attr]
+    if _is_valid_key(getattr(settings, "gemini_api_key", "")):
+        providers["google"] = {"api_key": getattr(settings, "gemini_api_key").strip(), "base_url": settings.gemini_base_url}
+    if _is_valid_key(getattr(settings, "mistral_api_key", "")):
+        providers["mistral"] = {"api_key": getattr(settings, "mistral_api_key").strip(), "base_url": settings.mistral_base_url}
         
     if providers:
         return LLMClient(providers=providers)

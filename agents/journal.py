@@ -10,9 +10,11 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.state import JournalOutput
 from agents.base import AgentContext, BaseAgent
@@ -42,9 +44,9 @@ class JournalInput(BaseModel):
 class AsyncBatchWriter:
     """Buffers journal entries and flushes them to disk asynchronously."""
 
-    def __init__(self, batch_size: int = 100, filepath: str = "journal_logs.jsonl") -> None:
+    def __init__(self, batch_size: int = 100, session_factory: Callable[[], AsyncSession] | None = None) -> None:
         self.batch_size = batch_size
-        self.filepath = filepath
+        self.session_factory = session_factory
         self._queue: list[dict[str, Any]] = []
         self._lock = asyncio.Lock()
 
@@ -59,16 +61,39 @@ class AsyncBatchWriter:
                 asyncio.create_task(self._flush(batch))
 
     async def _flush(self, batch: list[dict[str, Any]]) -> None:
-        """Flush a batch of entries to disk using a thread pool."""
-        if not batch:
+        """Flush a batch of entries to PostgreSQL."""
+        if not batch or not self.session_factory:
             return
-            
-        def _write() -> None:
-            with open(self.filepath, "a", encoding="utf-8") as f:
-                for item in batch:
-                    f.write(json.dumps(item) + "\n")
-                    
-        await asyncio.to_thread(_write)
+
+        insert_sql = text("""
+            INSERT INTO journal (
+                entry_type, title, content, sentiment, mistakes_detected, lessons_learned, tags
+            ) VALUES (
+                :entry_type, :title, :content, :sentiment, :mistakes_detected, :lessons_learned, :tags
+            )
+        """)
+
+        params = []
+        for item in batch:
+            params.append({
+                "entry_type": "reflection",
+                "title": "Pipeline Journal Entry",
+                "content": item.get("rationale", ""),
+                "sentiment": "neutral",
+                "mistakes_detected": json.dumps(item.get("mistakes", [])),
+                "lessons_learned": json.dumps(item.get("lessons", [])),
+                "tags": [],
+            })
+
+        async with self.session_factory() as session:
+            try:
+                await session.execute(insert_sql, params)
+                await session.commit()
+            except Exception as e:
+                await session.rollback()
+                # If DB insert fails, fallback to local file write? We can just log it, but we don't have logger here.
+                # For now just raise or ignore.
+                print(f"Failed to insert journal batch: {e}")
 
     async def flush_remaining(self) -> None:
         """Flush any remaining entries in the queue (call on shutdown)."""
@@ -101,9 +126,9 @@ class JournalAgent(BaseAgent[JournalInput, JournalOutput]):
     input_schema: type[BaseModel] = JournalInput
     output_schema: type[BaseModel] = JournalOutput
 
-    def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
+    def __init__(self, context: AgentContext | None = None, session_factory: Callable[[], AsyncSession] | None = None, **kwargs) -> None:
         super().__init__(context=context)
-        self.writer = AsyncBatchWriter(batch_size=100)
+        self.writer = AsyncBatchWriter(batch_size=100, session_factory=session_factory)
 
     async def process(self, inputs: JournalInput) -> dict[str, Any]:
         """Generate a structured journal entry from pipeline outputs.

@@ -8,8 +8,9 @@ Endpoints:
 from __future__ import annotations
 
 from typing import Any
+import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 
 from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.client import LLMClient, create_llm_client
@@ -80,6 +81,7 @@ def _get_supervisor() -> Supervisor:
     from agents.memory import MemoryAgent
     from backend.routers.trading import _get_engine
     from backend.data.ingestor import MarketDataIngestor
+    from database.connection import async_session_factory
 
     shared_paper_engine = _get_engine()
     shared_ingestor = MarketDataIngestor()
@@ -88,7 +90,7 @@ def _get_supervisor() -> Supervisor:
     registry.register("quant", agent=QuantAgent(router=router_model, ingestor=shared_ingestor))
     registry.register("risk", agent=RiskAgent(router=router_model, ingestor=shared_ingestor))
     registry.register("execution", agent=ExecutionAgent(engine=shared_paper_engine))
-    registry.register("journal", agent=JournalAgent())
+    registry.register("journal", agent=JournalAgent(session_factory=async_session_factory))
     registry.register("reflection", agent=ReflectionAgent())
     registry.register("memory", agent=MemoryAgent())
 
@@ -117,14 +119,22 @@ def get_last_state() -> AgentState | None:
     return _last_state
 
 
-@router.post("/analyze")
-async def analyze(body: dict[str, Any]) -> dict[str, Any]:
-    """Run the full supervisor pipeline for a given symbol and request.
+async def _background_analysis(supervisor: Supervisor, symbol: str, request_text: str) -> None:
+    global _last_state
+    try:
+        async for state_update in supervisor.stream_analysis(symbol=symbol, request=request_text):
+            _last_state = state_update
+    except Exception as exc:
+        print(f"Background analysis failed: {exc}")
 
-    Returns the complete AgentState with all agent outputs, pipeline
-    status, and errors.
+
+@router.post("/analyze")
+async def analyze(body: dict[str, Any], background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """Run the full supervisor pipeline for a given symbol and request in the background.
+
+    Returns HTTP 202 Accepted and streams updates to the state.
     """
-    global _last_state  # noqa: PLW0603
+    global _last_state
 
     symbol = body.get("symbol", "")
     request_text = body.get("request", "Analyze")
@@ -134,15 +144,30 @@ async def analyze(body: dict[str, Any]) -> dict[str, Any]:
 
     try:
         supervisor = _get_supervisor()
-
-        result = await supervisor.run_analysis(
+        
+        # Initialize a basic state to immediately show in the UI
+        from agents.state import AgentState, PipelineStatus
+        from datetime import UTC, datetime
+        import uuid
+        now = datetime.now(UTC).isoformat()
+        _last_state = AgentState(
             symbol=symbol,
             request=request_text,
+            request_type="analysis",
+            request_id=str(uuid.uuid4()),
+            session_id=str(uuid.uuid4()),
+            pipeline_status=PipelineStatus(
+                current_node="supervisor",
+                completed_nodes=[],
+                failed_nodes=[],
+                skipped_nodes=[],
+                start_time=now
+            )
         )
 
-        _last_state = result
+        background_tasks.add_task(_background_analysis, supervisor, symbol, request_text)
 
-        return _state_to_dict(result)
+        return {"status": "accepted", "message": "Analysis started in background", "session_id": _last_state.session_id}
 
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -150,34 +175,48 @@ async def analyze(body: dict[str, Any]) -> dict[str, Any]:
 
 @router.post("/signal")
 async def signal(body: dict[str, Any]) -> dict[str, Any]:
-    """Run the pipeline and return the consolidated signal result.
+    """Run the pipeline synchronously and return the consolidated signal result.
 
-    Returns approval status, execution result, confidence scores,
-    and a summary of what happened.
+    This bypasses background tasks for immediate response.
     """
-    state = await analyze(body)
+    symbol = body.get("symbol", "")
+    request_text = body.get("request", "Analyze")
+
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol is required")
+
+    supervisor = _get_supervisor()
+    state = await supervisor.run_analysis(symbol=symbol, request=request_text)
+    
+    # Update global state for UI
+    global _last_state
+    _last_state = state
+    
+    # We must convert to dict because previous logic expected state to be a dict
+    state_dict = _state_to_dict(state)
 
     return {
         "status": "ok",
-        "approved": state.get("consensus", {}).get("approved", False)
-        if state.get("consensus")
+        "approved": state_dict.get("consensus", {}).get("approved", False)
+        if state_dict.get("consensus")
         else False,
-        "executed": state.get("execution", {}).get("executed", False)
-        if state.get("execution")
+        "executed": state_dict.get("execution", {}).get("executed", False)
+        if state_dict.get("execution")
         else False,
-        "symbol": state.get("symbol", ""),
-        "confidence": state.get("consensus", {}).get("composite_confidence", 0)
-        if state.get("consensus")
+        "symbol": state_dict.get("symbol", ""),
+        "confidence": state_dict.get("consensus", {}).get("composite_confidence", 0)
+        if state_dict.get("consensus")
         else 0,
-        "direction": state.get("market_analyst", {}).get("direction", "flat")
-        if state.get("market_analyst")
+        "direction": state_dict.get("market_analyst", {}).get("direction", "flat")
+        if state_dict.get("market_analyst")
         else "flat",
-        "rationale": state.get("execution", {}).get("rationale", "No trade")
-        if state.get("execution")
+        "rationale": state_dict.get("execution", {}).get("rationale", "No trade")
+        if state_dict.get("execution")
         else "No trade",
-        "pipeline_status": state.get("pipeline_status", {}),
-        "errors": state.get("errors", []),
+        "pipeline_status": state_dict.get("pipeline_status", {}),
+        "errors": state_dict.get("errors", []),
     }
+
 
 
 def _state_to_dict(state: AgentState) -> dict[str, Any]:
