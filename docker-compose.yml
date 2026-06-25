@@ -220,6 +220,64 @@ services:
     networks:
       - ares-network
 
+  # ---- Live Trading Engine ----
+  run-live:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ares-run-live
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ares}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-ares_ai}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - LOG_LEVEL=INFO
+      - PYTHONPATH=/app
+    env_file:
+      - .env
+    command: ["python", "scripts/run_live.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    volumes:
+      - ./logs:/app/logs
+    logging: *default-logging
+    networks:
+      - ares-network
+
+  # ---- Daily Reporter ----
+  daily-reporter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ares-daily-reporter
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ares}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-ares_ai}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - LOG_LEVEL=INFO
+      - PYTHONPATH=/app
+    env_file:
+      - .env
+    command: ["python", "scripts/daily_report_loop.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    logging: *default-logging
+    networks:
+      - ares-network
+
 volumes:
   postgres_data:
     driver: local
