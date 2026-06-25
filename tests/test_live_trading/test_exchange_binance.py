@@ -112,8 +112,7 @@ class TestBinanceConnectorConnect:
         mock_ccxt_module.binance.return_value = mock_ccxt_exchange
         conn = BinanceConnector({"api_key": "key", "secret": "secret", "testnet": True})
         await conn.connect()
-        urls_arg = mock_ccxt_module.binance.call_args[0][0]["urls"]
-        assert "testnet.binance.vision" in urls_arg["api"]["public"]
+        mock_ccxt_exchange.set_sandbox_mode.assert_called_once_with(True)
 
     @patch("live_trading.exchange.binance.ccxt")
     async def test_connect_no_auth_skips_balance_check(
