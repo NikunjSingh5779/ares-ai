@@ -28,7 +28,7 @@ dependencies = [
     "chromadb>=0.5.0",
 
     # HTTP & Data
-    "httpx>=0.27.0",
+    "httpx>=0.28.1",
     "pyyaml>=6.0.2",
     "python-dotenv>=1.0.0",
 
