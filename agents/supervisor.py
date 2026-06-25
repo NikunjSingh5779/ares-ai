@@ -233,6 +233,12 @@ async def _execute_agent_node(
             update[agent_name] = parsed
             update["pipeline_status"].completed_nodes = state.pipeline_status.completed_nodes + [agent_name]
             update["errors"] = all_errors
+
+            # Set agent latencies dictionary
+            current_latencies = state.agent_latencies.copy() if hasattr(state, "agent_latencies") else {}
+            current_latencies[agent_name] = getattr(router_result, "total_latency_ms", 0)
+            update["agent_latencies"] = current_latencies
+
             return update
         else:
             all_errors.append({
@@ -245,6 +251,11 @@ async def _execute_agent_node(
     # Agent failed — if required, mark as degraded
     if agent_name in REQUIRED_AGENTS:
         update["degraded"] = True
+
+    # Set agent latencies dictionary
+    current_latencies = state.agent_latencies.copy() if hasattr(state, "agent_latencies") else {}
+    current_latencies[agent_name] = getattr(router_result, "total_latency_ms", 0)
+    update["agent_latencies"] = current_latencies
 
     update["pipeline_status"].failed_nodes = state.pipeline_status.failed_nodes + [agent_name]
     update["errors"] = all_errors
@@ -541,6 +552,12 @@ async def _execute_agent_impl(
             **state.model_chain_used,
             agent_name: model_config.model_chain,
         }
+
+        # Set agent latencies dictionary
+        current_latencies = state.agent_latencies.copy() if hasattr(state, "agent_latencies") else {}
+        current_latencies[agent_name] = agent_instance.execution_log.get("latency_ms", 0)
+        update["agent_latencies"] = current_latencies
+
         return update
 
     except Exception as e:
@@ -707,7 +724,9 @@ class Supervisor:
             state.session_id = str(uuid.uuid4())
 
         result = await self.graph.ainvoke(state)
-        return AgentState.model_validate(result)
+        final_state = AgentState.model_validate(result)
+        await self.log_execution(final_state)
+        return final_state
 
     async def run_analysis(self, symbol: str, request: str) -> AgentState:
         """Convenience: run a full analysis pipeline for a symbol."""
@@ -732,8 +751,13 @@ class Supervisor:
             session_id=str(uuid.uuid4()),
         )
 
+        final_state = None
         async for event in self.graph.astream(state, stream_mode="values"):
-            yield AgentState.model_validate(event)
+            final_state = AgentState.model_validate(event)
+            yield final_state
+            
+        if final_state:
+            await self.log_execution(final_state)
 
     def run_sync(self, **kwargs: Any) -> AgentState:
         """Synchronous convenience wrapper for testing."""
@@ -744,7 +768,7 @@ class Supervisor:
         """Get the compiled graph (for visualization)."""
         return self.graph
 
-    def log_execution(self, state: AgentState) -> None:
+    async def log_execution(self, state: AgentState) -> None:
         """Log all agent outputs from a completed run."""
         now = datetime.now(UTC).isoformat()
 
@@ -752,11 +776,34 @@ class Supervisor:
             output = getattr(state, agent_name, None)
             if output is not None:
                 chain = state.model_chain_used.get(agent_name, [])
-                self.logger.log(
+                await self.logger.log(
                     agent_name=agent_name,
-                    model_id=chain[0] if chain else "unknown",
-                    latency_ms=state.total_latency_ms,
-                    fallback_used=len(chain) > 1,
-                    degraded=state.degraded,
-                    output_schema=output.model_dump() if hasattr(output, "model_dump") else None,
+                    model_used=chain[0] if chain else "unknown",
+                    model_chain=chain,
+                    success=True,
+                    output_data=output.model_dump() if hasattr(output, "model_dump") else None,
+                    latency_ms=state.agent_latencies.get(agent_name, 0) if hasattr(state, "agent_latencies") else 0,
+                    degraded_mode=state.degraded,
                 )
+                
+        # Explicitly log the supervisor summary row with consensus_score for the daily report
+        supervisor_data = {}
+        if getattr(state, "consensus", None) is not None:
+            supervisor_data["consensus_score"] = state.consensus.composite_confidence
+            supervisor_data["approved"] = state.consensus.approved
+
+        total_ms = 0
+        if state.pipeline_status.start_time:
+            from datetime import timezone
+            start_t = datetime.fromisoformat(state.pipeline_status.start_time)
+            total_ms = int((datetime.now(timezone.utc) - start_t).total_seconds() * 1000)
+
+        await self.logger.log(
+            agent_name="supervisor",
+            model_used="supervisor",
+            model_chain=[],
+            success=True,
+            output_data=supervisor_data,
+            latency_ms=total_ms,
+            degraded_mode=state.degraded,
+        )

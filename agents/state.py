@@ -164,4 +164,5 @@ class AgentState(BaseModel):
     model_chain_used: dict[str, list[str]] = Field(default_factory=dict)
     degraded: bool = False
     total_latency_ms: int = 0
+    agent_latencies: dict[str, int] = Field(default_factory=dict)
     rolling_memory: list[dict[str, Any]] = Field(default_factory=list)

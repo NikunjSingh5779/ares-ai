@@ -16,9 +16,9 @@ defaults:
 agents:
   supervisor:
     # Needs fast, low-latency routing decisions
-    primary: google/gemini-1.5-flash
+    primary: open_router/google/gemini-1.5-flash
     fallbacks:
-      - mistral/mistral-small-latest
+      - open_router/mistral/mistral-small-latest
       - open_router/nvidia/nemotron-3-nano-30b-a3b:free
       - opencode/deepseek-v4-flash-free # [UNVERIFIED]
     timeout_seconds: 30
@@ -34,33 +34,33 @@ agents:
 
   market_analyst:
     # Needs strong reasoning, chart pattern recognition, and strict JSON output
-    primary: mistral/mistral-small-latest
+    primary: open_router/mistral/mistral-small-latest
     fallbacks:
-      - google/gemini-2.5-flash
+      - open_router/google/gemini-2.5-flash
       - open_router/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
     timeout_seconds: 60
 
   quant:
     # Needs rigorous math logic, volatility calculations, and perfect JSON compliance
-    primary: google/gemini-2.5-flash
+    primary: open_router/google/gemini-2.5-flash
     fallbacks:
-      - mistral/mistral-small-latest
+      - open_router/mistral/mistral-small-latest
       - open_router/nvidia/nemotron-3-super-120b-a12b:free
     timeout_seconds: 90
 
   risk:
     # Needs strict rule adherence, no hallucinations, and flawless JSON output
-    primary: mistral/mistral-small-latest
+    primary: open_router/mistral/mistral-small-latest
     fallbacks:
-      - google/gemini-1.5-flash
+      - open_router/google/gemini-1.5-flash
       - open_router/google/gemma-4-31b-it:free
     timeout_seconds: 45
 
   news:
     # Needs large context windows and strong text sentiment analysis
-    primary: google/gemini-1.5-flash
+    primary: open_router/google/gemini-1.5-flash
     fallbacks:
-      - mistral/mistral-small-latest
+      - open_router/mistral/mistral-small-latest
       - open_router/nvidia/nemotron-3-super-120b-a12b:free
     timeout_seconds: 45
 
@@ -73,9 +73,9 @@ agents:
 
   reflection:
     # Needs strong post-trade reasoning and evaluation capabilities
-    primary: google/gemini-2.5-flash
+    primary: open_router/google/gemini-2.5-flash
     fallbacks:
-      - mistral/mistral-small-latest
+      - open_router/mistral/mistral-small-latest
       - open_router/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
       - opencode/mimo-v2.5-free # [UNVERIFIED]
     timeout_seconds: 60
@@ -110,9 +110,9 @@ agents:
 
   fast:
     # Fallback for fast generic tasks
-    primary: google/gemini-1.5-flash
+    primary: open_router/google/gemini-1.5-flash
     fallbacks:
-      - mistral/mistral-small-latest
+      - open_router/mistral/mistral-small-latest
       - open_router/nvidia/nemotron-3-nano-30b-a3b:free
       - opencode/qwen3.6-plus-free # [UNVERIFIED]
     timeout_seconds: 15
