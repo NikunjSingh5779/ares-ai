@@ -274,17 +274,23 @@ class TestSupervisorWithMockedRouter:
 # Log execution
 # ---------------------------------------------------------------------------
 
+from unittest.mock import AsyncMock
+
 class TestSupervisorLogging:
-    def test_log_execution_no_error(self, supervisor: Supervisor) -> None:
+    @pytest.mark.asyncio
+    async def test_log_execution_no_error(self, supervisor: Supervisor) -> None:
         """log_execution should handle state with no agent outputs."""
+        supervisor.logger = AsyncMock()
         supervisor.build_graph()
         state = AgentState(symbol="BTC-USD", request="test")
-        supervisor.log_execution(state)
-        # No agent outputs to log — should not raise
-        assert supervisor.logger.total_logs == 0
+        await supervisor.log_execution(state)
+        # Should only log the supervisor itself
+        assert supervisor.logger.log.call_count == 1
 
-    def test_log_execution_with_outputs(self, supervisor: Supervisor) -> None:
+    @pytest.mark.asyncio
+    async def test_log_execution_with_outputs(self, supervisor: Supervisor) -> None:
         """log_execution should log each agent that has output."""
+        supervisor.logger = AsyncMock()
         supervisor.build_graph()
         state = AgentState(
             symbol="BTC-USD",
@@ -297,10 +303,9 @@ class TestSupervisorLogging:
             ),
             model_chain_used={"market_analyst": ["test-model"]},
         )
-        supervisor.log_execution(state)
-        assert supervisor.logger.total_logs > 0
-        logs = supervisor.logger.get_by_agent("market_analyst")
-        assert len(logs) >= 1
+        await supervisor.log_execution(state)
+        # Should log market_analyst and supervisor
+        assert supervisor.logger.log.call_count == 2
 
 
 # ---------------------------------------------------------------------------
