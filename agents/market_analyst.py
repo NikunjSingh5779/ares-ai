@@ -280,6 +280,8 @@ def _parse_llm_response(
             lines = lines[:-1]
         text = "\n".join(lines).strip()
 
+    import sys
+    print(f"[DEBUG MA RAW] >>>{text[:800]}<<<", flush=True, file=sys.stderr)
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
