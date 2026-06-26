@@ -34,18 +34,20 @@ agents:
 
   market_analyst:
     # Needs strong reasoning, chart pattern recognition, and strict JSON output
-    primary: open_router/mistral/mistral-small-latest
+    primary: open_router/meta-llama/llama-3.3-70b-instruct:free
     fallbacks:
-      - open_router/google/gemini-2.5-flash
-      - open_router/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+      - open_router/nousresearch/hermes-3-llama-3.1-405b:free
+      - open_router/meta-llama/llama-3.2-3b-instruct:free
+      - open_router/qwen/qwen3-coder:free
     timeout_seconds: 60
 
   quant:
     # Needs rigorous math logic, volatility calculations, and perfect JSON compliance
-    primary: open_router/google/gemini-2.5-flash
+    primary: open_router/meta-llama/llama-3.3-70b-instruct:free
     fallbacks:
-      - open_router/mistral/mistral-small-latest
-      - open_router/nvidia/nemotron-3-super-120b-a12b:free
+      - open_router/nousresearch/hermes-3-llama-3.1-405b:free
+      - open_router/meta-llama/llama-3.2-3b-instruct:free
+      - open_router/qwen/qwen3-coder:free
     timeout_seconds: 90
 
   risk:

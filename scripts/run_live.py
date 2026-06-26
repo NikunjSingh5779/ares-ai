@@ -123,7 +123,7 @@ async def main():
     
     symbol = "ETH-USD"
     interval = "1m"
-    polling_interval = 10  # Seconds
+    polling_interval = 60  # Seconds
     
     logger.info(f"Starting live polling loop for {symbol} ({interval}) every {polling_interval}s...")
     
