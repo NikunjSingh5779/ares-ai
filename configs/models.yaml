@@ -16,7 +16,7 @@ defaults:
 agents:
   supervisor:
     # Needs fast, low-latency routing decisions
-    primary: open_router/google/gemini-1.5-flash
+    primary: open_router/google/gemini-2.0-flash
     fallbacks:
       - open_router/mistral/mistral-small-latest
       - open_router/nvidia/nemotron-3-nano-30b-a3b:free
@@ -34,8 +34,9 @@ agents:
 
   market_analyst:
     # Needs strong reasoning, chart pattern recognition, and strict JSON output
-    primary: open_router/meta-llama/llama-3.3-70b-instruct:free
+    primary: google/gemini-2.0-flash
     fallbacks:
+      - open_router/meta-llama/llama-3.3-70b-instruct:free
       - open_router/nousresearch/hermes-3-llama-3.1-405b:free
       - open_router/meta-llama/llama-3.2-3b-instruct:free
       - open_router/qwen/qwen3-coder:free
@@ -43,8 +44,9 @@ agents:
 
   quant:
     # Needs rigorous math logic, volatility calculations, and perfect JSON compliance
-    primary: open_router/meta-llama/llama-3.3-70b-instruct:free
+    primary: google/gemini-2.0-flash
     fallbacks:
+      - open_router/meta-llama/llama-3.3-70b-instruct:free
       - open_router/nousresearch/hermes-3-llama-3.1-405b:free
       - open_router/meta-llama/llama-3.2-3b-instruct:free
       - open_router/qwen/qwen3-coder:free
@@ -54,13 +56,13 @@ agents:
     # Needs strict rule adherence, no hallucinations, and flawless JSON output
     primary: open_router/mistral/mistral-small-latest
     fallbacks:
-      - open_router/google/gemini-1.5-flash
+      - open_router/google/gemini-2.0-flash
       - open_router/google/gemma-4-31b-it:free
     timeout_seconds: 45
 
   news:
     # Needs large context windows and strong text sentiment analysis
-    primary: open_router/google/gemini-1.5-flash
+    primary: open_router/google/gemini-2.0-flash
     fallbacks:
       - open_router/mistral/mistral-small-latest
       - open_router/nvidia/nemotron-3-super-120b-a12b:free
@@ -112,7 +114,7 @@ agents:
 
   fast:
     # Fallback for fast generic tasks
-    primary: open_router/google/gemini-1.5-flash
+    primary: open_router/google/gemini-2.0-flash
     fallbacks:
       - open_router/mistral/mistral-small-latest
       - open_router/nvidia/nemotron-3-nano-30b-a3b:free

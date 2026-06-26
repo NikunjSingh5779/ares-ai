@@ -160,6 +160,10 @@ class LLMClient:
                 timeout=timeout or self.default_timeout,
             )
             response.raise_for_status()
+            
+            if provider == "google":
+                self._google_429_count = 0
+                
             response_json = response.json()
             
             # Catch OpenRouter downstream errors hidden in 200 OK responses
@@ -172,6 +176,19 @@ class LLMClient:
         except httpx.HTTPStatusError as e:
             if e.response.status_code in [429, 503, 529]:
                 logger.warning(f"Provider '{provider}' rate limited or down ({e.response.status_code}). Triggering router fallback chain.")
+                import asyncio
+                if provider == "google":
+                    if not hasattr(self, "_google_429_count"):
+                        self._google_429_count = 0
+                    self._google_429_count += 1
+                    
+                    if self._google_429_count >= 2:
+                        logger.warning("Skipping google after 2 consecutive 429s.")
+                        raise ValueError("Skipping provider due to consecutive 429s")
+                    else:
+                        await asyncio.sleep(30)
+                else:
+                    await asyncio.sleep(5)
             else:
                 logger.error(f"HTTP error from provider '{provider}': {e.response.text}")
             raise e
