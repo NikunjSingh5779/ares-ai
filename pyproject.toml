@@ -20,7 +20,7 @@ dependencies = [
     "pydantic-settings>=2.5.0",
 
     # Agent orchestration
-    "langgraph>=0.2.0",
+    "langgraph>=1.2.6",
     "langchain-core>=0.3.0",
 
     # Cache & Vector
