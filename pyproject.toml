@@ -16,7 +16,7 @@ dependencies = [
     "alembic>=1.13.0",
 
     # Validation
-    "pydantic>=2.9.0",
+    "pydantic>=2.13.4",
     "pydantic-settings>=2.5.0",
 
     # Agent orchestration
