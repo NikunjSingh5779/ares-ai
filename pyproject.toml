@@ -50,7 +50,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-httpx>=0.30.0",
     "mypy>=1.11.0",
-    "ruff>=0.15.18",
+    "ruff>=0.15.20",
     "pre-commit>=4.6.0",
 ]
 
