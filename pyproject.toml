@@ -24,7 +24,7 @@ dependencies = [
     "langchain-core>=0.3.0",
 
     # Cache & Vector
-    "redis>=5.2.0",
+    "redis>=8.0.1",
     "chromadb>=0.5.0",
 
     # HTTP & Data
