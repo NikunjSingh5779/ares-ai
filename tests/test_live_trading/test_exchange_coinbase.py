@@ -11,7 +11,6 @@ from live_trading.exceptions import ExchangeConnectionError, OrderRejectedError
 from live_trading.exchange.base import ExchangeBalance, ExchangeOrder
 from live_trading.exchange.coinbase import CoinbaseConnector
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

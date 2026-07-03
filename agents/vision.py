@@ -17,9 +17,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from agents.state import VisionOutput
 from agents.base import AgentContext, BaseAgent
-
+from agents.state import VisionOutput
 
 # ---------------------------------------------------------------------------
 # Input schema
@@ -100,7 +99,6 @@ class VisionAgent(BaseAgent[VisionInput, VisionOutput]):
         Always runs rule-based detection. If chart images are provided and
         a vision model is available, enhances with model analysis.
         """
-        symbol = inputs.symbol or "unknown"
         candles = inputs.candles
 
         # ── Rule-based pattern detection ──────────────────────────────
@@ -129,8 +127,8 @@ class VisionAgent(BaseAgent[VisionInput, VisionOutput]):
         return {
             "chart_pattern": chart_pattern,
             "confidence": round(pattern_confidence, 1),
-            "support_levels": [round(l, 4) for l in support_levels[:3]],
-            "resistance_levels": [round(l, 4) for l in resistance_levels[:3]],
+            "support_levels": [round(level, 4) for level in support_levels[:3]],
+            "resistance_levels": [round(level, 4) for level in resistance_levels[:3]],
             "available": model_available,
             "rationale": " | ".join(rationale_parts),
         }
@@ -301,10 +299,10 @@ def _build_pattern_rationale(
     parts = [f"Chart pattern: {pattern}"]
 
     if support:
-        s_str = ", ".join(f"${l:.2f}" for l in support[:2])
+        s_str = ", ".join(f"${level:.2f}" for level in support[:2])
         parts.append(f"support at {s_str}")
     if resistance:
-        r_str = ", ".join(f"${l:.2f}" for l in resistance[:2])
+        r_str = ", ".join(f"${level:.2f}" for level in resistance[:2])
         parts.append(f"resistance at {r_str}")
 
     return " | ".join(parts) if len(parts) > 1 else parts[0]

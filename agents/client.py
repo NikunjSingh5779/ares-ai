@@ -32,7 +32,7 @@ class LLMClient:
     ) -> None:
         self.default_timeout = default_timeout
         self.providers = providers or {}
-        
+
         # Legacy support for tests that just pass api_key
         if api_key:
             if "open_router" not in self.providers:
@@ -42,7 +42,7 @@ class LLMClient:
                 }
             if "default" not in self.providers:
                 self.providers["default"] = self.providers["open_router"]
-                
+
         # Populate from env if not provided
         self._populate_from_env()
 
@@ -81,7 +81,7 @@ class LLMClient:
                     "api_key": "",
                     "base_url": "https://openrouter.ai/api/v1"
                 }
-            
+
             api_key = config.get("api_key", "").strip()
             headers = {
                 "Content-Type": "application/json",
@@ -91,7 +91,7 @@ class LLMClient:
             if provider == "open_router":
                 headers["HTTP-Referer"] = "https://localhost:3000"
                 headers["X-Title"] = "BacktestEngine"
-                
+
             self._clients[provider] = httpx.AsyncClient(
                 base_url=config.get("base_url", ""),
                 headers=headers,
@@ -129,7 +129,7 @@ class LLMClient:
         # Strip provider prefixes if present and determine provider
         clean_model = model
         provider = "default"
-        
+
         if clean_model.startswith("open_router/"):
             clean_model = clean_model.replace("open_router/", "", 1)
             provider = "open_router"
@@ -160,18 +160,18 @@ class LLMClient:
                 timeout=timeout or self.default_timeout,
             )
             response.raise_for_status()
-            
+
             if provider == "google":
                 self._google_429_count = 0
-                
+
             response_json = response.json()
-            
+
             # Catch OpenRouter downstream errors hidden in 200 OK responses
             if provider == "open_router" and isinstance(response_json, dict) and "error" in response_json:
                 error_msg = response_json["error"]
                 logger.error(f"OpenRouter downstream payload error: {error_msg}")
                 raise ValueError(f"OpenRouter payload error: {error_msg}")
-                
+
             return response_json
         except httpx.HTTPStatusError as e:
             if e.response.status_code in [429, 503, 529]:
@@ -181,7 +181,7 @@ class LLMClient:
                     if not hasattr(self, "_google_429_count"):
                         self._google_429_count = 0
                     self._google_429_count += 1
-                    
+
                     if self._google_429_count >= 2:
                         logger.warning("Skipping google after 2 consecutive 429s.")
                         raise ValueError("Skipping provider due to consecutive 429s")
@@ -314,13 +314,13 @@ def create_llm_client() -> LLMClient | NoOpLLMClient:
         providers["google"] = {"api_key": getattr(settings, "gemini_api_key").strip(), "base_url": settings.gemini_base_url}
     if _is_valid_key(getattr(settings, "mistral_api_key", "")):
         providers["mistral"] = {"api_key": getattr(settings, "mistral_api_key").strip(), "base_url": settings.mistral_base_url}
-        
+
     if providers:
         return LLMClient(providers=providers)
-    
+
     # Fallback to env lookup via LLMClient default init
     client = LLMClient()
     if client.providers:
         return client
-        
+
     return NoOpLLMClient()

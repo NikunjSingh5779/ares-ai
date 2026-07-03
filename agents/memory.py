@@ -14,9 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents.state import MemoryOutput
 from agents.base import AgentContext, BaseAgent
-
+from agents.state import MemoryOutput
 
 # ---------------------------------------------------------------------------
 # Input schema

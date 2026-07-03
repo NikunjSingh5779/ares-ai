@@ -5,15 +5,12 @@ from __future__ import annotations
 import pytest
 
 from agents.improvement import (
-    CONFIDENCE_ACCURACY_DECLINE_THRESHOLD,
     MIN_RUNS_FOR_ANALYSIS,
-    WIN_RATE_DECLINE_THRESHOLD,
     ImprovementRecord,
     ImprovementRunResult,
     StrategyImprovementEngine,
     reset_engine,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

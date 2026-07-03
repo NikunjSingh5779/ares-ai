@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-from configs.settings import get_settings, PROJECT_ROOT
+from configs.settings import PROJECT_ROOT
 
 
 class AgentModelConfig:

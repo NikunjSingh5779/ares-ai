@@ -11,17 +11,14 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.data.cache import MarketDataCache, NullCache
 from backend.data.models import (
-    MarketDataQuery,
     MarketDataRequest,
     MarketDataResult,
-    Source,
 )
 from backend.data.repository import MarketDataRepository
 from backend.data.sources.registry import SourceRegistry, create_default_registry

@@ -13,14 +13,15 @@ Tests cover:
 from __future__ import annotations
 
 from datetime import datetime
+from unittest.mock import MagicMock
 
 import pytest
 
 from agents.execution import ExecutionAgent, ExecutionInput
 from backend.data.models import OHLCVData
-from paper_trading.engine import PaperTradingEngine
 from live_trading.safety import TradingMode
-from unittest.mock import MagicMock
+from paper_trading.engine import PaperTradingEngine
+
 
 @pytest.fixture
 def mock_live_engine():

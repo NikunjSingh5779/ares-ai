@@ -54,8 +54,8 @@ def test_abc_cannot_instantiate() -> None:
 def test_stub_connectors_implement_abc() -> None:
     """All stub connectors should be concrete (instantiable) subclasses."""
     from live_trading.exchange.bybit import BybitConnector
-    from live_trading.exchange.zerodha import ZerodhaStubConnector
     from live_trading.exchange.ibkr import IbkrStubConnector
+    from live_trading.exchange.zerodha import ZerodhaStubConnector
 
     for cls in [BybitConnector, ZerodhaStubConnector, IbkrStubConnector]:
         instance = cls({})

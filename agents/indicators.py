@@ -11,7 +11,6 @@ from typing import Any
 
 from backend.data.models import OHLCVData
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -128,16 +127,6 @@ def compute_macd(prices: list[float]) -> dict[str, float | None]:
     Returns:
         {"macd": MACD line, "signal": signal line, "histogram": MACD - signal}
     """
-    macd_line = compute_ema(prices, 12)
-    signal_line = compute_ema(
-        _get_macd_series(prices) if False else [],
-        9,
-    )
-
-    if macd_line is None:
-        return {"macd": None, "signal": None, "histogram": None}
-
-    # Recompute: MACD = EMA(12) - EMA(26)
     ema_12 = compute_ema(prices, 12)
     ema_26 = compute_ema(prices, 26)
 
@@ -264,8 +253,6 @@ def compute_all_indicators(
         return {}
 
     closes = _extract_closes(candles)
-    highs = _extract_highs(candles)
-    lows = _extract_lows(candles)
     volumes = _extract_volumes(candles)
 
     current_price = closes[-1] if closes else 0.0

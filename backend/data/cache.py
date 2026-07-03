@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from backend.data.models import OHLCVData
@@ -135,7 +135,6 @@ class MarketDataCache:
             return 0
 
         ttl = self._ttl_for(candles[0].interval)
-        count = 0
 
         try:
             async with self._redis.pipeline(transaction=False) as pipe:

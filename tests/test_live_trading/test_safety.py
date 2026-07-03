@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from live_trading.safety import KillSwitch, ModeManager, PromotionGate, TradingMode
 
 

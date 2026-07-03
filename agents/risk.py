@@ -14,13 +14,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from agents.state import RiskOutput
 from agents.base import AgentContext, BaseAgent
-from agents.indicators import compute_all_indicators, compute_atr, _extract_closes
+from agents.indicators import compute_all_indicators
 from agents.router import ModelRouter, RouterResult
+from agents.state import RiskOutput
 from backend.data.ingestor import MarketDataIngestor
-from backend.data.models import OHLCVData, MarketDataRequest
-
+from backend.data.models import MarketDataRequest, OHLCVData
 
 # ---------------------------------------------------------------------------
 # Constants

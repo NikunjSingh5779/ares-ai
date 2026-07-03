@@ -15,9 +15,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agents.state import ReflectionOutput
 from agents.base import AgentContext, BaseAgent
-
+from agents.state import ReflectionOutput
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -224,7 +223,6 @@ def _compute_confidence_accuracy(
     """
     ma_conf = float(market_analyst.get("confidence", 0)) if market_analyst else 0.0
     quant_conf = float(consensus.get("agreement_metrics", {}).get("quant_confidence", 0)) if consensus else 0.0
-    consensus_conf = float(consensus.get("composite_confidence", 0)) if consensus else 0.0
     consensus_approved = bool(consensus.get("approved", False)) if consensus else False
 
     # Average of MA and Quant confidence (the two agents that drive consensus)

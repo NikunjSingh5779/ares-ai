@@ -8,13 +8,12 @@ Implements the RELIABILITY section requirement:
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
 
-
 from database.connection import async_session_factory
+
 
 class AgentLogger:
     """Logs agent execution data directly to the agent_logs table."""
@@ -53,7 +52,7 @@ class AgentLogger:
                  CAST(:input_data AS jsonb), CAST(:output_data AS jsonb), :latency_ms, :token_count, :success,
                  :error_type, :error_message, :retry_count, :circuit_breaker_tripped, :degraded_mode)
         """)
-        
+
         async with async_session_factory() as session:
             await session.execute(stmt, {
                 "agent_name": agent_name,
@@ -73,5 +72,5 @@ class AgentLogger:
                 "degraded_mode": degraded_mode,
             })
             await session.commit()
-            
+
         return {}

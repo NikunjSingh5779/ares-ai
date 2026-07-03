@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.data.models import OHLCVData, MarketDataSummary
+from backend.data.models import OHLCVData
 
 
 class MarketDataRepository:

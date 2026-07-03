@@ -10,15 +10,15 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.state import JournalOutput
 from agents.base import AgentContext, BaseAgent
-
+from agents.state import JournalOutput
 
 # ---------------------------------------------------------------------------
 # Input schema
@@ -75,7 +75,7 @@ class AsyncBatchWriter:
 
         insert_signal_sql = text("""
             INSERT INTO signals (
-                symbol, direction, confidence, composite_confidence, 
+                symbol, direction, confidence, composite_confidence,
                 market_analyst_confidence, quant_confidence, news_sentiment,
                 risk_score, risk_approved, is_consensus, rationale, is_executed,
                 agent_outputs
@@ -89,7 +89,7 @@ class AsyncBatchWriter:
 
         journal_params = []
         signal_params = []
-        
+
         for item in batch:
             journal_params.append({
                 "entry_type": "reflection",
@@ -232,10 +232,10 @@ class JournalAgent(BaseAgent[JournalInput, JournalOutput]):
                 "agent_outputs": output_map,
             }
         }
-        
+
         # Async push to batch writer
         await self.writer.push(entry)
-        
+
         return entry
 
 

@@ -9,7 +9,7 @@ models validated on receipt.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -31,7 +31,7 @@ class QuantOutput(BaseModel):
 
     confidence: float = Field(..., ge=0, le=100)
     direction: str = Field(..., pattern="^(long|short|flat)$")
-    expected_return: Optional[float] = None
+    expected_return: float | None = None
     strategy_name: str = ""
     params: dict[str, Any] = Field(default_factory=dict)
     rationale: str = Field(...)
@@ -40,7 +40,7 @@ class QuantOutput(BaseModel):
 class NewsOutput(BaseModel):
     """Output from the News Agent."""
 
-    sentiment: Optional[float] = None
+    sentiment: float | None = None
     key_events: list[str] = Field(default_factory=list)
     impact_scores: dict[str, float] = Field(default_factory=dict)
     sources: list[str] = Field(default_factory=list)
@@ -51,8 +51,8 @@ class RiskOutput(BaseModel):
     """Output from the Risk Agent."""
 
     approved: bool = False
-    max_position_size: Optional[float] = None
-    stop_loss: Optional[float] = None
+    max_position_size: float | None = None
+    stop_loss: float | None = None
     risk_score: float = Field(..., ge=0, le=100)
     reasons: list[str] = Field(default_factory=list)
     rationale: str = Field(...)
@@ -71,16 +71,16 @@ class ExecutionOutput(BaseModel):
     """Output from the Execution Agent."""
 
     executed: bool = False
-    order_id: Optional[str] = None
-    fill_price: Optional[float] = None
-    filled_quantity: Optional[float] = None
+    order_id: str | None = None
+    fill_price: float | None = None
+    filled_quantity: float | None = None
     rationale: str = Field(...)
 
 
 class JournalOutput(BaseModel):
     """Output from the Journal Agent."""
 
-    entry_id: Optional[str] = None
+    entry_id: str | None = None
     mistakes: list[str] = Field(default_factory=list)
     lessons: list[str] = Field(default_factory=list)
     rationale: str = Field(...)
@@ -107,12 +107,12 @@ class MemoryOutput(BaseModel):
 class VisionOutput(BaseModel):
     """Output from the Vision Agent (advisory, non-blocking)."""
 
-    chart_pattern: Optional[str] = None
+    chart_pattern: str | None = None
     confidence: float = Field(default=0.0, ge=0, le=100)
     support_levels: list[float] = Field(default_factory=list)
     resistance_levels: list[float] = Field(default_factory=list)
     available: bool = True  # False when model is unreachable
-    fallback_model: Optional[str] = None  # Fallback model used when primary unavailable
+    fallback_model: str | None = None  # Fallback model used when primary unavailable
     rationale: str = Field(...)
 
 
@@ -123,8 +123,8 @@ class PipelineStatus(BaseModel):
     completed_nodes: list[str] = Field(default_factory=list)
     failed_nodes: list[str] = Field(default_factory=list)
     skipped_nodes: list[str] = Field(default_factory=list)
-    start_time: Optional[str] = None
-    end_time: Optional[str] = None
+    start_time: str | None = None
+    end_time: str | None = None
 
     @property
     def all_completed(self) -> bool:
@@ -144,19 +144,19 @@ class AgentState(BaseModel):
     symbol: str = ""
     request: str = ""
     request_type: str = "analysis"
-    candles: Optional[list[Any]] = None
+    candles: list[Any] | None = None
 
     # Agent outputs (populated as pipeline executes)
-    market_analyst: Optional[MarketAnalystOutput] = None
-    quant: Optional[QuantOutput] = None
-    news: Optional[NewsOutput] = None
-    vision: Optional[VisionOutput] = None
-    consensus: Optional[ConsensusOutput] = None
-    risk: Optional[RiskOutput] = None
-    execution: Optional[ExecutionOutput] = None
-    journal: Optional[JournalOutput] = None
-    reflection: Optional[ReflectionOutput] = None
-    memory: Optional[MemoryOutput] = None
+    market_analyst: MarketAnalystOutput | None = None
+    quant: QuantOutput | None = None
+    news: NewsOutput | None = None
+    vision: VisionOutput | None = None
+    consensus: ConsensusOutput | None = None
+    risk: RiskOutput | None = None
+    execution: ExecutionOutput | None = None
+    journal: JournalOutput | None = None
+    reflection: ReflectionOutput | None = None
+    memory: MemoryOutput | None = None
 
     # Pipeline metadata
     pipeline_status: PipelineStatus = Field(default_factory=PipelineStatus)

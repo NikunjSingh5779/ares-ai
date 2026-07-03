@@ -18,13 +18,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from agents.state import QuantOutput
 from agents.base import AgentContext, BaseAgent
 from agents.indicators import compute_all_indicators
 from agents.router import ModelRouter, RouterResult
+from agents.state import QuantOutput
 from backend.data.ingestor import MarketDataIngestor
-from backend.data.models import OHLCVData, MarketDataRequest
-
+from backend.data.models import MarketDataRequest, OHLCVData
 
 # ---------------------------------------------------------------------------
 # Input schema
@@ -158,14 +157,14 @@ def build_quant_prompt(
             ind_lines.append(f"ATR as % of price: {atr_ratio:.2f}%")
     if indicators.get("volume_sma_20") is not None:
         vol_ratio = _volume_ratio(indicators)
-        ind_lines.append(f"Volume vs SMA(20): {'{:.1f}x'.format(vol_ratio) if vol_ratio else 'N/A'}")
+        ind_lines.append(f"Volume vs SMA(20): {f'{vol_ratio:.1f}x' if vol_ratio else 'N/A'}")
 
     indicator_summary = "\n".join(ind_lines)
 
     # Build user content
     user_parts = [
         f"Symbol: {symbol}",
-        f"Interval: Daily",
+        "Interval: Daily",
         f"Date Range: {recent_candles[0].timestamp.strftime('%Y-%m-%d') if recent_candles else 'N/A'} "
         f"to {recent_candles[-1].timestamp.strftime('%Y-%m-%d') if recent_candles else 'N/A'}",
     ]
@@ -330,7 +329,6 @@ def _build_momentum_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     sma_50 = indicators.get("sma_50", 0)
     is_bullish = sma_20 > sma_50 if (sma_20 and sma_50) else True
     direction = "long" if is_bullish else "short"
-    price = indicators.get("current_price", 0)
     atr_pct = _atr_ratio(indicators)
 
     confidence = 55.0 + (5.0 if atr_pct and atr_pct > 1.0 else 0.0)

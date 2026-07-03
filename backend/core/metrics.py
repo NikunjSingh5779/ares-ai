@@ -15,13 +15,11 @@ Usage in ``backend/main.py``::
 from __future__ import annotations
 
 import time
-from typing import Any
 
-from prometheus_client import Counter, Gauge, Histogram, generate_latest, make_asgi_app
+from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-
 
 # ── HTTP request metrics ─────────────────────────────────────────────────────
 
@@ -82,7 +80,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             status = str(response.status_code)
             REQUESTS_TOTAL.labels(method=method, endpoint=endpoint, status=status).inc()
             return response
-        except Exception as exc:
+        except Exception:
             REQUESTS_TOTAL.labels(method=method, endpoint=endpoint, status="500").inc()
             raise
         finally:

@@ -7,7 +7,6 @@ Provides a single source of truth for all configuration values:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 

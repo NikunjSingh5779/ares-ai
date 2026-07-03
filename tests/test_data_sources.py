@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Any
-
 import httpx
 import pytest
 from pytest_httpx import HTTPXMock
@@ -13,7 +10,6 @@ from backend.data.sources.binance import BinanceSource
 from backend.data.sources.coingecko import CoinGeckoSource
 from backend.data.sources.registry import SourceRegistry, create_default_registry
 from backend.data.sources.yahoo import YahooFinanceSource
-
 
 # ---------------------------------------------------------------------------
 # Yahoo Finance Source

@@ -1,12 +1,14 @@
 import asyncio
-import sys
 import os
+import sys
+
 import httpx
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from backend.core.config import settings
 from agents.client import LLMClient
+from backend.core.config import settings
+
 
 async def get_free_models():
     async with httpx.AsyncClient() as client:

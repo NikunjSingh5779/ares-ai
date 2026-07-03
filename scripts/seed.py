@@ -1,6 +1,9 @@
 import asyncio
-from database.connection import async_session_factory
+
 from sqlalchemy import text
+
+from database.connection import async_session_factory
+
 
 async def seed():
     async with async_session_factory() as s:

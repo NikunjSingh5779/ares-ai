@@ -123,7 +123,6 @@ def test_rate_limit_resets_after_period(monkeypatch) -> None:  # type: ignore[no
         assert resp.status_code == 429
 
     # Fast-forward time to simulate refill
-    import backend.core.rate_limit as rl
 
     original_time = time.monotonic
 

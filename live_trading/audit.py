@@ -31,7 +31,7 @@ class AuditEntry:
     risk_checks: list[dict[str, Any]]
     order_result: dict[str, Any] | None = None
     timestamp: datetime.datetime = field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     def to_dict(self) -> dict[str, Any]:

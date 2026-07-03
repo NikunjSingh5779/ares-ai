@@ -1,7 +1,6 @@
 """Tests for retry logic with exponential backoff and jitter."""
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -63,7 +62,7 @@ class TestRetryableErrorDetection:
         assert is_retryable_error(TimeoutError("timed out"))
 
     def test_asyncio_timeout(self) -> None:
-        assert is_retryable_error(asyncio.TimeoutError())
+        assert is_retryable_error(TimeoutError())
 
     def test_retryable_http_status(self) -> None:
         """429, 500, 502, 503, 504 are retryable."""

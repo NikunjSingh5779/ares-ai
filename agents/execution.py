@@ -15,16 +15,15 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from agents.state import ExecutionOutput
 from agents.base import AgentContext, BaseAgent
+from agents.state import ExecutionOutput
 from backend.data.models import OHLCVData
-from paper_trading.engine import PaperTradingEngine
 from live_trading.engine import LiveTradingEngine
 from live_trading.safety import TradingMode
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
-from sqlalchemy import text
-
+from paper_trading.engine import PaperTradingEngine
 
 # ---------------------------------------------------------------------------
 # Input schema
@@ -238,20 +237,30 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                     ids = await self._get_default_ids(session)
                     if ids:
                         account_id, portfolio_id = ids
-                        
+
                         # Handle reversal
                         if result.get("reversal") and closed_trade:
                             await session.execute(text("""
-                                UPDATE positions 
-                                SET is_open = false, closed_at = NOW() 
-                                WHERE symbol = :symbol AND is_open = true AND portfolio_id = :portfolio_id
+                                UPDATE positions
+                                SET is_open = false, closed_at = NOW()
+                                WHERE symbol = :symbol
+                                  AND is_open = true
+                                  AND portfolio_id = :portfolio_id
                             """), {"symbol": inputs.symbol, "portfolio_id": portfolio_id})
-                            
+
                             await session.execute(text("""
-                                INSERT INTO trade_history 
-                                (account_id, symbol, side, quantity, entry_price, exit_price, entry_at, exit_at, pnl, pnl_pct, is_closed, strategy_name)
-                                VALUES 
-                                (:account_id, :symbol, :side, :quantity, :entry_price, :exit_price, :entry_at, NOW(), :pnl, :pnl_pct, true, :strategy_name)
+                                INSERT INTO trade_history
+                                (
+                                    account_id, symbol, side, quantity, entry_price,
+                                    exit_price, entry_at, exit_at, pnl, pnl_pct,
+                                    is_closed, strategy_name
+                                )
+                                VALUES
+                                (
+                                    :account_id, :symbol, :side, :quantity, :entry_price,
+                                    :exit_price, :entry_at, NOW(), :pnl, :pnl_pct,
+                                    true, :strategy_name
+                                )
                             """), {
                                 "account_id": account_id,
                                 "symbol": closed_trade.get("symbol"),
@@ -264,13 +273,21 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                                 "pnl_pct": closed_trade.get("pnl_pct"),
                                 "strategy_name": closed_trade.get("strategy_name", "")
                             })
-                        
+
                         # Insert new position
                         await session.execute(text("""
-                            INSERT INTO positions 
-                            (id, portfolio_id, symbol, asset_type, quantity, entry_price, current_price, market_value, stop_loss, take_profit, strategy_name)
-                            VALUES 
-                            (:id, :portfolio_id, :symbol, 'crypto', :quantity, :entry_price, :entry_price, :market_value, :stop_loss, :take_profit, :strategy_name)
+                            INSERT INTO positions
+                            (
+                                id, portfolio_id, symbol, asset_type, quantity,
+                                entry_price, current_price, market_value, stop_loss,
+                                take_profit, strategy_name
+                            )
+                            VALUES
+                            (
+                                :id, :portfolio_id, :symbol, 'crypto', :quantity,
+                                :entry_price, :entry_price, :market_value, :stop_loss,
+                                :take_profit, :strategy_name
+                            )
                         """), {
                             "id": position_id,
                             "portfolio_id": portfolio_id,

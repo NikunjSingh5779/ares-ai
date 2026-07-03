@@ -11,11 +11,10 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from agents.circuit_breaker import CircuitBreakerRegistry, NoOpBreaker
+from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.client import LLMClient, NoOpLLMClient
 from agents.queue import QueueRegistry
 from agents.retry import RetryConfig, with_retry
-from backend.core.exceptions import ModelUnavailableError
 
 
 class RouterResult:
@@ -118,7 +117,8 @@ class ModelRouter:
 
                 # Acquire rate-limit slot
                 try:
-                    wait_time = await queue.acquire()
+                    queue_wait = await queue.acquire()
+                    attempt_info["queue_wait_ms"] = int(queue_wait * 1000)
                 except RuntimeError as e:
                     attempt_info["error"] = str(e)
                     attempt_info["error_type"] = "queue_full"

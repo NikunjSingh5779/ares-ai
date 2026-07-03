@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
-from uuid import UUID
 
 import pytest
 
@@ -22,7 +21,6 @@ from agents.state import (
     RiskOutput,
 )
 from agents.supervisor import Supervisor
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -99,7 +97,6 @@ class TestSupervisorBuild:
     def test_build_graph_idempotent(self, supervisor: Supervisor) -> None:
         """Building twice should work."""
         supervisor.build_graph()
-        g1 = supervisor.graph
         supervisor.build_graph()
         assert supervisor.graph is not None
 
@@ -274,7 +271,6 @@ class TestSupervisorWithMockedRouter:
 # Log execution
 # ---------------------------------------------------------------------------
 
-from unittest.mock import AsyncMock
 
 class TestSupervisorLogging:
     @pytest.mark.asyncio

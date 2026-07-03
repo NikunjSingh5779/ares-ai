@@ -10,7 +10,8 @@ from __future__ import annotations
 import asyncio
 import random
 import time
-from typing import Any, Awaitable, Callable, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 from backend.core.exceptions import ModelUnavailableError
 
@@ -67,16 +68,16 @@ def is_retryable_error(exception: Exception) -> bool:
         return True
     # Handle httpx network errors explicitly
     exc_name = type(exception).__name__
-    
+
     if exc_name == "HTTPStatusError":
         # Only retry specific status codes (e.g. 429, 500, 503)
         if hasattr(exception, "response") and hasattr(exception.response, "status_code"):
             return exception.response.status_code in RETRYABLE_STATUSES
         return False
-        
+
     if exc_name in ("ConnectError", "RemoteProtocolError", "ReadTimeout", "WriteTimeout", "PoolTimeout"):
         return True
-        
+
     return False
 
 

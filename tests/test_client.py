@@ -67,13 +67,13 @@ class TestCreateLLMClient:
         # Unset env vars
         for k in ["OPENROUTER_API_KEY", "OPENCODE_API_KEY", "GEMINI_API_KEY", "MISTRAL_API_KEY"]:
             monkeypatch.delenv(k, raising=False)
-            
+
         # Also mock settings since create_llm_client uses it now
         from backend.core.config import settings
         monkeypatch.setattr(settings, "openrouter_api_key", "")
         monkeypatch.setattr(settings, "opencode_api_key", "")
         monkeypatch.setattr(settings, "gemini_api_key", "")
         monkeypatch.setattr(settings, "mistral_api_key", "")
-        
+
         client = create_llm_client()
         assert isinstance(client, NoOpLLMClient)

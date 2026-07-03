@@ -18,7 +18,6 @@ from agents.vision import (
     _score_trend_confidence,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -109,12 +108,12 @@ class TestDetectLevels:
     def test_support_returns_levels(self, uptrend_candles):
         levels = _detect_support_levels(uptrend_candles)
         assert len(levels) > 0
-        assert all(isinstance(l, float) for l in levels)
+        assert all(isinstance(level, float) for level in levels)
 
     def test_resistance_returns_levels(self, uptrend_candles):
         levels = _detect_resistance_levels(uptrend_candles)
         assert len(levels) > 0
-        assert all(isinstance(l, float) for l in levels)
+        assert all(isinstance(level, float) for level in levels)
 
     def test_support_below_resistance(self, uptrend_candles):
         support = _detect_support_levels(uptrend_candles)
@@ -290,8 +289,8 @@ class TestVisionAgent:
         ))
         assert len(result.support_levels) > 0
         assert len(result.resistance_levels) > 0
-        assert all(isinstance(l, float) for l in result.support_levels)
-        assert all(isinstance(l, float) for l in result.resistance_levels)
+        assert all(isinstance(level, float) for level in result.support_levels)
+        assert all(isinstance(level, float) for level in result.resistance_levels)
 
     @pytest.mark.asyncio
     async def test_run_includes_rationale(self, uptrend_candles):

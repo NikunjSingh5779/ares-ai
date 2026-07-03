@@ -8,12 +8,10 @@ import pytest
 from pydantic import ValidationError
 
 from backend.data.models import (
-    OHLCVData,
+    Interval,
     MarketDataRequest,
     MarketDataResult,
-    MarketDataQuery,
-    MarketDataSummary,
-    Interval,
+    OHLCVData,
     Source,
 )
 

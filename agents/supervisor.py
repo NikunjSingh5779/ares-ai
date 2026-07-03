@@ -13,7 +13,6 @@ Per RELIABILITY section:
 
 from __future__ import annotations
 
-import copy
 import json
 import uuid
 from datetime import UTC, datetime
@@ -22,13 +21,9 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from agents.base import BaseAgent
-from agents.circuit_breaker import CircuitBreakerRegistry
-from agents.client import LLMClient, NoOpLLMClient
 from agents.log import AgentLogger
 from agents.models import AgentModelConfig
-from agents.queue import QueueRegistry
 from agents.registry import AgentRegistry
-from agents.retry import RetryConfig
 from agents.router import ModelRouter
 from agents.state import (
     AgentState,
@@ -306,7 +301,7 @@ def _merge_pipeline_status(
     new_comp = state.pipeline_status.completed_nodes + (completed or [])
     new_fail = state.pipeline_status.failed_nodes + (failed or [])
     new_skip = list(state.pipeline_status.skipped_nodes + (skipped or []))
-    
+
     current_node = (completed or failed or [""])[-1]
     if current_node in PIPELINE_ORDER:
         idx = PIPELINE_ORDER.index(current_node)
@@ -425,10 +420,10 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
             symbol=state.symbol,
             candles=candles,
         ))
-        
+
         # Convert Pydantic FlexibleSchema to dict
         result = raw_result.model_dump() if hasattr(raw_result, "model_dump") else raw_result
-        
+
         result["fallback_model"] = fallback_model
         result["available"] = model_available
         return {
@@ -543,7 +538,7 @@ async def _execute_agent_impl(
         else:
             # Fallback
             agent_instance = agent_class(router=router, context=agent_ctx)
-        
+
         output = await agent_instance.run(input_data)
 
         # Set the output
@@ -739,7 +734,7 @@ class Supervisor:
     async def stream_analysis(self, symbol: str, request: str):
         """Run a full analysis pipeline and stream state updates incrementally."""
         from agents.state import AgentState
-        
+
         if self.graph is None:
             self.build_graph()
 
@@ -755,7 +750,7 @@ class Supervisor:
         async for event in self.graph.astream(state, stream_mode="values"):
             final_state = AgentState.model_validate(event)
             yield final_state
-            
+
         if final_state:
             await self.log_execution(final_state)
 
@@ -770,8 +765,6 @@ class Supervisor:
 
     async def log_execution(self, state: AgentState) -> None:
         """Log all agent outputs from a completed run."""
-        now = datetime.now(UTC).isoformat()
-
         for agent_name in PIPELINE_ORDER:
             output = getattr(state, agent_name, None)
             if output is not None:
@@ -785,7 +778,7 @@ class Supervisor:
                     latency_ms=state.agent_latencies.get(agent_name, 0) if hasattr(state, "agent_latencies") else 0,
                     degraded_mode=state.degraded,
                 )
-                
+
         # Explicitly log the supervisor summary row with consensus_score for the daily report
         supervisor_data = {}
         if getattr(state, "consensus", None) is not None:
@@ -794,9 +787,8 @@ class Supervisor:
 
         total_ms = 0
         if state.pipeline_status.start_time:
-            from datetime import timezone
             start_t = datetime.fromisoformat(state.pipeline_status.start_time)
-            total_ms = int((datetime.now(timezone.utc) - start_t).total_seconds() * 1000)
+            total_ms = int((datetime.now(UTC) - start_t).total_seconds() * 1000)
 
         await self.logger.log(
             agent_name="supervisor",

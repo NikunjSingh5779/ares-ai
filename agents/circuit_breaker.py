@@ -8,12 +8,12 @@ Implements the RELIABILITY section requirements:
 
 from __future__ import annotations
 
-import enum
 import time
+from enum import StrEnum
 from typing import Any
 
 
-class CircuitState(str, enum.Enum):
+class CircuitState(StrEnum):
     CLOSED = "closed"       # Normal operation — requests pass through
     OPEN = "open"           # Tripped — fast-fail without attempting
     HALF_OPEN = "half_open" # Probing — allow one request to test recovery

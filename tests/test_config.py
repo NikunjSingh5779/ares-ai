@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
 
-from configs.settings import load_model_roster, settings
+from configs.settings import settings
 
 MODELS_YAML_PATH = Path(__file__).resolve().parent.parent / "configs" / "models.yaml"
 

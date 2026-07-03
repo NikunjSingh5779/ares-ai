@@ -1,8 +1,10 @@
 import asyncio
-import sys
-from datetime import datetime, timezone
-from daily_report import generate_daily_report
 import os
+import sys
+from datetime import UTC, datetime
+
+from daily_report import generate_daily_report
+
 
 class LoggerWriter:
     def __init__(self, filepath):
@@ -13,7 +15,7 @@ class LoggerWriter:
         if message.strip() == "":
             return
         with open(self.filepath, "a", encoding="utf-8") as f:
-            timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+            timestamp = datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')
             for line in message.splitlines():
                 if line:
                     f.write(f"[{timestamp}] {line}\n")
@@ -31,7 +33,7 @@ async def main():
             await generate_daily_report()
         except Exception as e:
             print(f"Error generating report: {e}")
-        
+
         # Sleep for 24 hours (86400 seconds)
         await asyncio.sleep(86400)
 

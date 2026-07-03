@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import math
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from backend.data.models import OHLCVData
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -559,7 +558,7 @@ class BacktestEngine:
         """Compute total equity (cash + position market value)."""
         if position is None:
             return cash
-        
+
         if position.side == "long":
             market_value = position.quantity * candle.close
             return cash + market_value

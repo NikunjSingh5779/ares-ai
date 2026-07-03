@@ -26,8 +26,9 @@ async def test_health_endpoint_returns_ok_structure() -> None:
 @pytest.mark.asyncio
 async def test_root_endpoint() -> None:
     """Verify the root endpoint returns API info."""
-    from backend.main import app
     from starlette.testclient import TestClient
+
+    from backend.main import app
 
     with TestClient(app) as client:
         response = client.get("/")

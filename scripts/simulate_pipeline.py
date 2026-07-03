@@ -6,34 +6,26 @@ Uses mock/test data, no real API calls.
 """
 
 import asyncio
-import sys
 import os
+import sys
 from typing import Any
-from unittest.mock import AsyncMock
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agents.supervisor import Supervisor
-from agents.registry import AgentRegistry
-from agents.router import ModelRouter
+from agents.circuit_breaker import CircuitBreakerRegistry
+from agents.client import NoOpLLMClient
 from agents.log import AgentLogger
 from agents.models import AgentModelConfig, ModelRoster
-from agents.state import AgentState
-from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.queue import QueueRegistry
+from agents.registry import AgentRegistry
 from agents.retry import RetryConfig
-from agents.client import NoOpLLMClient
-from live_trading.audit import OrderAuditor, AuditEntry
-from live_trading.safety import KillSwitch, ModeManager, PromotionGate, TradingMode
+from agents.router import ModelRouter
+from agents.supervisor import Supervisor
+from live_trading.audit import OrderAuditor
 from live_trading.engine import LiveTradingEngine
-from live_trading.exceptions import (
-    ExchangeConnectionError,
-    KillSwitchTrippedError,
-    ModeError,
-    PromotionGateError,
-)
 from live_trading.exchange.base import ExchangeConnector, ExchangeOrder
+from live_trading.safety import KillSwitch, ModeManager, PromotionGate, TradingMode
 
 
 class MockExchangeConnector(ExchangeConnector):
@@ -176,14 +168,14 @@ async def main():
     # Update registry with router
     registry._router = router
 
-    from backend.data.ingestor import MarketDataIngestor
-    from agents.market_analyst import MarketAnalystAgent
-    from agents.quant import QuantAgent
-    from agents.risk import RiskAgent
     from agents.execution import ExecutionAgent
     from agents.journal import JournalAgent
-    from agents.reflection import ReflectionAgent
+    from agents.market_analyst import MarketAnalystAgent
     from agents.memory import MemoryAgent
+    from agents.quant import QuantAgent
+    from agents.reflection import ReflectionAgent
+    from agents.risk import RiskAgent
+    from backend.data.ingestor import MarketDataIngestor
 
     shared_ingestor = MarketDataIngestor()
 

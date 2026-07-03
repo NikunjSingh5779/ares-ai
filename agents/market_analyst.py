@@ -17,13 +17,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from agents.state import MarketAnalystOutput
 from agents.base import AgentContext, BaseAgent
 from agents.indicators import compute_all_indicators
 from agents.router import ModelRouter, RouterResult
+from agents.state import MarketAnalystOutput
 from backend.data.ingestor import MarketDataIngestor
-from backend.data.models import OHLCVData, MarketDataRequest
-
+from backend.data.models import MarketDataRequest, OHLCVData
 
 # ---------------------------------------------------------------------------
 # Input schema
@@ -230,8 +229,9 @@ def _rule_based_analysis(
         output_indicators["macd"] = macd["macd"]
 
     # Build concise rationale
-    signal_reasons = [d for d, w in votes if d == direction]
+    signal_count = sum(1 for vote_direction, _ in votes if vote_direction == direction)
     rationale_parts = [f"Rule-based analysis ({len(votes)} signals)"]
+    rationale_parts.append(f"{signal_count} {direction} signal(s)")
     if rsi is not None:
         rationale_parts.append(f"RSI={rsi:.1f}")
     if trend != "neutral":
@@ -280,8 +280,6 @@ def _parse_llm_response(
             lines = lines[:-1]
         text = "\n".join(lines).strip()
 
-    import sys
-    print(f"[DEBUG MA RAW] >>>{text[:800]}<<<", flush=True, file=sys.stderr)
     try:
         data = json.loads(text)
     except json.JSONDecodeError:

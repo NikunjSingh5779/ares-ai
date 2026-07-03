@@ -9,7 +9,6 @@ POST endpoints get the default limit; GET endpoints get 2x.
 from __future__ import annotations
 
 import time
-from collections import defaultdict
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware

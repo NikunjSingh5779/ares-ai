@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from unittest.mock import AsyncMock
 
@@ -116,7 +115,6 @@ class TestMarketDataIngestor:
 
     async def test_refresh(self, registry: SourceRegistry) -> None:
         """Test force-refresh invalidates cache then fetches."""
-        from backend.data.models import OHLCVData
 
         source = registry.get("yahoo")
         source.fetch_ohlcv = AsyncMock(return_value=[])  # type: ignore[method-assign]

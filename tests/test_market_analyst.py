@@ -1,11 +1,12 @@
 """Tests for MarketAnalystAgent."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
+from agents.indicators import compute_all_indicators
 from agents.market_analyst import (
     MarketAnalystAgent,
     MarketAnalystInput,
@@ -13,10 +14,8 @@ from agents.market_analyst import (
     _rule_based_analysis,
     build_analysis_prompt,
 )
-from agents.indicators import compute_all_indicators
 from agents.router import RouterResult
 from backend.data.models import OHLCVData
-
 
 # ---------------------------------------------------------------------------
 # Shared test data

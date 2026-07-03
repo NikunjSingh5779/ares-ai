@@ -18,7 +18,7 @@ class JsonFormatter(logging.Formatter):
     """Format log records as JSON objects, one per line."""
 
     def format(self, record: logging.LogRecord) -> str:
-        dt = datetime.datetime.fromtimestamp(record.created, datetime.timezone.utc)
+        dt = datetime.datetime.fromtimestamp(record.created, datetime.UTC)
         payload: dict[str, Any] = {
             "timestamp": dt.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "level": record.levelname,

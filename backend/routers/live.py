@@ -11,7 +11,9 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import text
 
+from database.connection import async_session_factory
 from live_trading import (
     KillSwitch,
     LiveTradingEngine,
@@ -19,8 +21,8 @@ from live_trading import (
     PromotionGate,
     TradingMode,
 )
-from live_trading.exchange import create_exchange
 from live_trading.audit import OrderAuditor
+from live_trading.exchange import create_exchange
 
 logger = logging.getLogger("ares")
 
@@ -259,17 +261,13 @@ async def audit_log(limit: int = 50) -> list[dict[str, Any]]:
         return []
     return engine.auditor.to_dicts(limit=min(limit, 500))
 
-
-from database.connection import async_session_factory
-from sqlalchemy import text
-
 @router.get("/paper_record")
 async def paper_record() -> dict[str, Any]:
     """Return paper trading stats for promotion check."""
     engine = _get_engine()
     if engine is None:
         return _NOT_CONFIGURED_STATUS["paper_record"]
-        
+
     try:
         async with async_session_factory() as session:
             # Query number of closed paper trades
@@ -285,7 +283,7 @@ async def paper_record() -> dict[str, Any]:
                 JOIN accounts a ON th.account_id = a.id
                 WHERE a.exchange = 'paper'
             """))).scalar() or 0
-            
+
             # Pass these database metrics into the promotion gate
             return {
                 "trades": trades_count,

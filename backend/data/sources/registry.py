@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-from backend.data.models import Source
 from backend.data.sources.base import BaseDataSource
 from backend.data.sources.binance import BinanceSource
 from backend.data.sources.coingecko import CoinGeckoSource

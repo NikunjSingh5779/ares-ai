@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import json
 from typing import Any
+
 import pytest
+
+import agents.log
+
 
 class MockAgentLogger:
     def __init__(self) -> None:
@@ -12,12 +16,18 @@ class MockAgentLogger:
     async def log(self, agent_name: str, **kwargs: Any) -> dict[str, Any]:
         entry = kwargs.copy()
         entry["agent_name"] = agent_name
-        if "metadata" not in entry: entry["metadata"] = {}
-        if "error_type" not in entry: entry["error_type"] = None
-        if "fallback_used" not in entry: entry["fallback_used"] = False
-        if "degraded" not in entry: entry["degraded"] = False
-        if "input_schema" in entry: entry["input_schema"] = json.dumps(entry["input_schema"])
-        if "output_schema" in entry: entry["output_schema"] = json.dumps(entry["output_schema"])
+        if "metadata" not in entry:
+            entry["metadata"] = {}
+        if "error_type" not in entry:
+            entry["error_type"] = None
+        if "fallback_used" not in entry:
+            entry["fallback_used"] = False
+        if "degraded" not in entry:
+            entry["degraded"] = False
+        if "input_schema" in entry:
+            entry["input_schema"] = json.dumps(entry["input_schema"])
+        if "output_schema" in entry:
+            entry["output_schema"] = json.dumps(entry["output_schema"])
         self._logs.append(entry)
         return entry
 
@@ -40,7 +50,6 @@ class MockAgentLogger:
     def to_list(self) -> list[dict[str, Any]]:
         return list(self._logs)
 
-import agents.log
 agents.log.AgentLogger = MockAgentLogger  # type: ignore
 
 class TestAgentLogger:

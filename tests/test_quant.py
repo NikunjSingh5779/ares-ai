@@ -1,14 +1,16 @@
 """Tests for QuantAgent."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
+from agents.indicators import compute_all_indicators
 from agents.quant import (
     QuantAgent,
     QuantInput,
+    _atr_ratio,
     _build_breakout_signal,
     _build_mean_reversion_signal,
     _build_momentum_signal,
@@ -20,14 +22,11 @@ from agents.quant import (
     _detect_trend_following,
     _parse_quant_response,
     _rule_based_quant,
-    build_quant_prompt,
     _volume_ratio,
-    _atr_ratio,
+    build_quant_prompt,
 )
-from agents.indicators import compute_all_indicators
 from agents.router import RouterResult
 from backend.data.models import OHLCVData
-
 
 # ---------------------------------------------------------------------------
 # Shared test data

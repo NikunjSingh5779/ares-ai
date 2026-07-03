@@ -1,14 +1,17 @@
 import asyncio
+from datetime import UTC, datetime
+
 from sqlalchemy import text
+
 from database.connection import async_session_factory
-from datetime import datetime, timezone
+
 
 async def generate_daily_report():
-    print(f"--- ARES Live Run Daily Report for {datetime.now(timezone.utc).strftime('%Y-%m-%d')} ---")
+    print(f"--- ARES Live Run Daily Report for {datetime.now(UTC).strftime('%Y-%m-%d')} ---")
     async with async_session_factory() as session:
         # 1. Evaluation cycles run
         result = await session.execute(text("""
-            SELECT COUNT(*) FROM agent_logs 
+            SELECT COUNT(*) FROM agent_logs
             WHERE agent_name = 'supervisor' AND created_at >= NOW() - INTERVAL '1 day'
         """))
         cycles = result.scalar() or 0
@@ -16,11 +19,11 @@ async def generate_daily_report():
 
         # 2. Confidence ranges from market_analyst and quant
         result = await session.execute(text("""
-            SELECT agent_name, 
-                   MIN((output_data->>'confidence')::numeric), 
+            SELECT agent_name,
+                   MIN((output_data->>'confidence')::numeric),
                    MAX((output_data->>'confidence')::numeric)
             FROM agent_logs
-            WHERE agent_name IN ('market_analyst', 'quant') 
+            WHERE agent_name IN ('market_analyst', 'quant')
               AND created_at >= NOW() - INTERVAL '1 day'
               AND output_data->>'confidence' IS NOT NULL
             GROUP BY agent_name
@@ -31,7 +34,7 @@ async def generate_daily_report():
             print("  None recorded with 'confidence' in output_data.")
         for row in ranges:
             print(f"  {row[0]}: {row[1]} to {row[2]}")
-            
+
         # 3. Dual consensus cleared 80%?
         result = await session.execute(text("""
             SELECT MAX((output_data->>'consensus_score')::numeric)
@@ -47,7 +50,7 @@ async def generate_daily_report():
 
         # 4. Circuit breaker trips or rate limits
         result = await session.execute(text("""
-            SELECT error_type, created_at FROM agent_logs 
+            SELECT error_type, created_at FROM agent_logs
             WHERE error_type IS NOT NULL AND created_at >= NOW() - INTERVAL '1 day'
             ORDER BY created_at ASC
         """))

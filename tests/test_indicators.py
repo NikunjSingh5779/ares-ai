@@ -1,10 +1,6 @@
 """Tests for technical indicator calculations."""
 from __future__ import annotations
 
-import math
-
-import pytest
-
 from agents.indicators import (
     _find_resistance_levels,
     _find_support_levels,

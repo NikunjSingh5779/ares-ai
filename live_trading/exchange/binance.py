@@ -8,29 +8,26 @@ Requires: ccxt (``pip install ccxt``)
 
 from __future__ import annotations
 
+import typing
 from typing import Any, Literal
 
-from live_trading.exceptions import ExchangeConnectionError, OrderRejectedError
+from live_trading.exceptions import ExchangeConnectionError
 from live_trading.exchange.base import (
     ExchangeBalance,
     ExchangeConnector,
     ExchangeOrder,
 )
 
-import typing
 if typing.TYPE_CHECKING:
     import ccxt.async_support as ccxt
-    import ccxt.pro as ccxt_pro
     HAS_CCXT = True
 else:
     try:
         import ccxt.async_support as ccxt
-        import ccxt.pro as ccxt_pro
 
         HAS_CCXT = True
     except ImportError:  # pragma: no cover
         HAS_CCXT = False
-        import sys
         class _Dummy:
             pass
         ccxt = _Dummy()

@@ -1,8 +1,8 @@
 """Tests for RiskAgent."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -20,7 +20,6 @@ from agents.risk import (
 )
 from agents.router import RouterResult
 from backend.data.models import OHLCVData
-
 
 # ---------------------------------------------------------------------------
 # Shared test data

@@ -8,12 +8,12 @@ Endpoints:
 from __future__ import annotations
 
 from typing import Any
-import asyncio
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from sqlalchemy import text
 
 from agents.circuit_breaker import CircuitBreakerRegistry
-from agents.client import LLMClient, create_llm_client
+from agents.client import create_llm_client
 from agents.log import AgentLogger
 from agents.models import load_model_roster
 from agents.queue import QueueRegistry
@@ -21,10 +21,8 @@ from agents.registry import AgentRegistry
 from agents.retry import RetryConfig
 from agents.router import ModelRouter
 from agents.state import AgentState
-from agents.supervisor import PIPELINE_ORDER, Supervisor
-from configs.settings import settings
+from agents.supervisor import Supervisor
 from database.connection import async_session_factory
-from sqlalchemy import text
 
 router = APIRouter(prefix="/api/v1", tags=["trading"])
 
@@ -73,18 +71,18 @@ def _get_supervisor() -> Supervisor:
         breaker_registry=breaker_registry,
         queue_registry=queue_registry,
     )
-    
-    from agents.market_analyst import MarketAnalystAgent
-    from agents.quant import QuantAgent
-    from agents.risk import RiskAgent
+
     from agents.execution import ExecutionAgent
     from agents.journal import JournalAgent
-    from agents.reflection import ReflectionAgent
+    from agents.market_analyst import MarketAnalystAgent
     from agents.memory import MemoryAgent
-    from backend.routers.trading import _get_engine
-    from backend.routers.live import _get_engine as get_live_engine
+    from agents.quant import QuantAgent
+    from agents.reflection import ReflectionAgent
+    from agents.risk import RiskAgent
     from backend.data.ingestor import MarketDataIngestor
     from backend.data.repository import MarketDataRepository
+    from backend.routers.live import _get_engine as get_live_engine
+    from backend.routers.trading import _get_engine
     from database.connection import async_session_factory
 
     shared_paper_engine = _get_engine()
@@ -102,7 +100,7 @@ def _get_supervisor() -> Supervisor:
     # Special cased / missing implementation
     registry.register("consensus")
     registry.register("vision")
-    
+
     # "news" is advisory and lacks a real implementation currently.
     # Leaving it unregistered with no agent.
     registry.register("news")
@@ -123,8 +121,8 @@ def _get_supervisor() -> Supervisor:
 async def signals_history(limit: int = 50) -> list[dict[str, Any]]:
     """Get historical signals."""
     query = text("""
-        SELECT 
-            id, symbol, direction, confidence, composite_confidence, 
+        SELECT
+            id, symbol, direction, confidence, composite_confidence,
             market_analyst_confidence, quant_confidence, news_sentiment,
             risk_score, risk_approved, is_consensus, rationale, is_executed,
             created_at, agent_outputs
@@ -189,11 +187,12 @@ async def analyze(body: dict[str, Any], background_tasks: BackgroundTasks) -> di
 
     try:
         supervisor = _get_supervisor()
-        
+
         # Initialize a basic state to immediately show in the UI
-        from agents.state import AgentState, PipelineStatus
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from agents.state import AgentState, PipelineStatus
         now = datetime.now(UTC).isoformat()
         _last_state = AgentState(
             symbol=symbol,
@@ -232,11 +231,11 @@ async def signal(body: dict[str, Any]) -> dict[str, Any]:
 
     supervisor = _get_supervisor()
     state = await supervisor.run_analysis(symbol=symbol, request=request_text)
-    
+
     # Update global state for UI
     global _last_state
     _last_state = state
-    
+
     # We must convert to dict because previous logic expected state to be a dict
     state_dict = _state_to_dict(state)
 

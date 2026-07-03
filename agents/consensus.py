@@ -16,7 +16,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 REQUIRED_CONFIDENCE: float = 80.0
 """Minimum confidence required from both agents to approve a trade."""
 

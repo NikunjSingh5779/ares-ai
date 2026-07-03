@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -138,7 +138,7 @@ class BinanceSource(BaseDataSource):
                     symbol=symbol,
                     source=self.source_name,
                     interval=interval,
-                    timestamp=datetime.fromtimestamp(k[0] / 1000, tz=timezone.utc),
+                    timestamp=datetime.fromtimestamp(k[0] / 1000, tz=UTC),
                     open=float(k[1]),
                     high=float(k[2]),
                     low=float(k[3]),

@@ -14,11 +14,11 @@ All checks are deterministic Python — no LLM calls.
 from __future__ import annotations
 
 import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class TradingMode(str, Enum):
+class TradingMode(StrEnum):
     """Live trading mode."""
 
     HUMAN_APPROVAL = "human_approval"
@@ -86,7 +86,7 @@ class KillSwitch:
         """Manually activate the kill switch."""
         self._active = True
         self._triggered_by = reason
-        self._triggered_at = datetime.datetime.now(datetime.timezone.utc)
+        self._triggered_at = datetime.datetime.now(datetime.UTC)
 
     def auto_trigger(self, drawdown_pct: float) -> bool:
         """Automatically trigger if *drawdown_pct* exceeds the threshold.
@@ -96,7 +96,7 @@ class KillSwitch:
         if drawdown_pct >= self._auto_drawdown_pct and not self._active:
             self._active = True
             self._triggered_by = f"auto:drawdown={drawdown_pct:.1f}%"
-            self._triggered_at = datetime.datetime.now(datetime.timezone.utc)
+            self._triggered_at = datetime.datetime.now(datetime.UTC)
             return True
         return False
 

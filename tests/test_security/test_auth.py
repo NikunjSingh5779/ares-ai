@@ -1,10 +1,7 @@
 """Tests for auth dependency hardening."""
 from __future__ import annotations
 
-from unittest.mock import patch
-
-import pytest
-from fastapi import FastAPI, status
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
@@ -35,7 +32,6 @@ class TestVerifyAuth:
     def test_debug_mode_no_auth(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """In debug mode with default key, requests without auth get a dev user."""
         from fastapi import Depends, FastAPI
-        from fastapi.testclient import TestClient
 
         from backend.core.dependencies import verify_auth
         from configs.settings import settings
@@ -57,7 +53,6 @@ class TestVerifyAuth:
     def test_debug_mode_with_bearer_token(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """In debug mode, a bearer token is accepted."""
         from fastapi import Depends, FastAPI
-        from fastapi.testclient import TestClient
 
         from backend.core.dependencies import verify_auth
         from configs.settings import settings
@@ -79,7 +74,6 @@ class TestVerifyAuth:
     def test_debug_mode_with_api_key(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """In debug mode, an X-API-Key header is accepted."""
         from fastapi import Depends, FastAPI
-        from fastapi.testclient import TestClient
 
         from backend.core.dependencies import verify_auth
         from configs.settings import settings
@@ -101,7 +95,6 @@ class TestVerifyAuth:
     def test_production_requires_auth(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """In production mode, requests without auth return 401."""
         from fastapi import Depends, FastAPI
-        from fastapi.testclient import TestClient
 
         from backend.core.dependencies import verify_auth
         from configs.settings import settings
@@ -122,7 +115,6 @@ class TestVerifyAuth:
     def test_production_accepts_bearer_token(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """In production mode, a valid bearer token is accepted."""
         from fastapi import Depends, FastAPI
-        from fastapi.testclient import TestClient
 
         from backend.core.dependencies import verify_auth
         from configs.settings import settings
@@ -147,7 +139,6 @@ class TestVerifyAuth:
     def test_production_accepts_api_key(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """In production mode, a valid X-API-Key header is accepted."""
         from fastapi import Depends, FastAPI
-        from fastapi.testclient import TestClient
 
         from backend.core.dependencies import verify_auth
         from configs.settings import settings
@@ -172,7 +163,6 @@ class TestVerifyAuth:
     def test_production_rejects_wrong_key(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """In production mode, a wrong key returns 401."""
         from fastapi import Depends, FastAPI
-        from fastapi.testclient import TestClient
 
         from backend.core.dependencies import verify_auth
         from configs.settings import settings
@@ -196,7 +186,6 @@ class TestVerifyAuth:
     def test_production_rejects_wrong_api_key(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """In production mode, a wrong X-API-Key returns 401."""
         from fastapi import Depends, FastAPI
-        from fastapi.testclient import TestClient
 
         from backend.core.dependencies import verify_auth
         from configs.settings import settings
@@ -220,9 +209,8 @@ class TestVerifyAuth:
     def test_get_current_user_id(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """Verify get_current_user_id extracts the credential."""
         from fastapi import Depends, FastAPI
-        from fastapi.testclient import TestClient
 
-        from backend.core.dependencies import get_current_user_id, verify_auth
+        from backend.core.dependencies import get_current_user_id
         from configs.settings import settings
 
         monkeypatch.setattr(settings, "api_debug", False)

@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from backend.data.models import OHLCVData
 from backtesting.engine import (
     MIN_CAPITAL,
     TRADING_DAYS_PER_YEAR,
@@ -21,8 +22,6 @@ from backtesting.engine import (
     _compute_metrics,
     _map_signals_to_indices,
 )
-from backend.data.models import OHLCVData
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -231,7 +230,8 @@ class TestComputeMetrics:
         # stdev of [0.1, -0.05, 0.15, 0.05, -0.1] ≈ 0.1
         # Sharpe = 0.03/0.1 * sqrt(252) ≈ 0.3 * 15.87 = 4.76
         pnl_pcts = [0.1, -0.05, 0.15, 0.05, -0.1]
-        import statistics, math
+        import math
+        import statistics
         mean_ret = statistics.mean(pnl_pcts)
         std_ret = statistics.stdev(pnl_pcts)
         expected = mean_ret / std_ret * math.sqrt(TRADING_DAYS_PER_YEAR)
@@ -253,7 +253,8 @@ class TestComputeMetrics:
         equity = [100000.0, 100001.5]
         metrics = _compute_metrics(trades, 100000.0, equity)
         # Downside returns: [-0.05, -0.1]
-        import statistics, math
+        import math
+        import statistics
         pnl_pcts = [0.1, -0.05, 0.15, -0.1, 0.05]
         mean_ret = statistics.mean(pnl_pcts)
         downside = [-0.05, -0.1]

@@ -7,8 +7,7 @@ checklist before reaching the exchange.
 
 from __future__ import annotations
 
-import datetime
-from typing import Any, Literal
+from typing import Any
 
 from live_trading.audit import AuditEntry, OrderAuditor
 from live_trading.exceptions import (
@@ -17,8 +16,14 @@ from live_trading.exceptions import (
     ModeError,
     PromotionGateError,
 )
-from live_trading.exchange.base import ExchangeConnector, ExchangeOrder
-from live_trading.safety import KillSwitch, ModeManager, PromotionGate, SafetyCheckResult, TradingMode
+from live_trading.exchange.base import ExchangeConnector
+from live_trading.safety import (
+    KillSwitch,
+    ModeManager,
+    PromotionGate,
+    SafetyCheckResult,
+    TradingMode,
+)
 
 
 class LiveTradingEngine:
@@ -225,8 +230,6 @@ class LiveTradingEngine:
 
         self._raise_if_blocked(safety_results)
 
-        risk_check_dicts = [r.reason for r in safety_results]
-
         # ── Place the order ─────────────────────────────────────────
         try:
             order = await self.exchange.create_order(
@@ -275,7 +278,7 @@ class LiveTradingEngine:
 
     async def evaluate_drawdown(self, current_drawdown_pct: float, symbol: str) -> bool:
         """Evaluate if drawdown breached the kill switch threshold.
-        
+
         If it does:
         1. Force TradingMode to PAPER.
         2. Emit emergency log.
@@ -283,7 +286,7 @@ class LiveTradingEngine:
         """
         import logging
         logger = logging.getLogger("ares")
-        
+
         tripped = self.kill_switch.auto_trigger(current_drawdown_pct)
         if tripped:
             self.mode_manager.set_mode(TradingMode.HUMAN_APPROVAL)

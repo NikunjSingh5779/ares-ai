@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import ccxt
 import pytest
 
-from live_trading.exceptions import ExchangeConnectionError, OrderRejectedError
+from live_trading.exceptions import ExchangeConnectionError
 from live_trading.exchange.binance import BinanceConnector
 
 
