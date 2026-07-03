@@ -1,4 +1,5 @@
 """Tests for model router (fallback chain execution)."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -98,18 +99,22 @@ class TestModelRouter:
 
         # model-a should be skipped due to open breaker
         model_a_errors = [e for e in result.errors if e["model"] == "model-a"]
-        assert any("circuit_breaker_open" in str(e.get("error_type", ""))
-                    or "circuit_breaker_open" in str(e.get("error", ""))
-                    or "OPEN" in str(e.get("error", ""))
-                    for e in model_a_errors)
+        assert any(
+            "circuit_breaker_open" in str(e.get("error_type", ""))
+            or "circuit_breaker_open" in str(e.get("error", ""))
+            or "OPEN" in str(e.get("error", ""))
+            for e in model_a_errors
+        )
 
     @pytest.mark.asyncio
     async def test_success_with_custom_messages(self, router: ModelRouter) -> None:
         """Can call with different messages."""
         result = await router.execute(
             model_chain=["test-model"],
-            messages=[{"role": "system", "content": "You are a helpful assistant."},
-                      {"role": "user", "content": "Analyze BTC"}],
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Analyze BTC"},
+            ],
             temperature=0.3,
             max_tokens=500,
         )
@@ -137,6 +142,7 @@ class TestModelRouterWithRealClient:
     async def test_http_error_is_retryable(self) -> None:
         """Client raises HTTP errors which should be caught as retryable."""
         from agents.client import LLMClient
+
         client = LLMClient(api_key="sk-test")
         # Don't call the real API — just verify the error handling path
         assert client.providers["open_router"]["api_key"] == "sk-test"
@@ -160,11 +166,13 @@ class TestModelRouterMocked:
         from agents.client import LLMClient
 
         mock_client = AsyncMock(spec=LLMClient)
-        mock_client.chat_completion = AsyncMock(return_value={
-            "choices": [{"message": {"content": '{"result": "ok"}'}}],
-            "model": "model-a",
-            "usage": {"total_tokens": 10},
-        })
+        mock_client.chat_completion = AsyncMock(
+            return_value={
+                "choices": [{"message": {"content": '{"result": "ok"}'}}],
+                "model": "model-a",
+                "usage": {"total_tokens": 10},
+            }
+        )
         mock_client.is_error_response.return_value = False
 
         router = ModelRouter(

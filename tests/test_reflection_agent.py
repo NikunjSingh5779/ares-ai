@@ -9,9 +9,7 @@ class TestReflectionAgent:
     async def test_output_structure(self) -> None:
         """Output should contain all ReflectionOutput fields."""
         agent = ReflectionAgent()
-        result = await agent.process(
-            ReflectionInput(symbol="BTC-USD", request="Analyze")
-        )
+        result = await agent.process(ReflectionInput(symbol="BTC-USD", request="Analyze"))
         assert "evaluation" in result
         assert "confidence_accuracy" in result
         assert "improvement_suggestions" in result

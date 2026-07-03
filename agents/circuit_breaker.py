@@ -14,9 +14,9 @@ from typing import Any
 
 
 class CircuitState(StrEnum):
-    CLOSED = "closed"       # Normal operation — requests pass through
-    OPEN = "open"           # Tripped — fast-fail without attempting
-    HALF_OPEN = "half_open" # Probing — allow one request to test recovery
+    CLOSED = "closed"  # Normal operation — requests pass through
+    OPEN = "open"  # Tripped — fast-fail without attempting
+    HALF_OPEN = "half_open"  # Probing — allow one request to test recovery
 
 
 class NoOpBreaker:
@@ -25,11 +25,16 @@ class NoOpBreaker:
     def record_success(self) -> None: ...
     def record_failure(self) -> None: ...
     def record_timeout(self) -> None: ...
-    def check(self) -> bool: return True
+    def check(self) -> bool:
+        return True
+
     @property
-    def state(self) -> CircuitState: return CircuitState.CLOSED
+    def state(self) -> CircuitState:
+        return CircuitState.CLOSED
+
     @property
-    def failure_count(self) -> int: return 0
+    def failure_count(self) -> int:
+        return 0
 
 
 class ModelCircuitBreaker:

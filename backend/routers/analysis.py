@@ -92,7 +92,12 @@ def _get_supervisor() -> Supervisor:
     registry.register("market_analyst", agent=MarketAnalystAgent(router=router_model, ingestor=shared_ingestor))
     registry.register("quant", agent=QuantAgent(router=router_model, ingestor=shared_ingestor))
     registry.register("risk", agent=RiskAgent(router=router_model, ingestor=shared_ingestor))
-    registry.register("execution", agent=ExecutionAgent(engine=shared_paper_engine, live_engine=live_engine, session_factory=async_session_factory))
+    registry.register(
+        "execution",
+        agent=ExecutionAgent(
+            engine=shared_paper_engine, live_engine=live_engine, session_factory=async_session_factory
+        ),
+    )
     registry.register("journal", agent=JournalAgent(session_factory=async_session_factory))
     registry.register("reflection", agent=ReflectionAgent())
     registry.register("memory", agent=MemoryAgent())
@@ -136,23 +141,31 @@ async def signals_history(limit: int = 50) -> list[dict[str, Any]]:
 
     entries = []
     for row in rows:
-        entries.append({
-            "id": str(row.id),
-            "symbol": row.symbol,
-            "direction": row.direction,
-            "confidence": float(row.confidence) if row.confidence is not None else 0.0,
-            "composite_confidence": float(row.composite_confidence) if row.composite_confidence is not None else 0.0,
-            "market_analyst_confidence": float(row.market_analyst_confidence) if row.market_analyst_confidence is not None else 0.0,
-            "quant_confidence": float(row.quant_confidence) if row.quant_confidence is not None else 0.0,
-            "news_sentiment": float(row.news_sentiment) if row.news_sentiment is not None else 0.0,
-            "risk_score": float(row.risk_score) if row.risk_score is not None else 0.0,
-            "risk_approved": row.risk_approved,
-            "is_consensus": row.is_consensus,
-            "rationale": row.rationale,
-            "is_executed": row.is_executed,
-            "created_at": row.created_at.isoformat() if hasattr(row.created_at, "isoformat") else str(row.created_at),
-            "agent_outputs": row.agent_outputs,
-        })
+        entries.append(
+            {
+                "id": str(row.id),
+                "symbol": row.symbol,
+                "direction": row.direction,
+                "confidence": float(row.confidence) if row.confidence is not None else 0.0,
+                "composite_confidence": float(row.composite_confidence)
+                if row.composite_confidence is not None
+                else 0.0,
+                "market_analyst_confidence": float(row.market_analyst_confidence)
+                if row.market_analyst_confidence is not None
+                else 0.0,
+                "quant_confidence": float(row.quant_confidence) if row.quant_confidence is not None else 0.0,
+                "news_sentiment": float(row.news_sentiment) if row.news_sentiment is not None else 0.0,
+                "risk_score": float(row.risk_score) if row.risk_score is not None else 0.0,
+                "risk_approved": row.risk_approved,
+                "is_consensus": row.is_consensus,
+                "rationale": row.rationale,
+                "is_executed": row.is_executed,
+                "created_at": row.created_at.isoformat()
+                if hasattr(row.created_at, "isoformat")
+                else str(row.created_at),
+                "agent_outputs": row.agent_outputs,
+            }
+        )
 
     return entries
 
@@ -193,6 +206,7 @@ async def analyze(body: dict[str, Any], background_tasks: BackgroundTasks) -> di
         from datetime import UTC, datetime
 
         from agents.state import AgentState, PipelineStatus
+
         now = datetime.now(UTC).isoformat()
         _last_state = AgentState(
             symbol=symbol,
@@ -201,12 +215,8 @@ async def analyze(body: dict[str, Any], background_tasks: BackgroundTasks) -> di
             request_id=str(uuid.uuid4()),
             session_id=str(uuid.uuid4()),
             pipeline_status=PipelineStatus(
-                current_node="supervisor",
-                completed_nodes=[],
-                failed_nodes=[],
-                skipped_nodes=[],
-                start_time=now
-            )
+                current_node="supervisor", completed_nodes=[], failed_nodes=[], skipped_nodes=[], start_time=now
+            ),
         )
 
         background_tasks.add_task(_background_analysis, supervisor, symbol, request_text)
@@ -241,12 +251,8 @@ async def signal(body: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "status": "ok",
-        "approved": state_dict.get("consensus", {}).get("approved", False)
-        if state_dict.get("consensus")
-        else False,
-        "executed": state_dict.get("execution", {}).get("executed", False)
-        if state_dict.get("execution")
-        else False,
+        "approved": state_dict.get("consensus", {}).get("approved", False) if state_dict.get("consensus") else False,
+        "executed": state_dict.get("execution", {}).get("executed", False) if state_dict.get("execution") else False,
         "symbol": state_dict.get("symbol", ""),
         "confidence": state_dict.get("consensus", {}).get("composite_confidence", 0)
         if state_dict.get("consensus")
@@ -260,7 +266,6 @@ async def signal(body: dict[str, Any]) -> dict[str, Any]:
         "pipeline_status": state_dict.get("pipeline_status", {}),
         "errors": state_dict.get("errors", []),
     }
-
 
 
 def _state_to_dict(state: AgentState) -> dict[str, Any]:

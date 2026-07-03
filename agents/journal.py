@@ -41,6 +41,7 @@ class JournalInput(BaseModel):
 # Async Batch Writer
 # ---------------------------------------------------------------------------
 
+
 class AsyncBatchWriter:
     """Buffers journal entries and flushes them to disk asynchronously."""
 
@@ -91,33 +92,37 @@ class AsyncBatchWriter:
         signal_params = []
 
         for item in batch:
-            journal_params.append({
-                "entry_type": "reflection",
-                "title": "Pipeline Journal Entry",
-                "content": item.get("rationale", ""),
-                "sentiment": "neutral",
-                "mistakes_detected": json.dumps(item.get("mistakes", [])),
-                "lessons_learned": json.dumps(item.get("lessons", [])),
-                "tags": [],
-            })
+            journal_params.append(
+                {
+                    "entry_type": "reflection",
+                    "title": "Pipeline Journal Entry",
+                    "content": item.get("rationale", ""),
+                    "sentiment": "neutral",
+                    "mistakes_detected": json.dumps(item.get("mistakes", [])),
+                    "lessons_learned": json.dumps(item.get("lessons", [])),
+                    "tags": [],
+                }
+            )
 
             sig = item.get("signal_data")
             if sig:
-                signal_params.append({
-                    "symbol": sig.get("symbol", "unknown"),
-                    "direction": sig.get("direction", "flat"),
-                    "confidence": sig.get("confidence", 0),
-                    "composite_confidence": sig.get("composite_confidence", 0),
-                    "market_analyst_confidence": sig.get("market_analyst_confidence", 0),
-                    "quant_confidence": sig.get("quant_confidence", 0),
-                    "news_sentiment": sig.get("news_sentiment", 0),
-                    "risk_score": sig.get("risk_score", 0),
-                    "risk_approved": sig.get("risk_approved", False),
-                    "is_consensus": sig.get("is_consensus", False),
-                    "rationale": sig.get("rationale", ""),
-                    "is_executed": sig.get("is_executed", False),
-                    "agent_outputs": json.dumps(sig.get("agent_outputs", {})),
-                })
+                signal_params.append(
+                    {
+                        "symbol": sig.get("symbol", "unknown"),
+                        "direction": sig.get("direction", "flat"),
+                        "confidence": sig.get("confidence", 0),
+                        "composite_confidence": sig.get("composite_confidence", 0),
+                        "market_analyst_confidence": sig.get("market_analyst_confidence", 0),
+                        "quant_confidence": sig.get("quant_confidence", 0),
+                        "news_sentiment": sig.get("news_sentiment", 0),
+                        "risk_score": sig.get("risk_score", 0),
+                        "risk_approved": sig.get("risk_approved", False),
+                        "is_consensus": sig.get("is_consensus", False),
+                        "rationale": sig.get("rationale", ""),
+                        "is_executed": sig.get("is_executed", False),
+                        "agent_outputs": json.dumps(sig.get("agent_outputs", {})),
+                    }
+                )
 
         async with self.session_factory() as session:
             try:
@@ -161,7 +166,9 @@ class JournalAgent(BaseAgent[JournalInput, JournalOutput]):
     input_schema: type[BaseModel] = JournalInput
     output_schema: type[BaseModel] = JournalOutput
 
-    def __init__(self, context: AgentContext | None = None, session_factory: Callable[[], AsyncSession] | None = None, **kwargs) -> None:
+    def __init__(
+        self, context: AgentContext | None = None, session_factory: Callable[[], AsyncSession] | None = None, **kwargs
+    ) -> None:
         super().__init__(context=context)
         self.writer = AsyncBatchWriter(batch_size=100, session_factory=session_factory)
 
@@ -230,7 +237,7 @@ class JournalAgent(BaseAgent[JournalInput, JournalOutput]):
                 "rationale": execution.get("rationale", rationale),
                 "is_executed": executed,
                 "agent_outputs": output_map,
-            }
+            },
         }
 
         # Async push to batch writer
@@ -248,8 +255,13 @@ def _extract_agent_outputs(inputs: JournalInput) -> dict[str, Any]:
     """Extract agent outputs from the input's extra fields."""
     output_map: dict[str, Any] = {}
     agent_names = [
-        "market_analyst", "quant", "news", "vision", "consensus",
-        "risk", "execution",
+        "market_analyst",
+        "quant",
+        "news",
+        "vision",
+        "consensus",
+        "risk",
+        "execution",
     ]
     for name in agent_names:
         val = getattr(inputs, f"{name}_output", None)
@@ -280,8 +292,7 @@ def _detect_mistakes(
         direction = market_analyst.get("direction", "flat")
         if direction in ("long", "short"):
             mistakes.append(
-                f"Signal generated ({direction}) but trade was not executed — "
-                "review risk or consensus thresholds"
+                f"Signal generated ({direction}) but trade was not executed — review risk or consensus thresholds"
             )
 
     if risk:

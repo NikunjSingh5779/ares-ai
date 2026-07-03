@@ -1,4 +1,5 @@
 """Tests for supervisor agent (LangGraph pipeline orchestrator)."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -26,12 +27,23 @@ from agents.supervisor import Supervisor
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def model_roster() -> ModelRoster:
     """Create a minimal model roster including all pipeline agents."""
     agents = {}
-    for name in ["market_analyst", "quant", "news", "vision", "consensus",
-                  "risk", "execution", "journal", "reflection", "memory"]:
+    for name in [
+        "market_analyst",
+        "quant",
+        "news",
+        "vision",
+        "consensus",
+        "risk",
+        "execution",
+        "journal",
+        "reflection",
+        "memory",
+    ]:
         agents[name] = AgentModelConfig.from_dict(name, {"primary": f"model-{name}"})
     return ModelRoster(agents)
 
@@ -88,6 +100,7 @@ def supervisor(registry: AgentRegistry, router: ModelRouter, logger: AgentLogger
 # Graph construction
 # ---------------------------------------------------------------------------
 
+
 class TestSupervisorBuild:
     def test_build_graph_succeeds(self, supervisor: Supervisor) -> None:
         """Building the graph should not raise."""
@@ -109,6 +122,7 @@ class TestSupervisorBuild:
 # ---------------------------------------------------------------------------
 # Pipeline execution
 # ---------------------------------------------------------------------------
+
 
 class TestSupervisorRun:
     @pytest.mark.asyncio
@@ -161,6 +175,7 @@ class TestSupervisorRun:
 # Error handling and routing
 # ---------------------------------------------------------------------------
 
+
 class TestSupervisorErrorHandling:
     @pytest.mark.asyncio
     async def test_handles_empty_symbol(self, supervisor: Supervisor) -> None:
@@ -203,6 +218,7 @@ class TestSupervisorErrorHandling:
 # Mocked success path
 # ---------------------------------------------------------------------------
 
+
 class TestSupervisorWithMockedRouter:
     """Test the supervisor with a mocked ModelRouter that returns success."""
 
@@ -212,19 +228,22 @@ class TestSupervisorWithMockedRouter:
 
         async def mock_execute(**kwargs: dict) -> object:  # type: ignore[misc]
             from agents.router import RouterResult
+
             r = RouterResult()
             r.success = True
             # Return a fake response with valid JSON content for any schema
             r.response = {
-                "choices": [{
-                    "message": {
-                        "content": (
-                            '{"confidence": 85.0, "direction": "long", '
-                            '"indicators": {"rsi": 55}, '
-                            '"rationale": "Analysis complete"}'
-                        ),
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"confidence": 85.0, "direction": "long", '
+                                '"indicators": {"rsi": 55}, '
+                                '"rationale": "Analysis complete"}'
+                            ),
+                        }
                     }
-                }],
+                ],
                 "model": "test-model",
                 "usage": {"total_tokens": 100},
             }
@@ -308,11 +327,13 @@ class TestSupervisorLogging:
 # Supervisor routing logic
 # ---------------------------------------------------------------------------
 
+
 class TestSupervisorRouting:
     """Test the conditional routing in isolation."""
 
     def test_consensus_approved_routes_to_risk(self) -> None:
         from agents.supervisor import _route_from_consensus
+
         state = AgentState(
             symbol="BTC-USD",
             consensus=ConsensusOutput(
@@ -325,6 +346,7 @@ class TestSupervisorRouting:
 
     def test_consensus_rejected_routes_to_journal(self) -> None:
         from agents.supervisor import _route_from_consensus
+
         state = AgentState(
             symbol="BTC-USD",
             consensus=ConsensusOutput(
@@ -338,11 +360,13 @@ class TestSupervisorRouting:
     def test_consensus_none_routes_to_journal(self) -> None:
         """If consensus is None (agent failed), route to journal."""
         from agents.supervisor import _route_from_consensus
+
         state = AgentState(symbol="BTC-USD")
         assert _route_from_consensus(state) == "journal"
 
     def test_risk_approved_routes_to_execution(self) -> None:
         from agents.supervisor import _route_from_risk
+
         state = AgentState(
             symbol="BTC-USD",
             risk=RiskOutput(
@@ -355,6 +379,7 @@ class TestSupervisorRouting:
 
     def test_risk_rejected_routes_to_journal(self) -> None:
         from agents.supervisor import _route_from_risk
+
         state = AgentState(
             symbol="BTC-USD",
             risk=RiskOutput(

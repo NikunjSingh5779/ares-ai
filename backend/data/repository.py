@@ -19,8 +19,12 @@ class MarketDataRepository:
     """
 
     INSERT_SQL = text("""
-        INSERT INTO market_data (symbol, source, interval, timestamp, open, high, low, close, volume, vwap, trades_count)
-        VALUES (:symbol, :source, :interval, :timestamp, :open, :high, :low, :close, :volume, :vwap, :trades_count)
+        INSERT INTO market_data (
+            symbol, source, interval, timestamp, open, high, low, close, volume, vwap, trades_count
+        )
+        VALUES (
+            :symbol, :source, :interval, :timestamp, :open, :high, :low, :close, :volume, :vwap, :trades_count
+        )
         ON CONFLICT (symbol, source, interval, timestamp)
         DO UPDATE SET
             open = EXCLUDED.open,
@@ -104,9 +108,7 @@ class MarketDataRepository:
                 f"Invalid interval: {p['interval']}"
             )
             # Ensure valid source
-            assert p["source"] in ("yahoo", "coingecko", "binance"), (
-                f"Invalid source: {p['source']}"
-            )
+            assert p["source"] in ("yahoo", "coingecko", "binance"), f"Invalid source: {p['source']}"
 
         await session.execute(self.INSERT_SQL, params)
         return len(candles)

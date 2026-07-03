@@ -63,9 +63,7 @@ SYMBOL_TO_COINGECKO_ID: dict[str, str] = {
 }
 
 # Reverse mapping
-COINGECKO_ID_TO_SYMBOL: dict[str, str] = {
-    v: k for k, v in SYMBOL_TO_COINGECKO_ID.items()
-}
+COINGECKO_ID_TO_SYMBOL: dict[str, str] = {v: k for k, v in SYMBOL_TO_COINGECKO_ID.items()}
 
 
 class CoinGeckoSource(BaseDataSource):

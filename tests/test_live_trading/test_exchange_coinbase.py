@@ -21,41 +21,47 @@ def mock_ccxt_exchange() -> MagicMock:
     """Mock ccxt.coinbase exchange instance."""
     exchange = MagicMock()
     exchange.load_markets = AsyncMock()
-    exchange.fetch_balance = AsyncMock(
-        return_value={"free": {"BTC": 0.5}, "total": {"BTC": 1.0}, "used": {"BTC": 0.5}}
+    exchange.fetch_balance = AsyncMock(return_value={"free": {"BTC": 0.5}, "total": {"BTC": 1.0}, "used": {"BTC": 0.5}})
+    exchange.create_order = AsyncMock(
+        return_value={
+            "id": "coinbase-order-123",
+            "amount": 0.5,
+            "price": 50000.0,
+            "filled": 0.5,
+            "remaining": 0.0,
+            "status": "closed",
+        }
     )
-    exchange.create_order = AsyncMock(return_value={
-        "id": "coinbase-order-123",
-        "amount": 0.5,
-        "price": 50000.0,
-        "filled": 0.5,
-        "remaining": 0.0,
-        "status": "closed",
-    })
     exchange.cancel_order = AsyncMock(return_value={"status": "canceled"})
-    exchange.fetch_order = AsyncMock(return_value={
-        "id": "coinbase-order-123",
-        "side": "buy",
-        "type": "market",
-        "amount": 0.5,
-        "price": 50000.0,
-        "filled": 0.5,
-        "remaining": 0.0,
-        "status": "closed",
-    })
-    exchange.fetch_ticker = AsyncMock(return_value={
-        "symbol": "BTC/USD",
-        "last": 50000.0,
-        "bid": 49900.0,
-        "ask": 50100.0,
-        "baseVolume": 1000.0,
-        "high": 51000.0,
-        "low": 49000.0,
-        "percentage": 2.5,
-    })
-    exchange.fetch_ohlcv = AsyncMock(return_value=[
-        [1700000000000, 50000.0, 51000.0, 49000.0, 50500.0, 1000.0],
-    ])
+    exchange.fetch_order = AsyncMock(
+        return_value={
+            "id": "coinbase-order-123",
+            "side": "buy",
+            "type": "market",
+            "amount": 0.5,
+            "price": 50000.0,
+            "filled": 0.5,
+            "remaining": 0.0,
+            "status": "closed",
+        }
+    )
+    exchange.fetch_ticker = AsyncMock(
+        return_value={
+            "symbol": "BTC/USD",
+            "last": 50000.0,
+            "bid": 49900.0,
+            "ask": 50100.0,
+            "baseVolume": 1000.0,
+            "high": 51000.0,
+            "low": 49000.0,
+            "percentage": 2.5,
+        }
+    )
+    exchange.fetch_ohlcv = AsyncMock(
+        return_value=[
+            [1700000000000, 50000.0, 51000.0, 49000.0, 50500.0, 1000.0],
+        ]
+    )
     return exchange
 
 

@@ -46,14 +46,20 @@ def test_all_agents_have_models() -> None:
     data = yaml.safe_load(MODELS_YAML_PATH.read_text())
     agents = data["agents"]
     required_agents = [
-        "supervisor", "coding", "market_analyst", "quant", "risk",
-        "news", "reflection", "memory", "vision", "fast",
+        "supervisor",
+        "coding",
+        "market_analyst",
+        "quant",
+        "risk",
+        "news",
+        "reflection",
+        "memory",
+        "vision",
+        "fast",
     ]
     for agent_name in required_agents:
         assert agent_name in agents, f"Missing agent: {agent_name}"
-        assert agents[agent_name]["primary"], (
-            f"{agent_name} agent missing primary model"
-        )
+        assert agents[agent_name]["primary"], f"{agent_name} agent missing primary model"
 
 
 def test_vision_agent_fallback_count() -> None:
@@ -66,8 +72,7 @@ def test_vision_agent_fallback_count() -> None:
     # VL model is down, it is intentional that it degrades gracefully (skips)
     # without trying an incompatible text-only model.
     assert len(fallbacks) == 0, (
-        "Vision agent should have exactly 0 fallbacks intentionally configured. "
-        f"Got: {fallbacks}"
+        f"Vision agent should have exactly 0 fallbacks intentionally configured. Got: {fallbacks}"
     )
 
 

@@ -20,6 +20,7 @@ from live_trading.exchange.base import (
 
 if typing.TYPE_CHECKING:
     import ccxt.async_support as ccxt
+
     HAS_CCXT = True
 else:
     try:
@@ -28,8 +29,10 @@ else:
         HAS_CCXT = True
     except ImportError:  # pragma: no cover
         HAS_CCXT = False
+
         class _Dummy:
             pass
+
         ccxt = _Dummy()
         ccxt.AuthenticationError = Exception
         ccxt.NetworkError = Exception
@@ -98,25 +101,17 @@ class BinanceConnector(ExchangeConnector):
                 await self._client.load_markets()
                 balance = await self._client.fetch_balance()
                 if balance.get("free") is None:
-                    raise ExchangeConnectionError(
-                        "Binance authentication failed — check API key and secret"
-                    )
+                    raise ExchangeConnectionError("Binance authentication failed — check API key and secret")
 
             self._connected = True
             return True
 
         except ccxt.AuthenticationError as exc:
-            raise ExchangeConnectionError(
-                f"Binance authentication failed: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Binance authentication failed: {exc}") from exc
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Binance network error: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Binance network error: {exc}") from exc
         except Exception as exc:
-            raise ExchangeConnectionError(
-                f"Binance connection failed: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Binance connection failed: {exc}") from exc
 
     async def disconnect(self) -> None:
         self._client = None
@@ -136,9 +131,7 @@ class BinanceConnector(ExchangeConnector):
                 used=raw.get("used", {}),
             )
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Failed to fetch balance: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Failed to fetch balance: {exc}") from exc
 
     async def create_order(
         self,
@@ -206,9 +199,7 @@ class BinanceConnector(ExchangeConnector):
             result = await self._client.cancel_order(order_id, ccxt_symbol)  # type: ignore[union-attr]
             return result.get("status", "canceled") == "canceled"
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Failed to cancel order {order_id}: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Failed to cancel order {order_id}: {exc}") from exc
 
     async def cancel_all_orders(self, symbol: str) -> bool:
         self._require_connected()
@@ -217,9 +208,7 @@ class BinanceConnector(ExchangeConnector):
             await self._client.cancel_all_orders(ccxt_symbol)  # type: ignore[union-attr]
             return True
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Failed to cancel all orders for {symbol}: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Failed to cancel all orders for {symbol}: {exc}") from exc
 
     async def get_order_status(self, order_id: str, symbol: str) -> ExchangeOrder:
         self._require_connected()
@@ -227,9 +216,7 @@ class BinanceConnector(ExchangeConnector):
         try:
             raw = await self._client.fetch_order(order_id, ccxt_symbol)  # type: ignore[union-attr]
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Failed to fetch order {order_id}: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Failed to fetch order {order_id}: {exc}") from exc
 
         return ExchangeOrder(
             id=str(raw.get("id", order_id)),
@@ -260,9 +247,7 @@ class BinanceConnector(ExchangeConnector):
                 "change_pct": float(ticker.get("percentage", 0)),
             }
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Failed to fetch ticker for {symbol}: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Failed to fetch ticker for {symbol}: {exc}") from exc
 
     async def fetch_ohlcv(
         self,
@@ -277,9 +262,7 @@ class BinanceConnector(ExchangeConnector):
                 ccxt_symbol, timeframe=timeframe, limit=limit
             )
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Failed to fetch OHLCV for {symbol}: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Failed to fetch OHLCV for {symbol}: {exc}") from exc
 
     # ── Internal helpers ───────────────────────────────────────────
 

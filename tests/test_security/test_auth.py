@@ -1,4 +1,5 @@
 """Tests for auth dependency hardening."""
+
 from __future__ import annotations
 
 from fastapi import FastAPI

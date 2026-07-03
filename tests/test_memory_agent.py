@@ -9,9 +9,7 @@ class TestMemoryAgent:
     async def test_output_structure(self) -> None:
         """Output should contain all MemoryOutput fields."""
         agent = MemoryAgent()
-        result = await agent.process(
-            MemoryInput(symbol="BTC-USD", request="Analyze")
-        )
+        result = await agent.process(MemoryInput(symbol="BTC-USD", request="Analyze"))
         assert "relevant_memories" in result
         assert "consolidated" in result
         assert "rationale" in result
@@ -19,9 +17,7 @@ class TestMemoryAgent:
     async def test_consolidated_flag(self) -> None:
         """Consolidated should be True after processing."""
         agent = MemoryAgent()
-        result = await agent.process(
-            MemoryInput(symbol="BTC-USD", request="test")
-        )
+        result = await agent.process(MemoryInput(symbol="BTC-USD", request="test"))
         assert result["consolidated"] is True
 
     async def test_memories_from_executed_trade(self) -> None:

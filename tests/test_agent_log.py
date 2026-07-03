@@ -1,4 +1,5 @@
 """Tests for agent logger."""
+
 from __future__ import annotations
 
 import json
@@ -50,7 +51,9 @@ class MockAgentLogger:
     def to_list(self) -> list[dict[str, Any]]:
         return list(self._logs)
 
+
 agents.log.AgentLogger = MockAgentLogger  # type: ignore
+
 
 class TestAgentLogger:
     @pytest.mark.asyncio

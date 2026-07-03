@@ -27,6 +27,7 @@ from backtesting.engine import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_candle(
     i: int,
     close: float = 100.0,
@@ -77,6 +78,7 @@ def _make_signal(
 # _map_signals_to_indices
 # ---------------------------------------------------------------------------
 
+
 class TestMapSignalsToIndices:
     def test_empty_signals(self):
         candles = _make_candles(10)
@@ -122,6 +124,7 @@ class TestMapSignalsToIndices:
 # _compute_max_drawdown
 # ---------------------------------------------------------------------------
 
+
 class TestComputeMaxDrawdown:
     def test_empty_curve(self):
         assert _compute_max_drawdown([]) == 0.0
@@ -166,6 +169,7 @@ class TestComputeMaxDrawdown:
 # _compute_metrics
 # ---------------------------------------------------------------------------
 
+
 class TestComputeMetrics:
     @staticmethod
     def _make_trade(
@@ -174,6 +178,7 @@ class TestComputeMetrics:
         side: str = "long",
     ):
         from backtesting.engine import SimulatedTrade
+
         return SimulatedTrade(
             symbol="BTC-USD",
             side=side,  # type: ignore[arg-type]
@@ -232,6 +237,7 @@ class TestComputeMetrics:
         pnl_pcts = [0.1, -0.05, 0.15, 0.05, -0.1]
         import math
         import statistics
+
         mean_ret = statistics.mean(pnl_pcts)
         std_ret = statistics.stdev(pnl_pcts)
         expected = mean_ret / std_ret * math.sqrt(TRADING_DAYS_PER_YEAR)
@@ -255,6 +261,7 @@ class TestComputeMetrics:
         # Downside returns: [-0.05, -0.1]
         import math
         import statistics
+
         pnl_pcts = [0.1, -0.05, 0.15, -0.1, 0.05]
         mean_ret = statistics.mean(pnl_pcts)
         downside = [-0.05, -0.1]
@@ -323,6 +330,7 @@ class TestComputeMetrics:
 # BacktestEngine — trade simulation
 # ---------------------------------------------------------------------------
 
+
 class TestBacktestEngine:
     def test_empty_candles(self):
         engine = BacktestEngine()
@@ -349,9 +357,13 @@ class TestBacktestEngine:
         candles = _make_candles(10, start_price=100.0, step=1.0)
         signal = _make_signal("long", 0)
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+            )
+        )
 
         assert len(result.trades) == 1
         trade = result.trades[0]
@@ -365,9 +377,13 @@ class TestBacktestEngine:
         candles = _make_candles(10, start_price=100.0, step=-1.0)  # declining
         signal = _make_signal("short", 0)
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+            )
+        )
 
         assert len(result.trades) == 1
         assert result.trades[0]["side"] == "short"
@@ -380,9 +396,13 @@ class TestBacktestEngine:
         sig1 = _make_signal("long", 0)
         sig2 = _make_signal("short", 10)  # close long, open short
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[sig1, sig2],
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[sig1, sig2],
+            )
+        )
 
         assert len(result.trades) == 2
         assert result.trades[0]["side"] == "long"
@@ -396,9 +416,13 @@ class TestBacktestEngine:
         sig1 = _make_signal("long", 0)
         sig2 = _make_signal("long", 2)  # same-day signal, ignored
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[sig1, sig2],
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[sig1, sig2],
+            )
+        )
 
         assert len(result.trades) == 1  # only one trade
 
@@ -407,9 +431,13 @@ class TestBacktestEngine:
         candles = _make_candles(10, start_price=100.0, step=1.0)
         signal = _make_signal("long", 0)
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+            )
+        )
 
         # equity curve length should equal number of candles processed
         assert len(result.equity_curve) == len(candles)
@@ -418,18 +446,26 @@ class TestBacktestEngine:
         engine = BacktestEngine()
         candles = _make_candles(10)
         signals = [_make_signal("long", 0), _make_signal("short", 5)]
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=signals,
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=signals,
+            )
+        )
         assert result.signals_generated == 2
 
     def test_start_end_dates(self):
         engine = BacktestEngine()
         candles = _make_candles(10)
         signal = _make_signal("long", 0)
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+            )
+        )
         assert result.start_date is not None
         assert result.end_date is not None
 
@@ -437,6 +473,7 @@ class TestBacktestEngine:
 # ---------------------------------------------------------------------------
 # Stop loss and take profit
 # ---------------------------------------------------------------------------
+
 
 class TestStopLossTakeProfit:
     def test_stop_loss_hit_long(self):
@@ -448,9 +485,13 @@ class TestStopLossTakeProfit:
         candles[3] = _make_candle(3, close=90.0)
         signal = _make_signal("long", 0, stop_loss=95.0)
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+            )
+        )
 
         assert len(result.trades) == 1
         if result.trades:
@@ -462,9 +503,13 @@ class TestStopLossTakeProfit:
         candles = _make_candles(10, start_price=100.0, step=5.0)  # strong uptrend
         signal = _make_signal("long", 0, take_profit=110.0)
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+            )
+        )
 
         assert len(result.trades) == 1
         if result.trades:
@@ -478,9 +523,13 @@ class TestStopLossTakeProfit:
         candles[2] = _make_candle(2, close=110.0)
         signal = _make_signal("short", 0, stop_loss=105.0)
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+            )
+        )
 
         assert len(result.trades) == 1
         if result.trades:
@@ -492,9 +541,13 @@ class TestStopLossTakeProfit:
         candles = _make_candles(10, start_price=100.0, step=-3.0)  # downtrend
         signal = _make_signal("short", 0, take_profit=95.0)
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+            )
+        )
 
         assert len(result.trades) == 1
         if result.trades:
@@ -505,6 +558,7 @@ class TestStopLossTakeProfit:
 # Commission and slippage
 # ---------------------------------------------------------------------------
 
+
 class TestCommissionSlippage:
     def test_commission_deducted(self):
         """Commission should reduce PnL."""
@@ -514,14 +568,22 @@ class TestCommissionSlippage:
         sig_no_comm = _make_signal("long", 0)
         sig_with_comm = _make_signal("long", 0)
 
-        result_no_comm = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[sig_no_comm],
-            commission_pct=0.0,
-        ))
-        result_with_comm = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[sig_with_comm],
-            commission_pct=0.01,
-        ))
+        result_no_comm = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[sig_no_comm],
+                commission_pct=0.0,
+            )
+        )
+        result_with_comm = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[sig_with_comm],
+                commission_pct=0.01,
+            )
+        )
 
         pnl_no_comm = result_no_comm.trades[0]["pnl"]
         pnl_with_comm = result_with_comm.trades[0]["pnl"]
@@ -533,11 +595,15 @@ class TestCommissionSlippage:
         candles = _make_candles(5, start_price=100.0, step=0.0)
         signal = _make_signal("long", 0, entry_price=100.0)
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-            slippage_pct=0.01,
-            commission_pct=0.0,
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+                slippage_pct=0.01,
+                commission_pct=0.0,
+            )
+        )
 
         # Entry should be 100 * 1.01 = 101 (slippage adds for long)
         assert result.trades[0]["entry_price"] == pytest.approx(101.0, rel=1e-3)
@@ -548,11 +614,15 @@ class TestCommissionSlippage:
         candles = _make_candles(5, start_price=100.0, step=0.0)
         signal = _make_signal("short", 0, entry_price=100.0)
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-            slippage_pct=0.01,
-            commission_pct=0.0,
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+                slippage_pct=0.01,
+                commission_pct=0.0,
+            )
+        )
 
         # Entry should be 100 * 0.99 = 99 (slippage subtracts for short)
         assert result.trades[0]["entry_price"] == pytest.approx(99.0, rel=1e-3)
@@ -562,6 +632,7 @@ class TestCommissionSlippage:
 # Edge cases
 # ---------------------------------------------------------------------------
 
+
 class TestEdgeCases:
     def test_min_capital_floor(self):
         """Zero initial capital should be clamped to MIN_CAPITAL."""
@@ -569,10 +640,14 @@ class TestEdgeCases:
         candles = _make_candles(5)
         signal = _make_signal("long", 0)
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-            initial_capital=0.0,
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+                initial_capital=0.0,
+            )
+        )
 
         assert result.metrics["initial_capital"] == MIN_CAPITAL
 
@@ -582,10 +657,14 @@ class TestEdgeCases:
         candles = _make_candles(5)
         signal = _make_signal("long", 0)
 
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-            initial_capital=-5000.0,
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+                initial_capital=-5000.0,
+            )
+        )
 
         assert result.metrics["initial_capital"] == MIN_CAPITAL
 
@@ -593,10 +672,12 @@ class TestEdgeCases:
         """Engine should accept a raw dict as input."""
         engine = BacktestEngine()
         candles = _make_candles(3)
-        result = engine.run({
-            "symbol": "BTC-USD",
-            "candles": candles,
-        })
+        result = engine.run(
+            {
+                "symbol": "BTC-USD",
+                "candles": candles,
+            }
+        )
         assert isinstance(result, BacktestResult)
         assert result.symbol == "BTC-USD"
 
@@ -605,9 +686,13 @@ class TestEdgeCases:
         candles = _make_candles(10)
         signal = _make_signal("long", 0)
         engine = BacktestEngine()
-        result = engine.run(BacktestInput(
-            symbol="BTC-USD", candles=candles, signals=[signal],
-        ))
+        result = engine.run(
+            BacktestInput(
+                symbol="BTC-USD",
+                candles=candles,
+                signals=[signal],
+            )
+        )
 
         assert result.symbol == "BTC-USD"
         assert "sharpe_ratio" in result.metrics

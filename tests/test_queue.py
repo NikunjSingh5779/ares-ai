@@ -1,4 +1,5 @@
 """Tests for per-model request queue (rate-limit compliance)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -52,6 +53,7 @@ class TestModelRequestQueue:
 
         # Add two entries with manual timestamps in the past
         import time
+
         past = time.monotonic() - 120  # 120 seconds ago
         queue._slots = [past, past]
 

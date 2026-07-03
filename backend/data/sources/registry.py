@@ -24,10 +24,7 @@ class SourceRegistry:
     def get(self, name: str) -> BaseDataSource:
         """Get a registered source by name."""
         if name not in self._sources:
-            raise KeyError(
-                f"Unknown data source '{name}'. "
-                f"Available: {list(self._sources.keys())}"
-            )
+            raise KeyError(f"Unknown data source '{name}'. Available: {list(self._sources.keys())}")
         return self._sources[name]
 
     def list_sources(self) -> list[str]:

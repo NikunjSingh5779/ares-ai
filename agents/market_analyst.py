@@ -28,6 +28,7 @@ from backend.data.models import MarketDataRequest, OHLCVData
 # Input schema
 # ---------------------------------------------------------------------------
 
+
 class MarketAnalystInput(BaseModel):
     """Input for the Market Analyst Agent.
 
@@ -106,7 +107,9 @@ def build_analysis_prompt(
         ind_lines.append(f"RSI(14): {indicators['rsi_14']:.1f}")
     if indicators.get("macd", {}).get("macd") is not None:
         macd = indicators["macd"]
-        ind_lines.append(f"MACD: {macd['macd']} / Signal: {macd.get('signal', 'N/A')} / Histogram: {macd.get('histogram', 'N/A')}")
+        ind_lines.append(
+            f"MACD: {macd['macd']} / Signal: {macd.get('signal', 'N/A')} / Histogram: {macd.get('histogram', 'N/A')}"
+        )
     if indicators.get("bollinger_bands", {}).get("middle") is not None:
         bb = indicators["bollinger_bands"]
         ind_lines.append(f"Bollinger Bands: Mid={bb['middle']:.2f} Upper={bb['upper']:.2f} Lower={bb['lower']:.2f}")
@@ -117,7 +120,8 @@ def build_analysis_prompt(
 
     user_content = f"""Symbol: {symbol}
 Interval: Daily
-Date Range: {recent_candles[0].timestamp.strftime('%Y-%m-%d') if recent_candles else 'N/A'} to {recent_candles[-1].timestamp.strftime('%Y-%m-%d') if recent_candles else 'N/A'}
+Date Range: {recent_candles[0].timestamp.strftime("%Y-%m-%d") if recent_candles else "N/A"} to \
+{recent_candles[-1].timestamp.strftime("%Y-%m-%d") if recent_candles else "N/A"}
 
 --- Recent Price Data ---
 {price_summary}
@@ -136,6 +140,7 @@ Analyze the above and return your trading signal as valid JSON matching the spec
 # ---------------------------------------------------------------------------
 # Rule-based analysis (degraded mode)
 # ---------------------------------------------------------------------------
+
 
 def _rule_based_analysis(
     symbol: str,
@@ -259,6 +264,7 @@ def _volume_ratio(indicators: dict[str, Any]) -> float | None:
 # Response parser
 # ---------------------------------------------------------------------------
 
+
 def _parse_llm_response(
     response_text: str | None,
     fallback_result: dict[str, Any],
@@ -313,6 +319,7 @@ def _parse_llm_response(
 # ---------------------------------------------------------------------------
 # MarketAnalystAgent
 # ---------------------------------------------------------------------------
+
 
 class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
     """Market analysis agent combining technical indicators with LLM analysis.

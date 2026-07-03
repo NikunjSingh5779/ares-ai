@@ -42,8 +42,7 @@ class ModelRequestQueue:
         """
         if self._pending > self.max_queued:
             raise RuntimeError(
-                f"Queue full for model '{self.model_id}': "
-                f"{self._pending} pending > {self.max_queued} max"
+                f"Queue full for model '{self.model_id}': {self._pending} pending > {self.max_queued} max"
             )
 
         self._pending += 1

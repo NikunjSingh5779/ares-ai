@@ -18,26 +18,30 @@ def mock_paper_engine():
         "accepted": True,
         "position_id": "paper_pos_1",
         "closed_trade": None,
-        "reversal": False
+        "reversal": False,
     }
     return engine
+
 
 @pytest.fixture
 def mock_live_exchange():
     exchange = MagicMock()
-    exchange.create_order = AsyncMock(return_value=ExchangeOrder(
-        id="live_order_1",
-        symbol="BTC-USD",
-        side="buy",
-        type="market",
-        quantity=1.0,
-        price=50000.0,
-        status="open",
-        filled=0.0,
-        remaining=1.0,
-        raw={}
-    ))
+    exchange.create_order = AsyncMock(
+        return_value=ExchangeOrder(
+            id="live_order_1",
+            symbol="BTC-USD",
+            side="buy",
+            type="market",
+            quantity=1.0,
+            price=50000.0,
+            status="open",
+            filled=0.0,
+            remaining=1.0,
+            raw={},
+        )
+    )
     return exchange
+
 
 @pytest.fixture
 def mock_live_engine(mock_live_exchange):
@@ -46,25 +50,29 @@ def mock_live_engine(mock_live_exchange):
     engine.is_connected = True
     return engine
 
+
 @pytest.fixture
 def execution_input():
     return ExecutionInput(
         symbol="BTC-USD",
-        candles=[OHLCVData(
-            source="yahoo",
-            symbol="BTC-USD",
-            interval="1m",
-            timestamp=datetime.now(),
-            open="50000",
-            high="50100",
-            low="49900",
-            close="50000",
-            volume="10"
-        )],
+        candles=[
+            OHLCVData(
+                source="yahoo",
+                symbol="BTC-USD",
+                interval="1m",
+                timestamp=datetime.now(),
+                open="50000",
+                high="50100",
+                low="49900",
+                close="50000",
+                volume="10",
+            )
+        ],
         portfolio_value=100000.0,
         market_analyst_output={"direction": "long", "confidence": 90, "strategy_name": "test_strat"},
-        risk_output={"approved": True, "stop_loss": 49000, "max_position_size": 1.0}
+        risk_output={"approved": True, "stop_loss": 49000, "max_position_size": 1.0},
     )
+
 
 @pytest.mark.asyncio
 async def test_routes_to_paper_when_mode_is_not_auto(mock_paper_engine, mock_live_engine, execution_input):
@@ -78,8 +86,11 @@ async def test_routes_to_paper_when_mode_is_not_auto(mock_paper_engine, mock_liv
     mock_paper_engine.execute_signal.assert_called_once()
     mock_live_engine.exchange.create_order.assert_not_called()
 
+
 @pytest.mark.asyncio
-async def test_routes_to_paper_when_mode_auto_but_promotion_gate_failed(mock_paper_engine, mock_live_engine, execution_input):
+async def test_routes_to_paper_when_mode_auto_but_promotion_gate_failed(
+    mock_paper_engine, mock_live_engine, execution_input
+):
     mock_live_engine.mode = TradingMode.AUTO
 
     # Mock paper_record as property returning dict
@@ -93,8 +104,11 @@ async def test_routes_to_paper_when_mode_auto_but_promotion_gate_failed(mock_pap
     mock_paper_engine.execute_signal.assert_called_once()
     mock_live_engine.exchange.create_order.assert_not_called()
 
+
 @pytest.mark.asyncio
-async def test_routes_to_live_when_mode_auto_and_promotion_gate_passed(mock_paper_engine, mock_live_engine, execution_input):
+async def test_routes_to_live_when_mode_auto_and_promotion_gate_passed(
+    mock_paper_engine, mock_live_engine, execution_input
+):
     mock_live_engine.mode = TradingMode.AUTO
     mock_live_engine.paper_record = {"promotion": {"passed": True}}
 
@@ -104,9 +118,6 @@ async def test_routes_to_live_when_mode_auto_and_promotion_gate_passed(mock_pape
     assert result.executed is True
     assert "LIVE EXECUTED" in result.rationale
     mock_live_engine.exchange.create_order.assert_called_once_with(
-        symbol="BTC-USD",
-        side="buy",
-        quantity=1.0,
-        order_type="market"
+        symbol="BTC-USD", side="buy", quantity=1.0, order_type="market"
     )
     mock_paper_engine.execute_signal.assert_not_called()

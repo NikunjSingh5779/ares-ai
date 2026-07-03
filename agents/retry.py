@@ -38,7 +38,7 @@ class RetryConfig:
 
         delay = min(base * 2^attempt, max_delay) + jitter
         """
-        exponential = min(self.base_delay * (2 ** attempt), self.max_delay)
+        exponential = min(self.base_delay * (2**attempt), self.max_delay)
         jitter = random.uniform(0, exponential * self.jitter_factor)
         return exponential + jitter
 
@@ -128,8 +128,7 @@ async def with_retry(
         if breaker is not None and not breaker.check():
             result.success = False
             result.error = ModelUnavailableError(
-                f"Circuit breaker OPEN for model. "
-                f"Consecutive failures: {breaker.failure_count}"
+                f"Circuit breaker OPEN for model. Consecutive failures: {breaker.failure_count}"
             )
             result.last_error_type = "circuit_breaker_open"
             return result

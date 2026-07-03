@@ -12,15 +12,13 @@ def mock_exchange():
     exchange.cancel_all_orders = AsyncMock(return_value=True)
     return exchange
 
+
 @pytest.fixture
 def engine(mock_exchange):
     from live_trading.safety import KillSwitch, ModeManager, PromotionGate
 
     engine = LiveTradingEngine(
-        exchange=mock_exchange,
-        kill_switch=KillSwitch(),
-        mode_manager=ModeManager(),
-        promotion_gate=PromotionGate()
+        exchange=mock_exchange, kill_switch=KillSwitch(), mode_manager=ModeManager(), promotion_gate=PromotionGate()
     )
     # The default max_drawdown_pct in KillSwitch is 15.0 unless overridden
     # The requirement is to test the drawdown evaluation.
@@ -28,6 +26,7 @@ def engine(mock_exchange):
     # Mocking is_connected
     engine._connected = True
     return engine
+
 
 @pytest.mark.asyncio
 async def test_kill_switch_triggers_on_excessive_drawdown(engine, mock_exchange):
@@ -43,6 +42,7 @@ async def test_kill_switch_triggers_on_excessive_drawdown(engine, mock_exchange)
 
     # Assert exchange.cancel_all_orders called exactly once
     mock_exchange.cancel_all_orders.assert_called_once_with("BTC-USD")
+
 
 @pytest.mark.asyncio
 async def test_kill_switch_does_not_trigger_below_threshold(engine, mock_exchange):

@@ -110,13 +110,15 @@ class StrategyImprovementEngine:
         global _reflection_history, _improvement_history
 
         # Store reflection output
-        _reflection_history.append({
-            **reflection_output,
-            "_timestamp": datetime.now(UTC).isoformat(),
-        })
+        _reflection_history.append(
+            {
+                **reflection_output,
+                "_timestamp": datetime.now(UTC).isoformat(),
+            }
+        )
         # Trim history
         if len(_reflection_history) > self.history_size:
-            _reflection_history = _reflection_history[-self.history_size:]
+            _reflection_history = _reflection_history[-self.history_size :]
 
         warnings: list[str] = []
         records: list[ImprovementRecord] = []
@@ -127,10 +129,11 @@ class StrategyImprovementEngine:
         # Check if we have enough data for trend analysis
         if len(_reflection_history) < MIN_RUNS_FOR_ANALYSIS:
             warnings.append(
-                f"Only {len(_reflection_history)}/{MIN_RUNS_FOR_ANALYSIS} runs collected "
-                f"for trend analysis"
+                f"Only {len(_reflection_history)}/{MIN_RUNS_FOR_ANALYSIS} runs collected for trend analysis"
             )
-            return ImprovementRunResult(records=records, metrics=metrics, warnings=warnings, run_timestamp=datetime.now(UTC).isoformat())
+            return ImprovementRunResult(
+                records=records, metrics=metrics, warnings=warnings, run_timestamp=datetime.now(UTC).isoformat()
+            )
 
         # Trend checks
         records.extend(self._check_win_rate_trend(metrics))
@@ -140,7 +143,7 @@ class StrategyImprovementEngine:
 
         # Trim improvement history
         if len(_improvement_history) > self.history_size:
-            _improvement_history = _improvement_history[-self.history_size:]
+            _improvement_history = _improvement_history[-self.history_size :]
 
         return ImprovementRunResult(
             records=records,
@@ -151,7 +154,11 @@ class StrategyImprovementEngine:
 
     def _compute_metrics(self) -> dict[str, float]:
         """Compute aggregate metrics across recent reflection history."""
-        recent = _reflection_history[-MIN_RUNS_FOR_ANALYSIS:] if len(_reflection_history) >= MIN_RUNS_FOR_ANALYSIS else _reflection_history
+        recent = (
+            _reflection_history[-MIN_RUNS_FOR_ANALYSIS:]
+            if len(_reflection_history) >= MIN_RUNS_FOR_ANALYSIS
+            else _reflection_history
+        )
         total = len(recent)
         if total == 0:
             return {
@@ -166,16 +173,12 @@ class StrategyImprovementEngine:
         avg_accuracy = sum(accuracies) / len(accuracies) if accuracies else 0.0
 
         # Win rate: how many evaluations mention "executed" favorably
-        executed_count = sum(
-            1 for r in recent
-            if "Trade executed" in r.get("evaluation", "")
-        )
+        executed_count = sum(1 for r in recent if "Trade executed" in r.get("evaluation", ""))
         win_rate = executed_count / total if total > 0 else 0.0
 
         # Error rate from suggestion overlap
         suggestions_with_errors = sum(
-            1 for r in recent
-            if any("error" in s.lower() for s in r.get("improvement_suggestions", []))
+            1 for r in recent if any("error" in s.lower() for s in r.get("improvement_suggestions", []))
         )
         error_rate = suggestions_with_errors / total if total > 0 else 0.0
 
@@ -191,7 +194,11 @@ class StrategyImprovementEngine:
         records: list[ImprovementRecord] = []
 
         # Compare recent half vs older half of the window
-        recent = _reflection_history[-MIN_RUNS_FOR_ANALYSIS:] if len(_reflection_history) >= MIN_RUNS_FOR_ANALYSIS * 2 else []
+        recent = (
+            _reflection_history[-MIN_RUNS_FOR_ANALYSIS:]
+            if len(_reflection_history) >= MIN_RUNS_FOR_ANALYSIS * 2
+            else []
+        )
         if len(recent) < MIN_RUNS_FOR_ANALYSIS:
             return records
 
@@ -199,13 +206,17 @@ class StrategyImprovementEngine:
         older_half = recent[:mid]
         newer_half = recent[mid:]
 
-        older_rate = sum(
-            1 for r in older_half if "Trade executed" in r.get("evaluation", "")
-        ) / len(older_half) if older_half else 0
+        older_rate = (
+            sum(1 for r in older_half if "Trade executed" in r.get("evaluation", "")) / len(older_half)
+            if older_half
+            else 0
+        )
 
-        newer_rate = sum(
-            1 for r in newer_half if "Trade executed" in r.get("evaluation", "")
-        ) / len(newer_half) if newer_half else 0
+        newer_rate = (
+            sum(1 for r in newer_half if "Trade executed" in r.get("evaluation", "")) / len(newer_half)
+            if newer_half
+            else 0
+        )
 
         decline = older_rate - newer_rate
         if decline > WIN_RATE_DECLINE_THRESHOLD:
@@ -218,7 +229,7 @@ class StrategyImprovementEngine:
                 metric_before=round(older_rate * 100, 2),
                 metric_after=round(newer_rate * 100, 2),
                 rationale=f"Execution rate dropped from {older_rate:.1%} to {newer_rate:.1%}. "
-                          f"Consider reviewing risk thresholds and consensus confidence criteria.",
+                f"Consider reviewing risk thresholds and consensus confidence criteria.",
                 suggested_params={"max_drawdown_pct": 15.0, "min_consensus_confidence": 75.0},
             )
             records.append(record)
@@ -251,7 +262,7 @@ class StrategyImprovementEngine:
                 metric_before=round(older_avg, 2),
                 metric_after=round(newer_avg, 2),
                 rationale=f"Average confidence accuracy dropped from {older_avg:.1f} to {newer_avg:.1f}. "
-                          f"Consider recalibrating Market Analyst and Quant confidence thresholds.",
+                f"Consider recalibrating Market Analyst and Quant confidence thresholds.",
                 suggested_params={"market_analyst_confidence_threshold": 85.0},
             )
             records.append(record)
@@ -270,8 +281,7 @@ class StrategyImprovementEngine:
             # Check if errors are persistent across recent runs
             recent = _reflection_history[-3:] if len(_reflection_history) >= 3 else _reflection_history
             persistent_errors = all(
-                any("error" in s.lower() for s in r.get("improvement_suggestions", []))
-                for r in recent
+                any("error" in s.lower() for s in r.get("improvement_suggestions", [])) for r in recent
             )
             if persistent_errors:
                 record = ImprovementRecord(
@@ -281,7 +291,7 @@ class StrategyImprovementEngine:
                     severity="critical",
                     description="Persistent errors detected across multiple runs",
                     rationale="Errors appear in improvement suggestions across recent runs. "
-                              "Check model availability, API keys, and fallback chain health.",
+                    "Check model availability, API keys, and fallback chain health.",
                     suggested_params={"circuit_breaker_threshold": 2},
                 )
                 records.append(record)
@@ -293,18 +303,14 @@ class StrategyImprovementEngine:
         """Check if the same improvement suggestions keep appearing without resolution."""
         records: list[ImprovementRecord] = []
 
-        current_suggestions = set(
-            s.lower().strip() for s in reflection_output.get("improvement_suggestions", [])
-        )
+        current_suggestions = set(s.lower().strip() for s in reflection_output.get("improvement_suggestions", []))
         if not current_suggestions:
             return records
 
         # Compare with recent past suggestions
         past_suggestions: list[set[str]] = []
         for r in _reflection_history[-5:-1]:  # last 4 runs (excluding current)
-            past_suggestions.append(set(
-                s.lower().strip() for s in r.get("improvement_suggestions", [])
-            ))
+            past_suggestions.append(set(s.lower().strip() for s in r.get("improvement_suggestions", [])))
 
         repeated = current_suggestions
         for ps in past_suggestions:
@@ -318,7 +324,7 @@ class StrategyImprovementEngine:
                 severity="medium",
                 description=f"Repeated suggestions: {', '.join(list(repeated)[:3])}",
                 rationale="Same improvement suggestions recurring across runs without resolution. "
-                          "Consider addressing the root cause or adjusting pipeline configuration.",
+                "Consider addressing the root cause or adjusting pipeline configuration.",
             )
             records.append(record)
             _improvement_history.append(record)

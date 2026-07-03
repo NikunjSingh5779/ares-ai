@@ -1,4 +1,5 @@
 """Tests for MarketAnalystAgent."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -21,18 +22,26 @@ from backend.data.models import OHLCVData
 # Shared test data
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def sample_candles() -> list[OHLCVData]:
     """100 daily candles with a slight uptrend."""
     candles = []
     for i in range(100):
         price = 100.0 + i * 0.5 + (i % 10 - 5) * 0.2
-        candles.append(OHLCVData(
-            symbol="BTC-USD", source="yahoo", interval="1d",
-            timestamp=datetime(2024, 1, 1, tzinfo=UTC).replace(day=min(28, 1 + i)),
-            open=price, high=price * 1.01, low=price * 0.99,
-            close=price, volume=1000.0,
-        ))
+        candles.append(
+            OHLCVData(
+                symbol="BTC-USD",
+                source="yahoo",
+                interval="1d",
+                timestamp=datetime(2024, 1, 1, tzinfo=UTC).replace(day=min(28, 1 + i)),
+                open=price,
+                high=price * 1.01,
+                low=price * 0.99,
+                close=price,
+                volume=1000.0,
+            )
+        )
     return candles
 
 
@@ -45,6 +54,7 @@ def sample_indicators(sample_candles: list[OHLCVData]) -> dict:
 # Prompt Builder Tests
 # ---------------------------------------------------------------------------
 
+
 class TestBuildAnalysisPrompt:
     def test_returns_message_list(self, sample_candles: list[OHLCVData], sample_indicators: dict) -> None:
         messages = build_analysis_prompt("BTC-USD", sample_indicators, sample_candles)
@@ -52,7 +62,9 @@ class TestBuildAnalysisPrompt:
         assert messages[0]["role"] == "system"
         assert messages[1]["role"] == "user"
 
-    def test_system_prompt_contains_critical_instructions(self, sample_candles: list[OHLCVData], sample_indicators: dict) -> None:
+    def test_system_prompt_contains_critical_instructions(
+        self, sample_candles: list[OHLCVData], sample_indicators: dict
+    ) -> None:
         messages = build_analysis_prompt("BTC-USD", sample_indicators, sample_candles)
         system = messages[0]["content"]
         assert "JSON" in system
@@ -84,6 +96,7 @@ class TestBuildAnalysisPrompt:
 # ---------------------------------------------------------------------------
 # Rule-Based Analysis Tests
 # ---------------------------------------------------------------------------
+
 
 class TestRuleBasedAnalysis:
     def test_oversold_rsi_gives_long(self) -> None:
@@ -169,6 +182,7 @@ class TestRuleBasedAnalysis:
 # LLM Response Parser Tests
 # ---------------------------------------------------------------------------
 
+
 class TestParseLLMResponse:
     def test_parses_valid_json(self) -> None:
         response = '{"confidence": 85, "direction": "long", "indicators": {"rsi": 55}, "rationale": "Bullish setup"}'
@@ -186,7 +200,9 @@ class TestParseLLMResponse:
         assert result["confidence"] == 70.0
 
     def test_handles_markdown_without_lang(self) -> None:
-        response = '```\n{"confidence": 60, "direction": "flat", "indicators": {"rsi": 50}, "rationale": "neutral"}\n```'
+        response = (
+            '```\n{"confidence": 60, "direction": "flat", "indicators": {"rsi": 50}, "rationale": "neutral"}\n```'
+        )
         fallback = {"confidence": 0, "direction": "flat", "indicators": {}, "rationale": "fb"}
         result = _parse_llm_response(response, fallback)
         assert result["direction"] == "flat"
@@ -232,6 +248,7 @@ class TestParseLLMResponse:
 # MarketAnalystAgent Integration Tests
 # ---------------------------------------------------------------------------
 
+
 class TestMarketAnalystAgentProcess:
     @pytest.mark.asyncio
     async def test_returns_valid_structure(self, sample_candles: list[OHLCVData]) -> None:
@@ -240,10 +257,12 @@ class TestMarketAnalystAgentProcess:
         router.execute.return_value = RouterResult()
 
         agent = MarketAnalystAgent(router=router)
-        result = await agent.run(MarketAnalystInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-        ))
+        result = await agent.run(
+            MarketAnalystInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+            )
+        )
 
         assert hasattr(result, "confidence")
         assert hasattr(result, "direction")
@@ -273,15 +292,17 @@ class TestMarketAnalystAgentProcess:
         llm_response = RouterResult()
         llm_response.success = True
         llm_response.response = {
-            "choices": [{
-                "message": {
-                    "content": (
-                        '{"confidence": 82.5, "direction": "long", '
-                        '"indicators": {"rsi": 58.2}, '
-                        '"rationale": "Bullish trend with momentum"}'
-                    ),
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"confidence": 82.5, "direction": "long", '
+                            '"indicators": {"rsi": 58.2}, '
+                            '"rationale": "Bullish trend with momentum"}'
+                        ),
+                    }
                 }
-            }],
+            ],
             "model": "test-model",
             "usage": {"total_tokens": 150},
         }
@@ -290,10 +311,12 @@ class TestMarketAnalystAgentProcess:
 
         ctx = AgentContext(model_preferences={"model_chain": ["test-model"]})
         agent = MarketAnalystAgent(router=router, context=ctx)
-        result = await agent.run(MarketAnalystInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-        ))
+        result = await agent.run(
+            MarketAnalystInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+            )
+        )
 
         assert result.confidence == 82.5
         assert result.direction == "long"
@@ -309,10 +332,12 @@ class TestMarketAnalystAgentProcess:
         router.execute.return_value = empty_result
 
         agent = MarketAnalystAgent(router=router)
-        result = await agent.run(MarketAnalystInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-        ))
+        result = await agent.run(
+            MarketAnalystInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+            )
+        )
 
         # Should still produce valid output via rule-based fallback
         assert result.direction in ("long", "short", "flat")
@@ -324,14 +349,24 @@ class TestMarketAnalystAgentProcess:
         """Very few candles should not crash."""
         router = AsyncMock()
         agent = MarketAnalystAgent(router=router)
-        result = await agent.run(MarketAnalystInput(
-            symbol="BTC-USD",
-            candles=[OHLCVData(
-                symbol="BTC-USD", source="yahoo", interval="1d",
-                timestamp=datetime(2024, 1, 1, tzinfo=UTC),
-                open=100, high=101, low=99, close=100, volume=1000,
-            )],
-        ))
+        result = await agent.run(
+            MarketAnalystInput(
+                symbol="BTC-USD",
+                candles=[
+                    OHLCVData(
+                        symbol="BTC-USD",
+                        source="yahoo",
+                        interval="1d",
+                        timestamp=datetime(2024, 1, 1, tzinfo=UTC),
+                        open=100,
+                        high=101,
+                        low=99,
+                        close=100,
+                        volume=1000,
+                    )
+                ],
+            )
+        )
         assert result.direction in ("long", "short", "flat")
 
     @pytest.mark.asyncio
@@ -343,10 +378,12 @@ class TestMarketAnalystAgentProcess:
         router.execute.return_value = RouterResult()
 
         agent = MarketAnalystAgent(router=router)
-        result = await agent.run(MarketAnalystInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-        ))
+        result = await agent.run(
+            MarketAnalystInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+            )
+        )
         # Should complete without error
         assert hasattr(result, "confidence")
 
@@ -354,6 +391,7 @@ class TestMarketAnalystAgentProcess:
 # ---------------------------------------------------------------------------
 # MarketAnalystInput Validation
 # ---------------------------------------------------------------------------
+
 
 class TestMarketAnalystInput:
     def test_valid_input(self) -> None:

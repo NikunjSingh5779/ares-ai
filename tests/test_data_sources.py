@@ -30,9 +30,7 @@ YAHOO_MOCK_RESPONSE = {
                             "volume": [10000, 11000, 12000],
                         }
                     ],
-                    "adjclose": [
-                        {"adjclose": [104.0, 105.0, 106.0]}
-                    ],
+                    "adjclose": [{"adjclose": [104.0, 105.0, 106.0]}],
                 },
             }
         ]
@@ -48,8 +46,7 @@ class TestYahooFinanceSource:
     async def test_fetch_ohlcv(self, source: YahooFinanceSource, httpx_mock: HTTPXMock) -> None:
         httpx_mock.add_response(
             url=httpx.URL(
-                "https://query1.finance.yahoo.com/v8/finance/chart/AAPL"
-                "?interval=1d&includePrePost=false&range=1mo"
+                "https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&includePrePost=false&range=1mo"
             ),
             json=YAHOO_MOCK_RESPONSE,
         )
@@ -65,8 +62,7 @@ class TestYahooFinanceSource:
     async def test_fetch_ohlcv_empty_response(self, source: YahooFinanceSource, httpx_mock: HTTPXMock) -> None:
         httpx_mock.add_response(
             url=httpx.URL(
-                "https://query1.finance.yahoo.com/v8/finance/chart/BADSYM"
-                "?interval=1d&includePrePost=false&range=6mo"
+                "https://query1.finance.yahoo.com/v8/finance/chart/BADSYM?interval=1d&includePrePost=false&range=6mo"
             ),
             json={"chart": {"result": []}},
         )
@@ -99,8 +95,7 @@ class TestYahooFinanceSource:
         }
         httpx_mock.add_response(
             url=httpx.URL(
-                "https://query1.finance.yahoo.com/v8/finance/chart/AAPL"
-                "?interval=1d&includePrePost=false&range=6mo"
+                "https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&includePrePost=false&range=6mo"
             ),
             json=partial_data,
         )
@@ -131,10 +126,7 @@ class TestCoinGeckoSource:
 
     async def test_fetch_ohlcv(self, source: CoinGeckoSource, httpx_mock: HTTPXMock) -> None:
         httpx_mock.add_response(
-            url=httpx.URL(
-                "https://api.coingecko.com/api/v3/coins/bitcoin/ohlc"
-                "?vs_currency=usd&days=90"
-            ),
+            url=httpx.URL("https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=usd&days=90"),
             json=COINGECKO_MOCK_RESPONSE,
         )
 
@@ -203,10 +195,7 @@ class TestBinanceSource:
 
     async def test_fetch_ohlcv(self, source: BinanceSource, httpx_mock: HTTPXMock) -> None:
         httpx_mock.add_response(
-            url=httpx.URL(
-                "https://api.binance.com/api/v3/klines"
-                "?symbol=BTCUSDT&interval=1d&limit=2"
-            ),
+            url=httpx.URL("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=2"),
             json=BINANCE_MOCK_RESPONSE,
         )
 

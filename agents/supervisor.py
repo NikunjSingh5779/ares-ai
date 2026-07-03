@@ -82,6 +82,7 @@ APPROVAL_GATES = {"consensus", "risk"}
 # Node builder helpers
 # ---------------------------------------------------------------------------
 
+
 def _build_agent_messages(
     agent_name: str,
     state: AgentState,
@@ -180,11 +181,13 @@ async def _execute_agent_node(
     schema = AGENT_OUTPUT_SCHEMAS.get(agent_name)
     if schema is None:
         update["pipeline_status"].failed_nodes = update["pipeline_status"].failed_nodes + [agent_name]
-        update["errors"] = state.errors + [{
-            "agent": agent_name,
-            "error": f"No output schema registered for agent '{agent_name}'",
-            "error_type": "schema_error",
-        }]
+        update["errors"] = state.errors + [
+            {
+                "agent": agent_name,
+                "error": f"No output schema registered for agent '{agent_name}'",
+                "error_type": "schema_error",
+            }
+        ]
         return update
 
     # Build messages for this agent
@@ -208,12 +211,14 @@ async def _execute_agent_node(
     # Merge errors
     all_errors = list(state.errors)
     for err in router_result.errors:
-        all_errors.append({
-            "agent": agent_name,
-            "model": err.get("model", ""),
-            "error": err.get("error", ""),
-            "error_type": err.get("error_type", ""),
-        })
+        all_errors.append(
+            {
+                "agent": agent_name,
+                "model": err.get("model", ""),
+                "error": err.get("error", ""),
+                "error_type": err.get("error_type", ""),
+            }
+        )
 
     if router_result.degraded:
         update["degraded"] = True
@@ -236,12 +241,14 @@ async def _execute_agent_node(
 
             return update
         else:
-            all_errors.append({
-                "agent": agent_name,
-                "model": router_result.model_used,
-                "error": parse_error,
-                "error_type": "parse_error",
-            })
+            all_errors.append(
+                {
+                    "agent": agent_name,
+                    "model": router_result.model_used,
+                    "error": parse_error,
+                    "error_type": "parse_error",
+                }
+            )
 
     # Agent failed — if required, mark as degraded
     if agent_name in REQUIRED_AGENTS:
@@ -261,8 +268,10 @@ async def _execute_agent_node(
 # LangGraph node functions
 # ---------------------------------------------------------------------------
 
+
 def _make_node_fn(agent_name: str):
     """Factory: creates a LangGraph node function for an agent."""
+
     async def node_fn(state: AgentState) -> dict[str, Any]:
         context = _get_agent_context(state)
         model_config = context["agent_configs"].get(agent_name)
@@ -272,11 +281,14 @@ def _make_node_fn(agent_name: str):
         if model_config is None:
             return {
                 "pipeline_status": _merge_pipeline_status(state, failed=[agent_name]),
-                "errors": state.errors + [{
-                    "agent": agent_name,
-                    "error": f"No model config for agent '{agent_name}'",
-                    "error_type": "config_error",
-                }],
+                "errors": state.errors
+                + [
+                    {
+                        "agent": agent_name,
+                        "error": f"No model config for agent '{agent_name}'",
+                        "error_type": "config_error",
+                    }
+                ],
             }
 
         # Check for registered agent implementation
@@ -284,10 +296,15 @@ def _make_node_fn(agent_name: str):
             reg = registry.get(agent_name)
             if reg.agent is not None and not reg.agent.__class__.__name__.startswith("Stub"):
                 return await _execute_agent_impl(
-                    agent_name, state, reg.agent, model_config, router,
+                    agent_name,
+                    state,
+                    reg.agent,
+                    model_config,
+                    router,
                 )
 
         return await _execute_agent_node(agent_name, state, router, model_config)
+
     return node_fn
 
 
@@ -322,6 +339,7 @@ def _merge_pipeline_status(
 # Router functions
 # ---------------------------------------------------------------------------
 
+
 def _route_from_supervisor(state: AgentState) -> str:
     """Route from supervisor to the first pipeline agent."""
     return "market_analyst"
@@ -352,7 +370,7 @@ def _route_after_agent(state: AgentState, current: str) -> str:
         return END
 
     # Find the next non-skipped agent
-    for next_agent in pipeline[idx + 1:]:
+    for next_agent in pipeline[idx + 1 :]:
         # Skip vision if it has no fallback and we detect it's unavailable
         # (Handled by the node itself — just route normally)
         return next_agent
@@ -374,7 +392,7 @@ async def _consensus_node_fn(state: AgentState) -> dict[str, Any]:
 
     return {
         "consensus": ConsensusOutput(**result),
-        "pipeline_status": _merge_pipeline_status(state, completed=["consensus"])
+        "pipeline_status": _merge_pipeline_status(state, completed=["consensus"]),
     }
 
 
@@ -394,13 +412,15 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
         # Create synthetic data points from indicator values
         # for pattern detection
         for name, value in indicators.items():
-            candles.append({
-                "open": float(value),
-                "high": float(value) * 1.01,
-                "low": float(value) * 0.99,
-                "close": float(value),
-                "volume": 0,
-            })
+            candles.append(
+                {
+                    "open": float(value),
+                    "high": float(value) * 1.01,
+                    "low": float(value) * 0.99,
+                    "close": float(value),
+                    "volume": 0,
+                }
+            )
 
     agent = VisionAgent()
 
@@ -416,10 +436,12 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
         agent.model_available = True
 
     try:
-        raw_result = await agent.run(VisionInput(
-            symbol=state.symbol,
-            candles=candles,
-        ))
+        raw_result = await agent.run(
+            VisionInput(
+                symbol=state.symbol,
+                candles=candles,
+            )
+        )
 
         # Convert Pydantic FlexibleSchema to dict
         result = raw_result.model_dump() if hasattr(raw_result, "model_dump") else raw_result
@@ -428,7 +450,7 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
         result["available"] = model_available
         return {
             "vision": VisionOutput(**result),
-            "pipeline_status": _merge_pipeline_status(state, completed=["vision"])
+            "pipeline_status": _merge_pipeline_status(state, completed=["vision"]),
         }
     except Exception as e:
         # Vision never blocks — return degraded result on any error
@@ -442,8 +464,9 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
                 fallback_model=fallback_model,
                 rationale=f"Vision analysis unavailable: {e}",
             ),
-            "pipeline_status": _merge_pipeline_status(state, failed=["vision"])
+            "pipeline_status": _merge_pipeline_status(state, failed=["vision"]),
         }
+
 
 class _GraphContext:
     """Holding context injected into the graph at build time."""
@@ -524,15 +547,10 @@ async def _execute_agent_impl(
         agent_class = type(base_agent)
         if agent_name in ("market_analyst", "quant", "risk"):
             agent_instance = agent_class(
-                router=router,
-                ingestor=getattr(base_agent, "ingestor", None),
-                context=agent_ctx
+                router=router, ingestor=getattr(base_agent, "ingestor", None), context=agent_ctx
             )
         elif agent_name == "execution":
-            agent_instance = agent_class(
-                engine=getattr(base_agent, "engine", None),
-                context=agent_ctx
-            )
+            agent_instance = agent_class(engine=getattr(base_agent, "engine", None), context=agent_ctx)
         elif agent_name in ("journal", "reflection", "memory"):
             agent_instance = agent_class(context=agent_ctx)
         else:
@@ -557,11 +575,13 @@ async def _execute_agent_impl(
 
     except Exception as e:
         update["pipeline_status"].failed_nodes = state.pipeline_status.failed_nodes + [agent_name]
-        update["errors"] = state.errors + [{
-            "agent": agent_name,
-            "error": str(e),
-            "error_type": type(e).__name__,
-        }]
+        update["errors"] = state.errors + [
+            {
+                "agent": agent_name,
+                "error": str(e),
+                "error_type": type(e).__name__,
+            }
+        ]
         if agent_name in REQUIRED_AGENTS:
             update["degraded"] = True
         return update
@@ -571,8 +591,10 @@ async def _execute_agent_impl(
 # Node factory: creates all nodes with routing based on pipeline order
 # ---------------------------------------------------------------------------
 
+
 def _build_pipeline_nodes(graph: StateGraph) -> None:
     """Add all pipeline nodes and edges to the graph."""
+
     # Add supervisor node
     async def supervisor_node(state: AgentState) -> dict[str, Any]:
         return _supervisor_entry(state)
@@ -644,6 +666,7 @@ def _supervisor_entry(state: AgentState) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Supervisor class (public API)
 # ---------------------------------------------------------------------------
+
 
 class Supervisor:
     """LangGraph-based pipeline orchestrator.
@@ -757,6 +780,7 @@ class Supervisor:
     def run_sync(self, **kwargs: Any) -> AgentState:
         """Synchronous convenience wrapper for testing."""
         import asyncio
+
         return asyncio.run(self.run(**kwargs))
 
     def get_graph(self) -> Any | None:

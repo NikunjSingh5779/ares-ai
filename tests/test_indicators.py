@@ -1,4 +1,5 @@
 """Tests for technical indicator calculations."""
+
 from __future__ import annotations
 
 from agents.indicators import (
@@ -16,10 +17,16 @@ from agents.indicators import (
 from backend.data.models import OHLCVData
 
 
-def _make_candle(close: float, high: float | None = None, low: float | None = None,
-                 volume: float = 0.0, timestamp: str = "2024-01-01") -> OHLCVData:
+def _make_candle(
+    close: float,
+    high: float | None = None,
+    low: float | None = None,
+    volume: float = 0.0,
+    timestamp: str = "2024-01-01",
+) -> OHLCVData:
     """Helper to create a single OHLCVData for testing."""
     from datetime import UTC, datetime
+
     return OHLCVData(
         symbol="TEST",
         source="yahoo",
@@ -36,22 +43,31 @@ def _make_candle(close: float, high: float | None = None, low: float | None = No
 def _make_candles(prices: list[float], volumes: list[float] | None = None) -> list[OHLCVData]:
     """Helper: create a list of OHLCVData from price list."""
     from datetime import UTC, datetime
+
     start = datetime(2024, 1, 1, tzinfo=UTC)
     candles = []
     for i, price in enumerate(prices):
         vol = volumes[i] if volumes and i < len(volumes) else 1000.0
-        candles.append(OHLCVData(
-            symbol="TEST", source="yahoo", interval="1d",
-            timestamp=start.replace(day=min(1 + i, 28)),
-            open=price, high=price * 1.02, low=price * 0.98,
-            close=price, volume=vol,
-        ))
+        candles.append(
+            OHLCVData(
+                symbol="TEST",
+                source="yahoo",
+                interval="1d",
+                timestamp=start.replace(day=min(1 + i, 28)),
+                open=price,
+                high=price * 1.02,
+                low=price * 0.98,
+                close=price,
+                volume=vol,
+            )
+        )
     return candles
 
 
 # ---------------------------------------------------------------------------
 # SMA Tests
 # ---------------------------------------------------------------------------
+
 
 class TestSMA:
     def test_simple_moving_average(self) -> None:
@@ -89,6 +105,7 @@ class TestSMA:
 # EMA Tests
 # ---------------------------------------------------------------------------
 
+
 class TestEMA:
     def test_ema_calculation(self) -> None:
         """EMA(3) on [10, 12, 11, 13, 14, 15]"""
@@ -121,27 +138,25 @@ class TestEMA:
 # RSI Tests
 # ---------------------------------------------------------------------------
 
+
 class TestRSI:
     def test_rsi_oversold(self) -> None:
         """Steeply declining prices → RSI near 0."""
-        prices = [100.0, 90.0, 81.0, 73.0, 66.0, 60.0, 55.0, 51.0,
-                  48.0, 46.0, 44.0, 43.0, 42.0, 41.0, 40.0]
+        prices = [100.0, 90.0, 81.0, 73.0, 66.0, 60.0, 55.0, 51.0, 48.0, 46.0, 44.0, 43.0, 42.0, 41.0, 40.0]
         rsi = compute_rsi(prices, 14)
         assert rsi is not None
         assert rsi < 30  # oversold
 
     def test_rsi_overbought(self) -> None:
         """Steeply rising prices → RSI near 100."""
-        prices = [10.0, 11.0, 12.1, 13.3, 14.6, 16.0, 17.5, 19.0,
-                  21.0, 23.0, 25.0, 27.0, 29.0, 31.0, 34.0]
+        prices = [10.0, 11.0, 12.1, 13.3, 14.6, 16.0, 17.5, 19.0, 21.0, 23.0, 25.0, 27.0, 29.0, 31.0, 34.0]
         rsi = compute_rsi(prices, 14)
         assert rsi is not None
         assert rsi > 70  # overbought
 
     def test_rsi_neutral(self) -> None:
         """Sideways prices → RSI near 50."""
-        prices = [50.0, 51.0, 49.0, 50.0, 52.0, 48.0, 50.0, 51.0,
-                  49.0, 50.0, 51.0, 49.0, 50.0, 48.0, 52.0]
+        prices = [50.0, 51.0, 49.0, 50.0, 52.0, 48.0, 50.0, 51.0, 49.0, 50.0, 51.0, 49.0, 50.0, 48.0, 52.0]
         rsi = compute_rsi(prices, 14)
         assert rsi is not None
         assert 30 < rsi < 70
@@ -151,16 +166,14 @@ class TestRSI:
 
     def test_rsi_all_gains_all_losses(self) -> None:
         """All gains → RSI = 100."""
-        prices = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0,
-                  18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0]
+        prices = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0]
         rsi = compute_rsi(prices, 14)
         assert rsi is not None
         assert rsi == 100.0
 
     def test_rsi_all_losses(self) -> None:
         """All losses → RSI = 0."""
-        prices = [100.0, 90.0, 81.0, 73.0, 66.0, 60.0, 55.0, 51.0,
-                  48.0, 46.0, 44.0, 43.0, 42.0, 41.0, 40.0]
+        prices = [100.0, 90.0, 81.0, 73.0, 66.0, 60.0, 55.0, 51.0, 48.0, 46.0, 44.0, 43.0, 42.0, 41.0, 40.0]
         rsi = compute_rsi(prices, 14)
         assert rsi is not None
         # Not exactly 0 since declines are decreasing in magnitude,
@@ -174,6 +187,7 @@ class TestRSI:
 # ---------------------------------------------------------------------------
 # MACD Tests
 # ---------------------------------------------------------------------------
+
 
 class TestMACD:
     def test_macd_insufficient_data(self) -> None:
@@ -206,6 +220,7 @@ class TestMACD:
 # ---------------------------------------------------------------------------
 # Bollinger Bands Tests
 # ---------------------------------------------------------------------------
+
 
 class TestBollingerBands:
     def test_bollinger_basics(self) -> None:
@@ -253,10 +268,10 @@ class TestBollingerBands:
 # ATR Tests
 # ---------------------------------------------------------------------------
 
+
 class TestATR:
     def test_atr_basic(self) -> None:
-        candles = _make_candles([100, 102, 101, 103, 104, 105, 106, 107, 108,
-                                 109, 110, 111, 112, 113, 114, 115])
+        candles = _make_candles([100, 102, 101, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115])
         atr = compute_atr(candles, 14)
         assert atr is not None
         assert atr > 0
@@ -272,6 +287,7 @@ class TestATR:
 # ---------------------------------------------------------------------------
 # Support / Resistance Tests
 # ---------------------------------------------------------------------------
+
 
 class TestSupportResistance:
     def test_find_support_levels(self) -> None:
@@ -296,6 +312,7 @@ class TestSupportResistance:
 # ---------------------------------------------------------------------------
 # Composite All Indicators
 # ---------------------------------------------------------------------------
+
 
 class TestAllIndicators:
     def test_compute_all_with_valid_data(self) -> None:

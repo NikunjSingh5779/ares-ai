@@ -133,21 +133,25 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
                 outputs = self.validate_output(outputs.model_dump())
 
             elapsed_ms = int((time.monotonic() - start) * 1000)
-            self.execution_log.update({
-                "completed_at": datetime.now(UTC).isoformat(),
-                "success": True,
-                "latency_ms": elapsed_ms,
-            })
+            self.execution_log.update(
+                {
+                    "completed_at": datetime.now(UTC).isoformat(),
+                    "success": True,
+                    "latency_ms": elapsed_ms,
+                }
+            )
             return outputs
 
         except Exception as e:
             elapsed_ms = int((time.monotonic() - start) * 1000)
-            self.execution_log.update({
-                "completed_at": datetime.now(UTC).isoformat(),
-                "success": False,
-                "error": str(e),
-                "latency_ms": elapsed_ms,
-            })
+            self.execution_log.update(
+                {
+                    "completed_at": datetime.now(UTC).isoformat(),
+                    "success": False,
+                    "error": str(e),
+                    "latency_ms": elapsed_ms,
+                }
+            )
             raise
 
 

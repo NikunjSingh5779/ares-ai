@@ -1,4 +1,5 @@
 """Tests for QuantAgent."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -32,18 +33,26 @@ from backend.data.models import OHLCVData
 # Shared test data
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def sample_candles() -> list[OHLCVData]:
     """100 daily candles with a slight uptrend."""
     candles = []
     for i in range(100):
         price = 100.0 + i * 0.5 + (i % 10 - 5) * 0.2
-        candles.append(OHLCVData(
-            symbol="BTC-USD", source="yahoo", interval="1d",
-            timestamp=datetime(2024, 1, 1, tzinfo=UTC).replace(day=min(28, 1 + i)),
-            open=price, high=price * 1.01, low=price * 0.99,
-            close=price, volume=1000.0,
-        ))
+        candles.append(
+            OHLCVData(
+                symbol="BTC-USD",
+                source="yahoo",
+                interval="1d",
+                timestamp=datetime(2024, 1, 1, tzinfo=UTC).replace(day=min(28, 1 + i)),
+                open=price,
+                high=price * 1.01,
+                low=price * 0.99,
+                close=price,
+                volume=1000.0,
+            )
+        )
     return candles
 
 
@@ -55,6 +64,7 @@ def sample_indicators(sample_candles: list[OHLCVData]) -> dict:
 # ---------------------------------------------------------------------------
 # Prompt Builder Tests
 # ---------------------------------------------------------------------------
+
 
 class TestBuildQuantPrompt:
     def test_returns_message_list(self, sample_candles: list[OHLCVData], sample_indicators: dict) -> None:
@@ -69,7 +79,9 @@ class TestBuildQuantPrompt:
         for strategy in ("momentum", "mean_reversion", "trend_following", "breakout", "neutral"):
             assert strategy in system
 
-    def test_system_prompt_contains_quant_fields(self, sample_candles: list[OHLCVData], sample_indicators: dict) -> None:
+    def test_system_prompt_contains_quant_fields(
+        self, sample_candles: list[OHLCVData], sample_indicators: dict
+    ) -> None:
         messages = build_quant_prompt("BTC-USD", sample_indicators, sample_candles)
         system = messages[0]["content"]
         assert "expected_return" in system
@@ -94,7 +106,9 @@ class TestBuildQuantPrompt:
     def test_includes_market_analyst_context(self, sample_candles: list[OHLCVData], sample_indicators: dict) -> None:
         ma_result = {"direction": "long", "confidence": 80.0, "rationale": "Bullish trend"}
         messages = build_quant_prompt(
-            "BTC-USD", sample_indicators, sample_candles,
+            "BTC-USD",
+            sample_indicators,
+            sample_candles,
             market_analyst_result=ma_result,
         )
         content = messages[1]["content"]
@@ -110,6 +124,7 @@ class TestBuildQuantPrompt:
 # ---------------------------------------------------------------------------
 # Helper Tests
 # ---------------------------------------------------------------------------
+
 
 class TestHelpers:
     def test_atr_ratio_with_valid_data(self) -> None:
@@ -136,6 +151,7 @@ class TestHelpers:
 # ---------------------------------------------------------------------------
 # Strategy Detector Tests
 # ---------------------------------------------------------------------------
+
 
 class TestStrategyDetectors:
     def test_detect_momentum_bullish(self) -> None:
@@ -178,28 +194,34 @@ class TestStrategyDetectors:
         assert not _detect_trend_following({"trend": "bullish", "macd": {}})
 
     def test_detect_breakout_high_volume_upper(self) -> None:
-        assert _detect_breakout({
-            "current_price": 160.0,
-            "current_volume": 5000.0,
-            "volume_sma_20": 2000.0,
-            "bollinger_bands": {"upper": 155.0, "lower": 130.0},
-        })
+        assert _detect_breakout(
+            {
+                "current_price": 160.0,
+                "current_volume": 5000.0,
+                "volume_sma_20": 2000.0,
+                "bollinger_bands": {"upper": 155.0, "lower": 130.0},
+            }
+        )
 
     def test_detect_breakout_high_volume_lower(self) -> None:
-        assert _detect_breakout({
-            "current_price": 125.0,
-            "current_volume": 5000.0,
-            "volume_sma_20": 2000.0,
-            "bollinger_bands": {"upper": 155.0, "lower": 130.0},
-        })
+        assert _detect_breakout(
+            {
+                "current_price": 125.0,
+                "current_volume": 5000.0,
+                "volume_sma_20": 2000.0,
+                "bollinger_bands": {"upper": 155.0, "lower": 130.0},
+            }
+        )
 
     def test_detect_breakout_low_volume(self) -> None:
-        assert not _detect_breakout({
-            "current_price": 160.0,
-            "current_volume": 2000.0,
-            "volume_sma_20": 2000.0,
-            "bollinger_bands": {"upper": 155.0, "lower": 130.0},
-        })
+        assert not _detect_breakout(
+            {
+                "current_price": 160.0,
+                "current_volume": 2000.0,
+                "volume_sma_20": 2000.0,
+                "bollinger_bands": {"upper": 155.0, "lower": 130.0},
+            }
+        )
 
     def test_detect_breakout_no_bb(self) -> None:
         assert not _detect_breakout({"current_price": 160.0, "current_volume": 5000.0, "volume_sma_20": 2000.0})
@@ -209,12 +231,18 @@ class TestStrategyDetectors:
 # Signal Builder Tests
 # ---------------------------------------------------------------------------
 
+
 class TestSignalBuilders:
     def test_momentum_signal_has_required_fields(self) -> None:
-        signal = _build_momentum_signal({
-            "sma_20": 150.0, "sma_50": 140.0, "rsi_14": 55.0,
-            "current_price": 150.0, "atr_14": 3.0,
-        })
+        signal = _build_momentum_signal(
+            {
+                "sma_20": 150.0,
+                "sma_50": 140.0,
+                "rsi_14": 55.0,
+                "current_price": 150.0,
+                "atr_14": 3.0,
+            }
+        )
         assert signal["direction"] in ("long", "short")
         assert 0 <= signal["confidence"] <= 100
         assert signal["expected_return"] is None or signal["expected_return"] > 0
@@ -223,50 +251,72 @@ class TestSignalBuilders:
         assert isinstance(signal["rationale"], str)
 
     def test_mean_reversion_signal_oversold(self) -> None:
-        signal = _build_mean_reversion_signal({
-            "rsi_14": 25.0, "current_price": 100.0,
-            "bollinger_bands": {"middle": 110.0, "upper": 120.0, "lower": 100.0},
-        })
+        signal = _build_mean_reversion_signal(
+            {
+                "rsi_14": 25.0,
+                "current_price": 100.0,
+                "bollinger_bands": {"middle": 110.0, "upper": 120.0, "lower": 100.0},
+            }
+        )
         assert signal["direction"] == "long"
         assert signal["strategy_name"] == "mean_reversion"
 
     def test_mean_reversion_signal_overbought(self) -> None:
-        signal = _build_mean_reversion_signal({
-            "rsi_14": 78.0, "current_price": 100.0,
-            "bollinger_bands": {"middle": 90.0, "upper": 100.0, "lower": 80.0},
-        })
+        signal = _build_mean_reversion_signal(
+            {
+                "rsi_14": 78.0,
+                "current_price": 100.0,
+                "bollinger_bands": {"middle": 90.0, "upper": 100.0, "lower": 80.0},
+            }
+        )
         assert signal["direction"] == "short"
         assert signal["strategy_name"] == "mean_reversion"
 
     def test_trend_following_signal_bullish(self) -> None:
-        signal = _build_trend_following_signal({
-            "trend": "bullish", "current_price": 150.0, "atr_14": 3.0,
-            "macd": {"macd": 2.0, "signal": 1.5, "histogram": 0.5},
-        })
+        signal = _build_trend_following_signal(
+            {
+                "trend": "bullish",
+                "current_price": 150.0,
+                "atr_14": 3.0,
+                "macd": {"macd": 2.0, "signal": 1.5, "histogram": 0.5},
+            }
+        )
         assert signal["direction"] == "long"
         assert signal["strategy_name"] == "trend_following"
 
     def test_trend_following_signal_bearish(self) -> None:
-        signal = _build_trend_following_signal({
-            "trend": "bearish", "current_price": 100.0, "atr_14": 3.0,
-            "macd": {"macd": -2.0, "signal": -1.5, "histogram": -0.5},
-        })
+        signal = _build_trend_following_signal(
+            {
+                "trend": "bearish",
+                "current_price": 100.0,
+                "atr_14": 3.0,
+                "macd": {"macd": -2.0, "signal": -1.5, "histogram": -0.5},
+            }
+        )
         assert signal["direction"] == "short"
         assert signal["strategy_name"] == "trend_following"
 
     def test_breakout_signal_upper(self) -> None:
-        signal = _build_breakout_signal({
-            "current_price": 160.0, "current_volume": 5000.0, "volume_sma_20": 2000.0,
-            "bollinger_bands": {"upper": 155.0, "lower": 130.0, "middle": 142.5},
-        })
+        signal = _build_breakout_signal(
+            {
+                "current_price": 160.0,
+                "current_volume": 5000.0,
+                "volume_sma_20": 2000.0,
+                "bollinger_bands": {"upper": 155.0, "lower": 130.0, "middle": 142.5},
+            }
+        )
         assert signal["direction"] == "short"
         assert signal["strategy_name"] == "breakout"
 
     def test_breakout_signal_lower(self) -> None:
-        signal = _build_breakout_signal({
-            "current_price": 125.0, "current_volume": 5000.0, "volume_sma_20": 2000.0,
-            "bollinger_bands": {"upper": 155.0, "lower": 130.0, "middle": 142.5},
-        })
+        signal = _build_breakout_signal(
+            {
+                "current_price": 125.0,
+                "current_volume": 5000.0,
+                "volume_sma_20": 2000.0,
+                "bollinger_bands": {"upper": 155.0, "lower": 130.0, "middle": 142.5},
+            }
+        )
         assert signal["direction"] == "long"
         assert signal["strategy_name"] == "breakout"
 
@@ -282,18 +332,24 @@ class TestSignalBuilders:
 # Rule-Based Analysis Tests
 # ---------------------------------------------------------------------------
 
+
 class TestRuleBasedQuant:
     def test_momentum_is_detected_when_bullish(self) -> None:
         indicators = {
-            "sma_20": 145.0, "sma_50": 140.0, "rsi_14": 55.0,
-            "current_price": 145.0, "atr_14": 3.0,
+            "sma_20": 145.0,
+            "sma_50": 140.0,
+            "rsi_14": 55.0,
+            "current_price": 145.0,
+            "atr_14": 3.0,
         }
         result = _rule_based_quant("BTC-USD", indicators)
         assert result["strategy_name"] in ("momentum", "neutral")
 
     def test_mean_reversion_on_oversold(self) -> None:
         indicators = {
-            "rsi_14": 25.0, "current_price": 100.0, "trend": "bearish",
+            "rsi_14": 25.0,
+            "current_price": 100.0,
+            "trend": "bearish",
             "bollinger_bands": {"middle": 110.0, "upper": 120.0, "lower": 100.0},
         }
         result = _rule_based_quant("BTC-USD", indicators)
@@ -301,7 +357,9 @@ class TestRuleBasedQuant:
 
     def test_mean_reversion_on_overbought(self) -> None:
         indicators = {
-            "rsi_14": 78.0, "current_price": 100.0, "trend": "bullish",
+            "rsi_14": 78.0,
+            "current_price": 100.0,
+            "trend": "bullish",
             "bollinger_bands": {"middle": 90.0, "upper": 100.0, "lower": 80.0},
         }
         result = _rule_based_quant("BTC-USD", indicators)
@@ -309,7 +367,9 @@ class TestRuleBasedQuant:
 
     def test_trend_following_with_confirmation(self) -> None:
         indicators = {
-            "trend": "bullish", "current_price": 150.0, "atr_14": 3.0,
+            "trend": "bullish",
+            "current_price": 150.0,
+            "atr_14": 3.0,
             "macd": {"macd": 2.0, "signal": 1.5, "histogram": 0.5},
         }
         result = _rule_based_quant("BTC-USD", indicators)
@@ -317,7 +377,9 @@ class TestRuleBasedQuant:
 
     def test_breakout_with_high_volume(self) -> None:
         indicators = {
-            "current_price": 160.0, "current_volume": 5000.0, "volume_sma_20": 2000.0,
+            "current_price": 160.0,
+            "current_volume": 5000.0,
+            "volume_sma_20": 2000.0,
             "bollinger_bands": {"upper": 155.0, "lower": 130.0, "middle": 142.5},
             "trend": "neutral",
         }
@@ -326,8 +388,11 @@ class TestRuleBasedQuant:
 
     def test_strategy_hint_preferred(self) -> None:
         indicators = {
-            "sma_20": 145.0, "sma_50": 140.0, "rsi_14": 55.0,
-            "current_price": 145.0, "atr_14": 3.0,
+            "sma_20": 145.0,
+            "sma_50": 140.0,
+            "rsi_14": 55.0,
+            "current_price": 145.0,
+            "atr_14": 3.0,
             "trend": "bullish",
             "macd": {"macd": 2.0, "signal": 1.5, "histogram": 0.5},
         }
@@ -336,7 +401,9 @@ class TestRuleBasedQuant:
 
     def test_strategy_hint_no_match_falls_to_best(self) -> None:
         indicators = {
-            "rsi_14": 25.0, "current_price": 100.0, "trend": "bearish",
+            "rsi_14": 25.0,
+            "current_price": 100.0,
+            "trend": "bearish",
             "bollinger_bands": {"middle": 110.0, "upper": 120.0, "lower": 100.0},
         }
         result = _rule_based_quant("BTC-USD", indicators, strategy_hint="breakout")
@@ -363,6 +430,7 @@ class TestRuleBasedQuant:
 # LLM Response Parser Tests
 # ---------------------------------------------------------------------------
 
+
 class TestParseQuantResponse:
     def test_parses_valid_json(self) -> None:
         response = (
@@ -370,8 +438,14 @@ class TestParseQuantResponse:
             '"strategy_name": "momentum", "params": {"lookback": 20}, '
             '"rationale": "Strong momentum signal"}'
         )
-        fallback = {"confidence": 20, "direction": "flat", "expected_return": None,
-                     "strategy_name": "neutral", "params": {}, "rationale": "fallback"}
+        fallback = {
+            "confidence": 20,
+            "direction": "flat",
+            "expected_return": None,
+            "strategy_name": "neutral",
+            "params": {},
+            "rationale": "fallback",
+        }
         result = _parse_quant_response(response, fallback)
         assert result["confidence"] == 75.0
         assert result["direction"] == "long"
@@ -380,74 +454,137 @@ class TestParseQuantResponse:
         assert result["params"]["lookback"] == 20
 
     def test_handles_markdown_fenced_json(self) -> None:
-        response = '```json\n{"confidence": 70, "direction": "short", "expected_return": null, "strategy_name": "mean_reversion", "params": {}, "rationale": "test"}\n```'
-        fallback = {"confidence": 0, "direction": "flat", "expected_return": None,
-                     "strategy_name": "neutral", "params": {}, "rationale": "fb"}
+        response = (
+            '```json\n{"confidence": 70, "direction": "short", "expected_return": null, '
+            '"strategy_name": "mean_reversion", "params": {}, "rationale": "test"}\n```'
+        )
+        fallback = {
+            "confidence": 0,
+            "direction": "flat",
+            "expected_return": None,
+            "strategy_name": "neutral",
+            "params": {},
+            "rationale": "fb",
+        }
         result = _parse_quant_response(response, fallback)
         assert result["direction"] == "short"
         assert result["strategy_name"] == "mean_reversion"
 
     def test_fallback_on_invalid_json(self) -> None:
         response = "This is not JSON"
-        fallback = {"confidence": 10, "direction": "flat", "expected_return": None,
-                     "strategy_name": "neutral", "params": {}, "rationale": "fb"}
+        fallback = {
+            "confidence": 10,
+            "direction": "flat",
+            "expected_return": None,
+            "strategy_name": "neutral",
+            "params": {},
+            "rationale": "fb",
+        }
         result = _parse_quant_response(response, fallback)
         assert result == fallback
 
     def test_fallback_on_missing_required_fields(self) -> None:
         response = '{"confidence": 80}'  # missing direction, rationale
-        fallback = {"confidence": 10, "direction": "flat", "expected_return": None,
-                     "strategy_name": "neutral", "params": {}, "rationale": "fb"}
+        fallback = {
+            "confidence": 10,
+            "direction": "flat",
+            "expected_return": None,
+            "strategy_name": "neutral",
+            "params": {},
+            "rationale": "fb",
+        }
         result = _parse_quant_response(response, fallback)
         assert result == fallback
 
     def test_fallback_on_invalid_direction(self) -> None:
         response = '{"confidence": 80, "direction": "invalid", "rationale": "test"}'
-        fallback = {"confidence": 10, "direction": "flat", "expected_return": None,
-                     "strategy_name": "neutral", "params": {}, "rationale": "fb"}
+        fallback = {
+            "confidence": 10,
+            "direction": "flat",
+            "expected_return": None,
+            "strategy_name": "neutral",
+            "params": {},
+            "rationale": "fb",
+        }
         result = _parse_quant_response(response, fallback)
         assert result == fallback
 
     def test_clamps_confidence(self) -> None:
         response = '{"confidence": 999, "direction": "long", "rationale": "test"}'
-        fallback = {"confidence": 0, "direction": "flat", "expected_return": None,
-                     "strategy_name": "neutral", "params": {}, "rationale": "fb"}
+        fallback = {
+            "confidence": 0,
+            "direction": "flat",
+            "expected_return": None,
+            "strategy_name": "neutral",
+            "params": {},
+            "rationale": "fb",
+        }
         result = _parse_quant_response(response, fallback)
         assert result["confidence"] == 100.0
 
     def test_validates_strategy_name(self) -> None:
         """Invalid strategy defaults to neutral."""
         response = '{"confidence": 80, "direction": "long", "rationale": "test", "strategy_name": "invalid_strat"}'
-        fallback = {"confidence": 10, "direction": "flat", "expected_return": None,
-                     "strategy_name": "neutral", "params": {}, "rationale": "fb"}
+        fallback = {
+            "confidence": 10,
+            "direction": "flat",
+            "expected_return": None,
+            "strategy_name": "neutral",
+            "params": {},
+            "rationale": "fb",
+        }
         result = _parse_quant_response(response, fallback)
         assert result["strategy_name"] == "neutral"
 
     def test_validates_expected_return(self) -> None:
         """Non-numeric expected_return becomes None."""
         response = '{"confidence": 80, "direction": "long", "expected_return": "not_a_number", "rationale": "test"}'
-        fallback = {"confidence": 10, "direction": "flat", "expected_return": None,
-                     "strategy_name": "neutral", "params": {}, "rationale": "fb"}
+        fallback = {
+            "confidence": 10,
+            "direction": "flat",
+            "expected_return": None,
+            "strategy_name": "neutral",
+            "params": {},
+            "rationale": "fb",
+        }
         result = _parse_quant_response(response, fallback)
         assert result["expected_return"] is None
 
     def test_empty_response_uses_fallback(self) -> None:
-        fallback = {"confidence": 10, "direction": "flat", "expected_return": None,
-                     "strategy_name": "neutral", "params": {}, "rationale": "fb"}
+        fallback = {
+            "confidence": 10,
+            "direction": "flat",
+            "expected_return": None,
+            "strategy_name": "neutral",
+            "params": {},
+            "rationale": "fb",
+        }
         result = _parse_quant_response("", fallback)
         assert result == fallback
 
     def test_none_response_uses_fallback(self) -> None:
-        fallback = {"confidence": 10, "direction": "flat", "expected_return": None,
-                     "strategy_name": "neutral", "params": {}, "rationale": "fb"}
+        fallback = {
+            "confidence": 10,
+            "direction": "flat",
+            "expected_return": None,
+            "strategy_name": "neutral",
+            "params": {},
+            "rationale": "fb",
+        }
         result = _parse_quant_response(None, fallback)
         assert result == fallback
 
     def test_merges_params(self) -> None:
         """LLM params merge over fallback params."""
         response = '{"confidence": 80, "direction": "long", "rationale": "test", "params": {"lookback": 30}}'
-        fallback = {"confidence": 10, "direction": "flat", "expected_return": None,
-                     "strategy_name": "neutral", "params": {"risk_per_trade_pct": 2.0}, "rationale": "fb"}
+        fallback = {
+            "confidence": 10,
+            "direction": "flat",
+            "expected_return": None,
+            "strategy_name": "neutral",
+            "params": {"risk_per_trade_pct": 2.0},
+            "rationale": "fb",
+        }
         result = _parse_quant_response(response, fallback)
         assert result["params"]["lookback"] == 30
         assert result["params"]["risk_per_trade_pct"] == 2.0
@@ -457,6 +594,7 @@ class TestParseQuantResponse:
 # QuantAgent Integration Tests
 # ---------------------------------------------------------------------------
 
+
 class TestQuantAgentProcess:
     @pytest.mark.asyncio
     async def test_returns_valid_structure(self, sample_candles: list[OHLCVData]) -> None:
@@ -465,10 +603,12 @@ class TestQuantAgentProcess:
         router.execute.return_value = RouterResult()
 
         agent = QuantAgent(router=router)
-        result = await agent.run(QuantInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-        ))
+        result = await agent.run(
+            QuantInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+            )
+        )
 
         assert hasattr(result, "confidence")
         assert hasattr(result, "direction")
@@ -502,16 +642,18 @@ class TestQuantAgentProcess:
         llm_response = RouterResult()
         llm_response.success = True
         llm_response.response = {
-            "choices": [{
-                "message": {
-                    "content": (
-                        '{"confidence": 82.5, "direction": "long", '
-                        '"expected_return": 3.2, "strategy_name": "momentum", '
-                        '"params": {"lookback": 20, "stop_loss_pct": 5.0}, '
-                        '"rationale": "Bullish momentum with strong volume"}'
-                    ),
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"confidence": 82.5, "direction": "long", '
+                            '"expected_return": 3.2, "strategy_name": "momentum", '
+                            '"params": {"lookback": 20, "stop_loss_pct": 5.0}, '
+                            '"rationale": "Bullish momentum with strong volume"}'
+                        ),
+                    }
                 }
-            }],
+            ],
             "model": "test-model",
             "usage": {"total_tokens": 150},
         }
@@ -520,10 +662,12 @@ class TestQuantAgentProcess:
 
         ctx = AgentContext(model_preferences={"model_chain": ["test-model"]})
         agent = QuantAgent(router=router, context=ctx)
-        result = await agent.run(QuantInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-        ))
+        result = await agent.run(
+            QuantInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+            )
+        )
 
         assert result.confidence == 82.5
         assert result.direction == "long"
@@ -543,10 +687,12 @@ class TestQuantAgentProcess:
 
         ctx = AgentContext(model_preferences={"model_chain": ["test-model"]})
         agent = QuantAgent(router=router, context=ctx)
-        result = await agent.run(QuantInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-        ))
+        result = await agent.run(
+            QuantInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+            )
+        )
 
         assert result.direction in ("long", "short", "flat")
         assert result.confidence > 0
@@ -557,14 +703,24 @@ class TestQuantAgentProcess:
         """Very few candles should not crash."""
         router = AsyncMock()
         agent = QuantAgent(router=router)
-        result = await agent.run(QuantInput(
-            symbol="BTC-USD",
-            candles=[OHLCVData(
-                symbol="BTC-USD", source="yahoo", interval="1d",
-                timestamp=datetime(2024, 1, 1, tzinfo=UTC),
-                open=100, high=101, low=99, close=100, volume=1000,
-            )],
-        ))
+        result = await agent.run(
+            QuantInput(
+                symbol="BTC-USD",
+                candles=[
+                    OHLCVData(
+                        symbol="BTC-USD",
+                        source="yahoo",
+                        interval="1d",
+                        timestamp=datetime(2024, 1, 1, tzinfo=UTC),
+                        open=100,
+                        high=101,
+                        low=99,
+                        close=100,
+                        volume=1000,
+                    )
+                ],
+            )
+        )
         assert result.direction in ("long", "short", "flat")
 
     @pytest.mark.asyncio
@@ -577,17 +733,20 @@ class TestQuantAgentProcess:
 
         ctx = AgentContext(model_preferences={"model_chain": ["test-model"]})
         agent = QuantAgent(router=router, context=ctx)
-        result = await agent.run(QuantInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-            strategy="trend_following",
-        ))
+        result = await agent.run(
+            QuantInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+                strategy="trend_following",
+            )
+        )
         assert result.direction in ("long", "short", "flat")
 
 
 # ---------------------------------------------------------------------------
 # QuantInput Validation
 # ---------------------------------------------------------------------------
+
 
 class TestQuantInput:
     def test_valid_input(self) -> None:

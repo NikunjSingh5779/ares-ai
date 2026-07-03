@@ -72,7 +72,11 @@ class TestOHLCVData:
                 source="yahoo",
                 interval="2h",  # invalid
                 timestamp=datetime(2024, 1, 1),
-                open=1, high=2, low=1, close=1.5, volume=0,
+                open=1,
+                high=2,
+                low=1,
+                close=1.5,
+                volume=0,
             )
 
     def test_invalid_source(self) -> None:
@@ -82,7 +86,11 @@ class TestOHLCVData:
                 source="unknown_source",
                 interval="1d",
                 timestamp=datetime(2024, 1, 1),
-                open=1, high=2, low=1, close=1.5, volume=0,
+                open=1,
+                high=2,
+                low=1,
+                close=1.5,
+                volume=0,
             )
 
 

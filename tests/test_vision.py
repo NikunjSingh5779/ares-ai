@@ -22,6 +22,7 @@ from agents.vision import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def uptrend_candles() -> list[dict]:
     """5 candles with clear uptrend."""
@@ -245,30 +246,36 @@ class TestVisionAgent:
     @pytest.mark.asyncio
     async def test_run_detects_uptrend(self, uptrend_candles):
         agent = VisionAgent()
-        result = await agent.run(VisionInput(
-            symbol="BTC-USD",
-            candles=uptrend_candles,
-        ))
+        result = await agent.run(
+            VisionInput(
+                symbol="BTC-USD",
+                candles=uptrend_candles,
+            )
+        )
         assert result.chart_pattern == "uptrend"
         assert result.confidence > 0
 
     @pytest.mark.asyncio
     async def test_run_detects_downtrend(self, downtrend_candles):
         agent = VisionAgent()
-        result = await agent.run(VisionInput(
-            symbol="BTC-USD",
-            candles=downtrend_candles,
-        ))
+        result = await agent.run(
+            VisionInput(
+                symbol="BTC-USD",
+                candles=downtrend_candles,
+            )
+        )
         assert result.chart_pattern == "downtrend"
         assert result.confidence > 0
 
     @pytest.mark.asyncio
     async def test_run_detects_consolidation(self, consolidation_candles):
         agent = VisionAgent()
-        result = await agent.run(VisionInput(
-            symbol="BTC-USD",
-            candles=consolidation_candles,
-        ))
+        result = await agent.run(
+            VisionInput(
+                symbol="BTC-USD",
+                candles=consolidation_candles,
+            )
+        )
         assert result.chart_pattern == "consolidation"
         assert result.confidence > 0
 
@@ -283,10 +290,12 @@ class TestVisionAgent:
     @pytest.mark.asyncio
     async def test_run_returns_support_and_resistance(self, uptrend_candles):
         agent = VisionAgent()
-        result = await agent.run(VisionInput(
-            symbol="BTC-USD",
-            candles=uptrend_candles,
-        ))
+        result = await agent.run(
+            VisionInput(
+                symbol="BTC-USD",
+                candles=uptrend_candles,
+            )
+        )
         assert len(result.support_levels) > 0
         assert len(result.resistance_levels) > 0
         assert all(isinstance(level, float) for level in result.support_levels)
@@ -295,10 +304,12 @@ class TestVisionAgent:
     @pytest.mark.asyncio
     async def test_run_includes_rationale(self, uptrend_candles):
         agent = VisionAgent()
-        result = await agent.run(VisionInput(
-            symbol="BTC-USD",
-            candles=uptrend_candles,
-        ))
+        result = await agent.run(
+            VisionInput(
+                symbol="BTC-USD",
+                candles=uptrend_candles,
+            )
+        )
         assert isinstance(result.rationale, str)
         assert len(result.rationale) > 0
 

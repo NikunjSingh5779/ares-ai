@@ -1,4 +1,5 @@
 """Tests for the rate limiting middleware."""
+
 from __future__ import annotations
 
 import time
@@ -127,9 +128,7 @@ def test_rate_limit_resets_after_period(monkeypatch) -> None:  # type: ignore[no
     original_time = time.monotonic
 
     try:
-        monkeypatch.setattr(
-            time, "monotonic", lambda: original_time() + 65
-        )
+        monkeypatch.setattr(time, "monotonic", lambda: original_time() + 65)
 
         with TestClient(app) as client:
             resp = client.post("/test-refill")

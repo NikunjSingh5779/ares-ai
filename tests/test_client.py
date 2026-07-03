@@ -1,4 +1,5 @@
 """Tests for LLM client."""
+
 from __future__ import annotations
 
 import pytest
@@ -70,6 +71,7 @@ class TestCreateLLMClient:
 
         # Also mock settings since create_llm_client uses it now
         from backend.core.config import settings
+
         monkeypatch.setattr(settings, "openrouter_api_key", "")
         monkeypatch.setattr(settings, "opencode_api_key", "")
         monkeypatch.setattr(settings, "gemini_api_key", "")

@@ -1,4 +1,5 @@
 """Tests for RiskAgent."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -25,18 +26,26 @@ from backend.data.models import OHLCVData
 # Shared test data
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def sample_candles() -> list[OHLCVData]:
     """60 daily candles with moderate volatility."""
     candles = []
     for i in range(60):
         price = 100.0 + i * 0.2 + (i % 8 - 4) * 0.5
-        candles.append(OHLCVData(
-            symbol="BTC-USD", source="yahoo", interval="1d",
-            timestamp=datetime(2024, 1, 1, tzinfo=UTC).replace(day=min(28, 1 + i)),
-            open=price, high=price * 1.015, low=price * 0.985,
-            close=price, volume=2000.0,
-        ))
+        candles.append(
+            OHLCVData(
+                symbol="BTC-USD",
+                source="yahoo",
+                interval="1d",
+                timestamp=datetime(2024, 1, 1, tzinfo=UTC).replace(day=min(28, 1 + i)),
+                open=price,
+                high=price * 1.015,
+                low=price * 0.985,
+                close=price,
+                volume=2000.0,
+            )
+        )
     return candles
 
 
@@ -48,6 +57,7 @@ def sample_indicators(sample_candles: list[OHLCVData]) -> dict:
 # ---------------------------------------------------------------------------
 # Prompt Builder Tests
 # ---------------------------------------------------------------------------
+
 
 class TestBuildRiskPrompt:
     def test_returns_message_list(self, sample_indicators: dict) -> None:
@@ -88,6 +98,7 @@ class TestBuildRiskPrompt:
 # Rule-Based Risk Tests
 # ---------------------------------------------------------------------------
 
+
 class TestRuleBasedRisk:
     def test_returns_risk_structure(self, sample_indicators: dict) -> None:
         """Baseline: valid output structure."""
@@ -104,7 +115,8 @@ class TestRuleBasedRisk:
     def test_approved_with_good_signal(self, sample_indicators: dict) -> None:
         """High confidence, consensus approved → approved."""
         result = _rule_based_risk(
-            "BTC-USD", sample_indicators,
+            "BTC-USD",
+            sample_indicators,
             market_analyst_output={"direction": "long", "confidence": 85.0},
             quant_output={"direction": "long", "confidence": 90.0},
             consensus_output={"approved": True, "composite_confidence": 87.5},
@@ -115,7 +127,8 @@ class TestRuleBasedRisk:
     def test_rejected_without_consensus(self, sample_indicators: dict) -> None:
         """No consensus output and low confidence → rejected."""
         result = _rule_based_risk(
-            "BTC-USD", sample_indicators,
+            "BTC-USD",
+            sample_indicators,
             market_analyst_output={"direction": "long", "confidence": 65.0},
             quant_output={"direction": "long", "confidence": 60.0},
             consensus_output=None,
@@ -126,7 +139,8 @@ class TestRuleBasedRisk:
     def test_rejected_when_consensus_not_approved(self, sample_indicators: dict) -> None:
         """Consensus output says not approved → rejected."""
         result = _rule_based_risk(
-            "BTC-USD", sample_indicators,
+            "BTC-USD",
+            sample_indicators,
             consensus_output={"approved": False, "composite_confidence": 50.0},
         )
         assert result["approved"] is False
@@ -150,8 +164,12 @@ class TestRuleBasedRisk:
         quant = {"direction": "long", "confidence": 90.0}
         portfolio = 100000.0
         result = _rule_based_risk(
-            "BTC-USD", sample_indicators,
-            ma, quant, consensus, portfolio,
+            "BTC-USD",
+            sample_indicators,
+            ma,
+            quant,
+            consensus,
+            portfolio,
         )
         # 2% of $100k = $2000, at ~$100 = ~20 units
         if result["max_position_size"] is not None:
@@ -163,6 +181,7 @@ class TestRuleBasedRisk:
 # ---------------------------------------------------------------------------
 # Risk Score Computation
 # ---------------------------------------------------------------------------
+
 
 class TestComputeRiskScore:
     def test_base_score(self) -> None:
@@ -210,6 +229,7 @@ class TestComputeRiskScore:
 # LLM Response Parser Tests
 # ---------------------------------------------------------------------------
 
+
 class TestParseRiskResponse:
     def test_parses_valid_json(self) -> None:
         response = (
@@ -217,8 +237,14 @@ class TestParseRiskResponse:
             '"risk_score": 45.0, "reasons": ["Low volatility"], '
             '"rationale": "Risk approved"}'
         )
-        fallback = {"approved": False, "max_position_size": None, "stop_loss": None,
-                     "risk_score": 100.0, "reasons": [], "rationale": "fb"}
+        fallback = {
+            "approved": False,
+            "max_position_size": None,
+            "stop_loss": None,
+            "risk_score": 100.0,
+            "reasons": [],
+            "rationale": "fb",
+        }
         result = _parse_risk_response(response, fallback)
         assert result["approved"] is True
         assert result["max_position_size"] == 25.0
@@ -228,49 +254,91 @@ class TestParseRiskResponse:
 
     def test_handles_markdown_fenced_json(self) -> None:
         response = '```json\n{"approved": false, "risk_score": 90.0, "rationale": "Too risky"}\n```'
-        fallback = {"approved": False, "max_position_size": None, "stop_loss": None,
-                     "risk_score": 100.0, "reasons": [], "rationale": "fb"}
+        fallback = {
+            "approved": False,
+            "max_position_size": None,
+            "stop_loss": None,
+            "risk_score": 100.0,
+            "reasons": [],
+            "rationale": "fb",
+        }
         result = _parse_risk_response(response, fallback)
         assert result["approved"] is False
         assert result["risk_score"] == 90.0
 
     def test_fallback_on_invalid_json(self) -> None:
         response = "not json"
-        fallback = {"approved": False, "max_position_size": None, "stop_loss": None,
-                     "risk_score": 80.0, "reasons": [], "rationale": "fb"}
+        fallback = {
+            "approved": False,
+            "max_position_size": None,
+            "stop_loss": None,
+            "risk_score": 80.0,
+            "reasons": [],
+            "rationale": "fb",
+        }
         result = _parse_risk_response(response, fallback)
         assert result == fallback
 
     def test_fallback_on_missing_required(self) -> None:
         response = '{"risk_score": 50}'  # missing approved and rationale
-        fallback = {"approved": False, "max_position_size": None, "stop_loss": None,
-                     "risk_score": 100.0, "reasons": [], "rationale": "fb"}
+        fallback = {
+            "approved": False,
+            "max_position_size": None,
+            "stop_loss": None,
+            "risk_score": 100.0,
+            "reasons": [],
+            "rationale": "fb",
+        }
         result = _parse_risk_response(response, fallback)
         assert result == fallback
 
     def test_clamps_risk_score_above_100(self) -> None:
         response = '{"approved": true, "risk_score": 200.0, "rationale": "over max"}'
-        fallback = {"approved": False, "max_position_size": None, "stop_loss": None,
-                     "risk_score": 100.0, "reasons": [], "rationale": "fb"}
+        fallback = {
+            "approved": False,
+            "max_position_size": None,
+            "stop_loss": None,
+            "risk_score": 100.0,
+            "reasons": [],
+            "rationale": "fb",
+        }
         result = _parse_risk_response(response, fallback)
         assert result["risk_score"] == 100.0
 
     def test_clamps_risk_score_below_0(self) -> None:
         response = '{"approved": true, "risk_score": -50.0, "rationale": "under min"}'
-        fallback = {"approved": False, "max_position_size": None, "stop_loss": None,
-                     "risk_score": 100.0, "reasons": [], "rationale": "fb"}
+        fallback = {
+            "approved": False,
+            "max_position_size": None,
+            "stop_loss": None,
+            "risk_score": 100.0,
+            "reasons": [],
+            "rationale": "fb",
+        }
         result = _parse_risk_response(response, fallback)
         assert result["risk_score"] == 0.0
 
     def test_empty_response_uses_fallback(self) -> None:
-        fallback = {"approved": False, "max_position_size": None, "stop_loss": None,
-                     "risk_score": 100.0, "reasons": [], "rationale": "fb"}
+        fallback = {
+            "approved": False,
+            "max_position_size": None,
+            "stop_loss": None,
+            "risk_score": 100.0,
+            "reasons": [],
+            "rationale": "fb",
+        }
         result = _parse_risk_response("", fallback)
         assert result == fallback
 
     def test_none_response_uses_fallback(self) -> None:
-        fallback = {"approved": False, "max_position_size": None, "stop_loss": None,
-                     "risk_score": 100.0, "reasons": [], "rationale": "fb"}
+        fallback = {
+            "approved": False,
+            "max_position_size": None,
+            "stop_loss": None,
+            "risk_score": 100.0,
+            "reasons": [],
+            "rationale": "fb",
+        }
         result = _parse_risk_response(None, fallback)
         assert result == fallback
 
@@ -278,6 +346,7 @@ class TestParseRiskResponse:
 # ---------------------------------------------------------------------------
 # RiskAgent Integration Tests
 # ---------------------------------------------------------------------------
+
 
 class TestRiskAgentProcess:
     @pytest.mark.asyncio
@@ -287,10 +356,12 @@ class TestRiskAgentProcess:
         router.execute.return_value = RouterResult()
 
         agent = RiskAgent(router=router)
-        result = await agent.run(RiskInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-        ))
+        result = await agent.run(
+            RiskInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+            )
+        )
 
         assert hasattr(result, "approved")
         assert hasattr(result, "max_position_size")
@@ -316,11 +387,13 @@ class TestRiskAgentProcess:
         """No consensus output → rejected in rule-based fallback."""
         router = AsyncMock()
         agent = RiskAgent(router=router)
-        result = await agent.run(RiskInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-            consensus_output={"approved": False, "composite_confidence": 0.0},
-        ))
+        result = await agent.run(
+            RiskInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+                consensus_output={"approved": False, "composite_confidence": 0.0},
+            )
+        )
         assert result.approved is False
 
     @pytest.mark.asyncio
@@ -330,15 +403,17 @@ class TestRiskAgentProcess:
         llm_response = RouterResult()
         llm_response.success = True
         llm_response.response = {
-            "choices": [{
-                "message": {
-                    "content": (
-                        '{"approved": true, "max_position_size": 20.0, "stop_loss": 95.0, '
-                        '"risk_score": 35.0, "reasons": ["Good setup"], '
-                        '"rationale": "Risk within acceptable range"}'
-                    ),
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"approved": true, "max_position_size": 20.0, "stop_loss": 95.0, '
+                            '"risk_score": 35.0, "reasons": ["Good setup"], '
+                            '"rationale": "Risk within acceptable range"}'
+                        ),
+                    }
                 }
-            }],
+            ],
             "model": "test-model",
             "usage": {"total_tokens": 100},
         }
@@ -347,10 +422,12 @@ class TestRiskAgentProcess:
 
         ctx = AgentContext(model_preferences={"model_chain": ["test-model"]})
         agent = RiskAgent(router=router, context=ctx)
-        result = await agent.run(RiskInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-        ))
+        result = await agent.run(
+            RiskInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+            )
+        )
 
         assert result.approved is True
         assert result.risk_score == 35.0
@@ -364,10 +441,12 @@ class TestRiskAgentProcess:
 
         ctx = AgentContext(model_preferences={"model_chain": ["test-model"]})
         agent = RiskAgent(router=router, context=ctx)
-        result = await agent.run(RiskInput(
-            symbol="BTC-USD",
-            candles=sample_candles,
-        ))
+        result = await agent.run(
+            RiskInput(
+                symbol="BTC-USD",
+                candles=sample_candles,
+            )
+        )
 
         assert isinstance(result.approved, bool)
         assert 0 <= result.risk_score <= 100
@@ -377,6 +456,7 @@ class TestRiskAgentProcess:
 # ---------------------------------------------------------------------------
 # RiskInput Validation
 # ---------------------------------------------------------------------------
+
 
 class TestRiskInput:
     def test_valid_input(self) -> None:

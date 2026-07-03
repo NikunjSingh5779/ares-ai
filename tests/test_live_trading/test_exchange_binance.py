@@ -115,9 +115,7 @@ class TestBinanceConnectorConnect:
         mock_ccxt_exchange.set_sandbox_mode.assert_called_once_with(True)
 
     @patch("live_trading.exchange.binance.ccxt")
-    async def test_connect_no_auth_skips_balance_check(
-        self, mock_ccxt_module, mock_ccxt_exchange
-    ) -> None:
+    async def test_connect_no_auth_skips_balance_check(self, mock_ccxt_module, mock_ccxt_exchange) -> None:
         mock_ccxt_module.binance.return_value = mock_ccxt_exchange
         conn = BinanceConnector({"testnet": True})
         result = await conn.connect()
@@ -213,9 +211,7 @@ class TestBinanceConnectorErrors:
     async def test_create_order_network_error(self, mock_binance_ctor) -> None:
         exchange = MagicMock()
         exchange.load_markets = AsyncMock()
-        exchange.fetch_balance = AsyncMock(
-            return_value={"free": {"USDT": 1000.0}, "total": {}, "used": {}}
-        )
+        exchange.fetch_balance = AsyncMock(return_value={"free": {"USDT": 1000.0}, "total": {}, "used": {}})
         exchange.create_order = AsyncMock(side_effect=ccxt.NetworkError("timeout"))
         mock_binance_ctor.return_value = exchange
 
@@ -230,9 +226,7 @@ class TestBinanceConnectorErrors:
     async def test_create_order_insufficient_funds(self, mock_binance_ctor) -> None:
         exchange = MagicMock()
         exchange.load_markets = AsyncMock()
-        exchange.fetch_balance = AsyncMock(
-            return_value={"free": {"USDT": 1000.0}, "total": {}, "used": {}}
-        )
+        exchange.fetch_balance = AsyncMock(return_value={"free": {"USDT": 1000.0}, "total": {}, "used": {}})
         exchange.create_order = AsyncMock(side_effect=ccxt.InsufficientFunds("balance low"))
         mock_binance_ctor.return_value = exchange
 

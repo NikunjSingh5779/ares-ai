@@ -174,9 +174,7 @@ class TestExecuteSignal:
         await engine.execute_signal(signal)
         assert engine.auditor.count() == 1
 
-    async def test_execute_signal_records_audit_even_when_pending_approval(
-        self, engine
-    ) -> None:
+    async def test_execute_signal_records_audit_even_when_pending_approval(self, engine) -> None:
         engine.mode_manager.set_mode(TradingMode.HUMAN_APPROVAL)
         await engine.start()
         signal = {"symbol": "BTC/USDT", "side": "buy", "quantity": 0.01}

@@ -134,9 +134,7 @@ class LiveTradingEngine:
         results.append(self.mode_manager.check())
 
         # 3. PromotionGate
-        results.append(
-            self.promotion_gate.check(self._paper_trades_count, self._paper_days_count)
-        )
+        results.append(self.promotion_gate.check(self._paper_trades_count, self._paper_days_count))
 
         # 4. Exchange connection
         if not self.exchange.is_connected:
@@ -224,8 +222,7 @@ class LiveTradingEngine:
         # since approval has been granted
         if approval_id:
             safety_results = [
-                r for r in safety_results
-                if not ("human_approval" in r.reason and "confirmation required" in r.reason)
+                r for r in safety_results if not ("human_approval" in r.reason and "confirmation required" in r.reason)
             ]
 
         self._raise_if_blocked(safety_results)
@@ -285,12 +282,16 @@ class LiveTradingEngine:
         3. Attempt to cancel all open orders for the symbol.
         """
         import logging
+
         logger = logging.getLogger("ares")
 
         tripped = self.kill_switch.auto_trigger(current_drawdown_pct)
         if tripped:
             self.mode_manager.set_mode(TradingMode.HUMAN_APPROVAL)
-            logger.critical(f"EMERGENCY: Kill Switch tripped due to {current_drawdown_pct:.1f}% drawdown! Mode forced to HUMAN_APPROVAL.")
+            logger.critical(
+                f"EMERGENCY: Kill Switch tripped due to {current_drawdown_pct:.1f}% drawdown! "
+                "Mode forced to HUMAN_APPROVAL."
+            )
             try:
                 if self.is_connected and hasattr(self.exchange, "cancel_all_orders"):
                     await self.exchange.cancel_all_orders(symbol)

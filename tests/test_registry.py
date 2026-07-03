@@ -1,4 +1,5 @@
 """Tests for agent registry."""
+
 from __future__ import annotations
 
 import pytest
@@ -16,10 +17,13 @@ def model_roster() -> ModelRoster:
     """Create a minimal model roster for testing."""
     agents = {
         "test_agent": AgentModelConfig.from_dict("test_agent", {"primary": "test-model"}),
-        "observer": AgentModelConfig.from_dict("observer", {
-            "primary": "obs-model",
-            "fallbacks": ["obs-fallback"],
-        }),
+        "observer": AgentModelConfig.from_dict(
+            "observer",
+            {
+                "primary": "obs-model",
+                "fallbacks": ["obs-fallback"],
+            },
+        ),
     }
     return ModelRoster(agents)
 
@@ -27,6 +31,7 @@ def model_roster() -> ModelRoster:
 @pytest.fixture
 def router() -> ModelRouter:
     from agents.client import NoOpLLMClient
+
     return ModelRouter(
         llm_client=NoOpLLMClient(),
         breaker_registry=CircuitBreakerRegistry(),

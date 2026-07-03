@@ -73,25 +73,17 @@ class CoinbaseConnector(ExchangeConnector):
                 await self._client.load_markets()
                 balance = await self._client.fetch_balance()
                 if balance.get("free") is None:
-                    raise ExchangeConnectionError(
-                        "Coinbase authentication failed — check API key and secret"
-                    )
+                    raise ExchangeConnectionError("Coinbase authentication failed — check API key and secret")
 
             self._connected = True
             return True
 
         except ccxt.AuthenticationError as exc:
-            raise ExchangeConnectionError(
-                f"Coinbase authentication failed: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Coinbase authentication failed: {exc}") from exc
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Coinbase network error: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Coinbase network error: {exc}") from exc
         except Exception as exc:
-            raise ExchangeConnectionError(
-                f"Coinbase connection failed: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Coinbase connection failed: {exc}") from exc
 
     async def disconnect(self) -> None:
         self._client = None
@@ -111,9 +103,7 @@ class CoinbaseConnector(ExchangeConnector):
                 used=raw.get("used", {}),
             )
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Failed to fetch balance: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Failed to fetch balance: {exc}") from exc
 
     async def create_order(
         self,
@@ -138,17 +128,11 @@ class CoinbaseConnector(ExchangeConnector):
                 params=params or {},
             )
         except ccxt.InsufficientFunds as exc:
-            raise OrderRejectedError(
-                f"Insufficient funds for {symbol}: {exc}"
-            ) from exc
+            raise OrderRejectedError(f"Insufficient funds for {symbol}: {exc}") from exc
         except ccxt.InvalidOrder as exc:
-            raise OrderRejectedError(
-                f"Order rejected by Coinbase: {exc}"
-            ) from exc
+            raise OrderRejectedError(f"Order rejected by Coinbase: {exc}") from exc
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Network error placing order on {symbol}: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Network error placing order on {symbol}: {exc}") from exc
 
         return ExchangeOrder(
             id=str(raw.get("id", "")),
@@ -170,9 +154,7 @@ class CoinbaseConnector(ExchangeConnector):
             result = await self._client.cancel_order(order_id, ccxt_symbol)  # type: ignore[union-attr]
             return result.get("status", "canceled") == "canceled"
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Failed to cancel order {order_id}: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Failed to cancel order {order_id}: {exc}") from exc
 
     async def get_order_status(self, order_id: str, symbol: str) -> ExchangeOrder:
         self._require_connected()
@@ -180,9 +162,7 @@ class CoinbaseConnector(ExchangeConnector):
         try:
             raw = await self._client.fetch_order(order_id, ccxt_symbol)  # type: ignore[union-attr]
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Failed to fetch order {order_id}: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Failed to fetch order {order_id}: {exc}") from exc
 
         return ExchangeOrder(
             id=str(raw.get("id", order_id)),
@@ -213,9 +193,7 @@ class CoinbaseConnector(ExchangeConnector):
                 "change_pct": float(ticker.get("percentage", 0)),
             }
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Failed to fetch ticker for {symbol}: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Failed to fetch ticker for {symbol}: {exc}") from exc
 
     async def fetch_ohlcv(
         self,
@@ -230,9 +208,7 @@ class CoinbaseConnector(ExchangeConnector):
                 ccxt_symbol, timeframe=timeframe, limit=limit
             )
         except ccxt.NetworkError as exc:
-            raise ExchangeConnectionError(
-                f"Failed to fetch OHLCV for {symbol}: {exc}"
-            ) from exc
+            raise ExchangeConnectionError(f"Failed to fetch OHLCV for {symbol}: {exc}") from exc
 
     # ── Internal helpers ───────────────────────────────────────────
 

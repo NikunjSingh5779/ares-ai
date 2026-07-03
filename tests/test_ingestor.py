@@ -55,9 +55,15 @@ class TestMarketDataIngestor:
 
         source = registry.get("yahoo")
         candle = OHLCVData(
-            symbol="BTC-USD", source="yahoo", interval="1d",
+            symbol="BTC-USD",
+            source="yahoo",
+            interval="1d",
             timestamp=datetime(2024, 1, 1),
-            open=42000, high=42500, low=41500, close=42200, volume=100,
+            open=42000,
+            high=42500,
+            low=41500,
+            close=42200,
+            volume=100,
         )
         source.fetch_ohlcv = AsyncMock(return_value=[candle])  # type: ignore[method-assign]
 

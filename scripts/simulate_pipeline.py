@@ -44,6 +44,7 @@ class MockExchangeConnector(ExchangeConnector):
 
     async def get_balance(self):
         from live_trading.exchange.base import ExchangeBalance
+
         return ExchangeBalance(
             total={"USDT": 100000.0, "BTC": 0.0},
             free={"USDT": 100000.0, "BTC": 0.0},
@@ -138,8 +139,21 @@ async def main():
 
     # Create model roster with all pipeline agents
     agent_configs = {}
-    for name in ["market_analyst", "quant", "news", "vision", "consensus",
-                  "risk", "execution", "journal", "reflection", "memory", "supervisor", "coding", "fast"]:
+    for name in [
+        "market_analyst",
+        "quant",
+        "news",
+        "vision",
+        "consensus",
+        "risk",
+        "execution",
+        "journal",
+        "reflection",
+        "memory",
+        "supervisor",
+        "coding",
+        "fast",
+    ]:
         agent_configs[name] = AgentModelConfig.from_dict(name, {"primary": f"model-{name}"})
     model_roster = ModelRoster(agent_configs)
 
@@ -205,10 +219,7 @@ async def main():
     # Run analysis pipeline
     print("\n[2/6] Running analysis pipeline (BTC-USD)...")
 
-    state = await supervisor.run_analysis(
-        symbol="BTC-USD",
-        request="Analyze BTC-USD for long entry opportunity"
-    )
+    state = await supervisor.run_analysis(symbol="BTC-USD", request="Analyze BTC-USD for long entry opportunity")
 
     print(f"    Session ID: {state.session_id}")
     print(f"    Request ID: {state.request_id}")
@@ -297,11 +308,11 @@ async def main():
     audit_entries = auditor.to_dicts(limit=10)
     print(f"    Total audit entries: {auditor.count()}")
     for i, entry in enumerate(audit_entries):
-        print(f"    Entry {i+1}:")
+        print(f"    Entry {i + 1}:")
         print(f"      Timestamp: {entry['timestamp']}")
         print(f"      Order intent: {entry['order_intent']}")
         print(f"      Agent chain: {len(entry['agent_chain'])} agents")
-        for agent in entry['agent_chain']:
+        for agent in entry["agent_chain"]:
             print(f"        - {agent}")
         print(f"      Risk checks: {entry['risk_checks']}")
         print(f"      Order result: {entry['order_result']}")

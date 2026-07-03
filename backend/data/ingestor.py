@@ -169,9 +169,7 @@ class MarketDataIngestor:
     ) -> MarketDataResult:
         """Force-refresh cached data by invalidating cache first."""
         await self.cache.invalidate(source, symbol, interval)
-        return await self.ingest(
-            MarketDataRequest(symbol=symbol, source=source, interval=interval)
-        )
+        return await self.ingest(MarketDataRequest(symbol=symbol, source=source, interval=interval))
 
     def get_stats(self) -> dict[str, Any]:
         """Get ingestion statistics."""

@@ -62,8 +62,5 @@ def create_exchange(name: str, config: dict[str, Any] | None = None) -> Exchange
 
         return IbkrStubConnector(config)
 
-    msg = (
-        f"Unknown exchange: {name}. "
-        f"Supported: binance, bybit, coinbase, kraken, zerodha, ibkr"
-    )
+    msg = f"Unknown exchange: {name}. Supported: binance, bybit, coinbase, kraken, zerodha, ibkr"
     raise ValueError(msg)

@@ -1,4 +1,5 @@
 """Tests for the enriched health endpoint."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock

@@ -101,12 +101,14 @@ class AgentRegistry:
         """List all registered agents with metadata."""
         result = []
         for name, reg in self._agents.items():
-            result.append({
-                "name": name,
-                "has_implementation": reg.has_implementation,
-                "description": reg.description,
-                "model_chain": reg.model_config.model_chain if reg.model_config else [],  # type: ignore[union-attr]
-            })
+            result.append(
+                {
+                    "name": name,
+                    "has_implementation": reg.has_implementation,
+                    "description": reg.description,
+                    "model_chain": reg.model_config.model_chain if reg.model_config else [],  # type: ignore[union-attr]
+                }
+            )
         return result
 
     def stats(self) -> dict[str, Any]:

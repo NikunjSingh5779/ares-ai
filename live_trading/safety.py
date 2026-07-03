@@ -182,10 +182,7 @@ class PromotionGate:
 
     def passed(self, paper_trades_count: int, paper_days_count: int) -> bool:
         """Check if the paper record satisfies the promotion requirements."""
-        return (
-            paper_trades_count >= self.min_paper_trades
-            and paper_days_count >= self.min_paper_days
-        )
+        return paper_trades_count >= self.min_paper_trades and paper_days_count >= self.min_paper_days
 
     def check(self, paper_trades_count: int, paper_days_count: int) -> SafetyCheckResult:
         """Safe-guard check: does the paper record meet promotion criteria?"""

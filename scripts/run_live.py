@@ -41,10 +41,11 @@ async def _get_default_ids(session: AsyncSession) -> tuple[str, str] | None:
     account_id = (await session.execute(text("SELECT id FROM accounts WHERE exchange='paper' LIMIT 1"))).scalar()
     if not account_id:
         return None
-    portfolio_id = (await session.execute(
-        text("SELECT id FROM portfolio WHERE account_id=:account_id LIMIT 1"),
-        {"account_id": account_id}
-    )).scalar()
+    portfolio_id = (
+        await session.execute(
+            text("SELECT id FROM portfolio WHERE account_id=:account_id LIMIT 1"), {"account_id": account_id}
+        )
+    ).scalar()
     if portfolio_id:
         return str(account_id), str(portfolio_id)
     return None
@@ -53,37 +54,50 @@ async def _get_default_ids(session: AsyncSession) -> tuple[str, str] | None:
 async def persist_closed_trade(session: AsyncSession, trade, account_id: str, portfolio_id: str):
     """Update positions and insert into trade_history when an SL/TP is hit."""
     # Mark position closed
-    await session.execute(text("""
+    await session.execute(
+        text("""
         UPDATE positions
         SET is_open = false, closed_at = NOW()
         WHERE symbol = :symbol AND is_open = true AND portfolio_id = :portfolio_id
-    """), {"symbol": trade.symbol, "portfolio_id": portfolio_id})
+    """),
+        {"symbol": trade.symbol, "portfolio_id": portfolio_id},
+    )
 
     # Insert trade history
-    await session.execute(text("""
+    await session.execute(
+        text("""
         INSERT INTO trade_history
-        (account_id, symbol, side, quantity, entry_price, exit_price, entry_at, exit_at, pnl, pnl_pct, is_closed, strategy_name)
+        (
+            account_id, symbol, side, quantity, entry_price, exit_price, 
+            entry_at, exit_at, pnl, pnl_pct, is_closed, strategy_name
+        )
         VALUES
-        (:account_id, :symbol, :side, :quantity, :entry_price, :exit_price, :entry_at, :exit_at, :pnl, :pnl_pct, true, :strategy_name)
-    """), {
-        "account_id": account_id,
-        "symbol": trade.symbol,
-        "side": trade.side,
-        "quantity": trade.quantity,
-        "entry_price": trade.entry_price,
-        "exit_price": trade.exit_price,
-        "entry_at": trade.entry_at,
-        "exit_at": trade.exit_at,
-        "pnl": trade.pnl,
-        "pnl_pct": trade.pnl_pct,
-        "strategy_name": trade.strategy_name
-    })
+        (
+            :account_id, :symbol, :side, :quantity, :entry_price, :exit_price, 
+            :entry_at, :exit_at, :pnl, :pnl_pct, true, :strategy_name
+        )
+    """),
+        {
+            "account_id": account_id,
+            "symbol": trade.symbol,
+            "side": trade.side,
+            "quantity": trade.quantity,
+            "entry_price": trade.entry_price,
+            "exit_price": trade.exit_price,
+            "entry_at": trade.entry_at,
+            "exit_at": trade.exit_at,
+            "pnl": trade.pnl,
+            "pnl_pct": trade.pnl_pct,
+            "strategy_name": trade.strategy_name,
+        },
+    )
 
 
 async def main():
     logger.info("Initializing Live Runner...")
 
     from backend.data.repository import MarketDataRepository
+
     ingestor = MarketDataIngestor(repository=MarketDataRepository(session_factory=async_session_factory))
     engine = _get_engine()
     live_engine = _get_live_engine()
@@ -100,7 +114,7 @@ async def main():
         llm_client=llm_client,
         breaker_registry=breaker_registry,
         queue_registry=queue_registry,
-        retry_config=RetryConfig(max_retries=2, base_delay=0.5)
+        retry_config=RetryConfig(max_retries=2, base_delay=0.5),
     )
 
     registry = AgentRegistry(
@@ -112,7 +126,9 @@ async def main():
     registry.register("market_analyst", agent=MarketAnalystAgent(router=router_model, ingestor=ingestor))
     registry.register("quant", agent=QuantAgent(router=router_model, ingestor=ingestor))
     registry.register("risk", agent=RiskAgent(router=router_model, ingestor=ingestor))
-    registry.register("execution", agent=ExecutionAgent(engine=engine, session_factory=async_session_factory, live_engine=live_engine))
+    registry.register(
+        "execution", agent=ExecutionAgent(engine=engine, session_factory=async_session_factory, live_engine=live_engine)
+    )
     registry.register("journal", agent=JournalAgent(session_factory=async_session_factory))
     registry.register("reflection", agent=ReflectionAgent())
     registry.register("memory", agent=MemoryAgent())

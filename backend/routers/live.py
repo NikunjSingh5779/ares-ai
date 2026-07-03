@@ -261,6 +261,7 @@ async def audit_log(limit: int = 50) -> list[dict[str, Any]]:
         return []
     return engine.auditor.to_dicts(limit=min(limit, 500))
 
+
 @router.get("/paper_record")
 async def paper_record() -> dict[str, Any]:
     """Return paper trading stats for promotion check."""
@@ -271,24 +272,32 @@ async def paper_record() -> dict[str, Any]:
     try:
         async with async_session_factory() as session:
             # Query number of closed paper trades
-            trades_count = (await session.execute(text("""
+            trades_count = (
+                await session.execute(
+                    text("""
                 SELECT COUNT(*) FROM trade_history th
                 JOIN accounts a ON th.account_id = a.id
                 WHERE a.exchange = 'paper' AND th.is_closed = true
-            """))).scalar() or 0
+            """)
+                )
+            ).scalar() or 0
 
             # Query number of unique trading days
-            days_count = (await session.execute(text("""
+            days_count = (
+                await session.execute(
+                    text("""
                 SELECT COUNT(DISTINCT DATE(entry_at)) FROM trade_history th
                 JOIN accounts a ON th.account_id = a.id
                 WHERE a.exchange = 'paper'
-            """))).scalar() or 0
+            """)
+                )
+            ).scalar() or 0
 
             # Pass these database metrics into the promotion gate
             return {
                 "trades": trades_count,
                 "days": days_count,
-                "promotion": engine.promotion_gate.progress(trades_count, days_count)
+                "promotion": engine.promotion_gate.progress(trades_count, days_count),
             }
     except Exception as e:
         logger.error(f"Failed to query paper_record from DB: {e}")

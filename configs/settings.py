@@ -117,8 +117,7 @@ def load_model_roster() -> dict[str, Any]:
     roster_path = PROJECT_ROOT / "configs" / "models.yaml"
     if not roster_path.exists():
         raise FileNotFoundError(
-            f"Model roster not found at {roster_path}. "
-            f"Run from the project root or ensure configs/models.yaml exists."
+            f"Model roster not found at {roster_path}. Run from the project root or ensure configs/models.yaml exists."
         )
     with open(roster_path) as f:
         return yaml.safe_load(f)

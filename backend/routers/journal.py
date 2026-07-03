@@ -62,15 +62,19 @@ async def journal_history(limit: int = 50) -> list[dict[str, Any]]:
 
     entries = []
     for row in rows:
-        entries.append({
-            "id": str(row.id),
-            "entry_type": row.entry_type,
-            "title": row.title,
-            "content": row.content,
-            "sentiment": row.sentiment,
-            "mistakes_detected": row.mistakes_detected,
-            "lessons_learned": row.lessons_learned,
-            "created_at": row.created_at.isoformat() if hasattr(row.created_at, "isoformat") else str(row.created_at),
-        })
+        entries.append(
+            {
+                "id": str(row.id),
+                "entry_type": row.entry_type,
+                "title": row.title,
+                "content": row.content,
+                "sentiment": row.sentiment,
+                "mistakes_detected": row.mistakes_detected,
+                "lessons_learned": row.lessons_learned,
+                "created_at": row.created_at.isoformat()
+                if hasattr(row.created_at, "isoformat")
+                else str(row.created_at),
+            }
+        )
 
     return entries

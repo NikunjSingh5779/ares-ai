@@ -15,7 +15,7 @@ class LoggerWriter:
         if message.strip() == "":
             return
         with open(self.filepath, "a", encoding="utf-8") as f:
-            timestamp = datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')
+            timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
             for line in message.splitlines():
                 if line:
                     f.write(f"[{timestamp}] {line}\n")
@@ -25,6 +25,7 @@ class LoggerWriter:
 
     def flush(self):
         sys.__stdout__.flush()
+
 
 async def main():
     sys.stdout = LoggerWriter("/app/logs/daily_reports.log")
@@ -36,6 +37,7 @@ async def main():
 
         # Sleep for 24 hours (86400 seconds)
         await asyncio.sleep(86400)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

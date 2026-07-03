@@ -92,56 +92,64 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
         # Memory from execution
         if execution:
             executed = bool(execution.get("executed", False))
-            memories.append({
-                "type": "trade",
-                "content": (
-                    f"{'Executed' if executed else 'Rejected'} "
-                    f"trade for {symbol}. "
-                    f"Fill price: ${execution.get('fill_price', 'N/A')}. "
-                    f"Rationale: {execution.get('rationale', '')}"
-                ),
-                "importance": 7.0 if executed else 3.0,
-                "timestamp": datetime.now(UTC).isoformat(),
-            })
+            memories.append(
+                {
+                    "type": "trade",
+                    "content": (
+                        f"{'Executed' if executed else 'Rejected'} "
+                        f"trade for {symbol}. "
+                        f"Fill price: ${execution.get('fill_price', 'N/A')}. "
+                        f"Rationale: {execution.get('rationale', '')}"
+                    ),
+                    "importance": 7.0 if executed else 3.0,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
 
         # Memory from market analyst
         if market_analyst:
             direction = market_analyst.get("direction", "flat")
             confidence = market_analyst.get("confidence", 0)
-            memories.append({
-                "type": "agent_output",
-                "content": (
-                    f"Market analysis for {symbol}: {direction} "
-                    f"at {confidence}% confidence. "
-                    f"Rationale: {market_analyst.get('rationale', '')}"
-                ),
-                "importance": 5.0,
-                "timestamp": datetime.now(UTC).isoformat(),
-            })
+            memories.append(
+                {
+                    "type": "agent_output",
+                    "content": (
+                        f"Market analysis for {symbol}: {direction} "
+                        f"at {confidence}% confidence. "
+                        f"Rationale: {market_analyst.get('rationale', '')}"
+                    ),
+                    "importance": 5.0,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
 
         # Memory from risk if rejected
         risk = output_map.get("risk", {})
         if risk:
             approved = bool(risk.get("approved", True))
             if not approved:
-                memories.append({
-                    "type": "agent_output",
-                    "content": (
-                        f"Risk rejected trade for {symbol}. "
-                        f"Score: {risk.get('risk_score', 'N/A')}. "
-                        f"Reasons: {risk.get('reasons', [])}"
-                    ),
-                    "importance": 6.0,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                })
+                memories.append(
+                    {
+                        "type": "agent_output",
+                        "content": (
+                            f"Risk rejected trade for {symbol}. "
+                            f"Score: {risk.get('risk_score', 'N/A')}. "
+                            f"Reasons: {risk.get('reasons', [])}"
+                        ),
+                        "importance": 6.0,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                )
 
         # Memory about the request context
-        memories.append({
-            "type": "user_preference",
-            "content": f"User request: {request} for symbol {symbol}",
-            "importance": 2.0,
-            "timestamp": datetime.now(UTC).isoformat(),
-        })
+        memories.append(
+            {
+                "type": "user_preference",
+                "content": f"User request: {request} for symbol {symbol}",
+                "importance": 2.0,
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+        )
 
         # --- Build rationale ---
         rationale_parts = [
@@ -176,8 +184,13 @@ def _extract_agent_outputs(inputs: MemoryInput) -> dict[str, Any]:
     """Extract agent outputs from the input's extra fields."""
     output_map: dict[str, Any] = {}
     agent_names = [
-        "market_analyst", "quant", "news", "vision", "consensus",
-        "risk", "execution",
+        "market_analyst",
+        "quant",
+        "news",
+        "vision",
+        "consensus",
+        "risk",
+        "execution",
     ]
     for name in agent_names:
         val = getattr(inputs, f"{name}_output", None)

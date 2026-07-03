@@ -409,7 +409,11 @@ class BacktestEngine:
 
                 if reason:
                     self._close_position(
-                        position, candle, exit_price, commission, trades,
+                        position,
+                        candle,
+                        exit_price,
+                        commission,
+                        trades,
                         exit_reason=reason,
                     )
                     cash = self._cash_after_close(position, exit_price, commission)
@@ -428,9 +432,15 @@ class BacktestEngine:
 
                 # Close existing position if open (reversal signal)
                 if position is not None:
-                    exit_price = candle.close * (1 - slippage) if position.side == "long" else candle.close * (1 + slippage)
+                    exit_price = (
+                        candle.close * (1 - slippage) if position.side == "long" else candle.close * (1 + slippage)
+                    )
                     self._close_position(
-                        position, candle, exit_price, commission, trades,
+                        position,
+                        candle,
+                        exit_price,
+                        commission,
+                        trades,
                         exit_reason="signal",
                     )
                     cash = self._cash_after_close(position, exit_price, commission)
@@ -439,9 +449,9 @@ class BacktestEngine:
                 # Enter new position at next candle's open
                 entry_price = signal.get("entry_price") or next_candle.open
                 if signal_dir == "long":
-                    entry_price *= (1 + slippage)
+                    entry_price *= 1 + slippage
                 else:
-                    entry_price *= (1 - slippage)
+                    entry_price *= 1 - slippage
 
                 # Position size: account for commission so cash doesn't go negative
                 quantity = cash / (entry_price * (1 + commission))
@@ -516,19 +526,21 @@ class BacktestEngine:
         entry_value = position.quantity * position.entry_price
         pnl_pct = (pnl / entry_value * 100.0) if entry_value > 0 else 0.0
 
-        trades.append(SimulatedTrade(
-            symbol=candle.symbol,
-            side=position.side,
-            entry_price=position.entry_price,
-            exit_price=exit_price,
-            quantity=position.quantity,
-            entry_at=position.entry_at,
-            exit_at=candle.timestamp,
-            pnl=round(pnl, 2),
-            pnl_pct=round(pnl_pct, 4),
-            exit_reason=exit_reason,
-            strategy_name=position.strategy_name,
-        ))
+        trades.append(
+            SimulatedTrade(
+                symbol=candle.symbol,
+                side=position.side,
+                entry_price=position.entry_price,
+                exit_price=exit_price,
+                quantity=position.quantity,
+                entry_at=position.entry_at,
+                exit_at=candle.timestamp,
+                pnl=round(pnl, 2),
+                pnl_pct=round(pnl_pct, 4),
+                exit_reason=exit_reason,
+                strategy_name=position.strategy_name,
+            )
+        )
 
     @staticmethod
     def _cash_after_close(

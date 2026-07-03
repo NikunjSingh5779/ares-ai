@@ -1,4 +1,5 @@
 """Tests for retry logic with exponential backoff and jitter."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -23,10 +24,10 @@ class TestRetryConfig:
 
     def test_delay_exponential(self) -> None:
         cfg = RetryConfig(base_delay=1.0, max_delay=60.0, jitter_factor=0.0)
-        assert cfg.delay(0) == 1.0     # 1 * 2^0 = 1
-        assert cfg.delay(1) == 2.0     # 1 * 2^1 = 2
-        assert cfg.delay(2) == 4.0     # 1 * 2^2 = 4
-        assert cfg.delay(3) == 8.0     # 1 * 2^3 = 8
+        assert cfg.delay(0) == 1.0  # 1 * 2^0 = 1
+        assert cfg.delay(1) == 2.0  # 1 * 2^1 = 2
+        assert cfg.delay(2) == 4.0  # 1 * 2^2 = 4
+        assert cfg.delay(3) == 8.0  # 1 * 2^3 = 8
 
     def test_delay_capped_at_max(self) -> None:
         cfg = RetryConfig(base_delay=10.0, max_delay=30.0, jitter_factor=0.0)

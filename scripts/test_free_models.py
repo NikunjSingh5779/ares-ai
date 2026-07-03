@@ -24,17 +24,18 @@ async def get_free_models():
                 free_models.append(model["id"])
         return free_models
 
+
 async def get_opencode_models(api_key: str):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
-                "https://api.opencode.ai/v1/models",
-                headers={"Authorization": f"Bearer {api_key}"}
+                "https://api.opencode.ai/v1/models", headers={"Authorization": f"Bearer {api_key}"}
             )
             data = response.json()
             return [m["id"] for m in data.get("data", [])]
         except Exception:
             return []
+
 
 async def test_model(client, model_id):
     try:
@@ -44,9 +45,9 @@ async def test_model(client, model_id):
             json={
                 "model": model_id,
                 "messages": [{"role": "user", "content": "Say 'hello' in one word."}],
-                "max_tokens": 10
+                "max_tokens": 10,
             },
-            timeout=5
+            timeout=5,
         )
         resp.raise_for_status()
         try:
@@ -59,6 +60,7 @@ async def test_model(client, model_id):
     except Exception as e:
         return f"FAILED ({type(e).__name__})"
 
+
 async def main():
     print("\n=== OPENCODE MODELS ===")
     oc_key = settings.opencode_api_key
@@ -69,7 +71,7 @@ async def main():
             "meta-llama-3.1-8b-instruct-free",
             "qwen-2.5-coder-32b-instruct-free",
             "meta-llama-3.1-70b-instruct-free",
-            "qwen-2.5-72b-instruct-free"
+            "qwen-2.5-72b-instruct-free",
         ]
         print(f"Testing {len(oc_models)} OpenCode models from configs/models.yaml...\n")
         oc_client = LLMClient(api_key=oc_key, base_url="https://api.opencode.ai/v1")
@@ -80,6 +82,7 @@ async def main():
             print(result)
             sys.stdout.flush()
             await asyncio.sleep(2)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

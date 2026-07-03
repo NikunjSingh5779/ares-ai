@@ -125,8 +125,10 @@ class TestStrategyImprovementEngine:
         records = engine.get_recent_improvements()
         accuracy_records = [r for r in records if r["category"] == "agent_config"]
         if accuracy_records:
-            assert "declined" in accuracy_records[0]["description"].lower() or \
-                   "accuracy" in accuracy_records[0]["description"].lower()
+            assert (
+                "declined" in accuracy_records[0]["description"].lower()
+                or "accuracy" in accuracy_records[0]["description"].lower()
+            )
 
     def test_persistent_error_detection(self):
         """Should flag persistent errors across runs.
@@ -154,9 +156,11 @@ class TestStrategyImprovementEngine:
         engine = StrategyImprovementEngine()
 
         for _ in range(5):
-            engine.analyze(_make_reflection(
-                extra_suggestions=["Review risk criteria"],
-            ))
+            engine.analyze(
+                _make_reflection(
+                    extra_suggestions=["Review risk criteria"],
+                )
+            )
 
         records = engine.get_recent_improvements()
         overlap_records = [r for r in records if r["category"] == "parameter_tuning"]
@@ -207,6 +211,7 @@ class TestStrategyImprovementEngine:
 
     def test_get_improvement_engine_singleton(self):
         from agents.improvement import get_improvement_engine
+
         e1 = get_improvement_engine()
         e2 = get_improvement_engine()
         assert e1 is e2

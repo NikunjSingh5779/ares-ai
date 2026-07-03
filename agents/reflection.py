@@ -122,10 +122,7 @@ class ReflectionAgent(BaseAgent[ReflectionInput, ReflectionOutput]):
             direction = market_analyst.get("direction", "unknown")
             confidence = float(market_analyst.get("confidence", 0))
             price_str = f"${fill_price:.2f}" if fill_price is not None else "N/A"
-            eval_text = (
-                f"Trade executed: {direction} at {price_str}. "
-                f"Analyst confidence was {confidence:.1f}%."
-            )
+            eval_text = f"Trade executed: {direction} at {price_str}. Analyst confidence was {confidence:.1f}%."
             evaluation_parts.append(eval_text)
         else:
             reason = execution.get("rationale", "No trade executed")
@@ -140,29 +137,38 @@ class ReflectionAgent(BaseAgent[ReflectionInput, ReflectionOutput]):
 
         # --- Improvement suggestions ---
         suggestions = _generate_suggestions(
-            market_analyst, consensus, risk, errors, executed,
+            market_analyst,
+            consensus,
+            risk,
+            errors,
+            executed,
         )
 
         # --- Cross-session pattern detection ---
         cross_session_suggestions = _detect_cross_session_patterns(
-            confidence_accuracy, executed,
+            confidence_accuracy,
+            executed,
         )
         suggestions.extend(cross_session_suggestions)
 
         # --- Knowledge updates ---
         knowledge_updates = _generate_knowledge_updates(
-            market_analyst, consensus, executed,
+            market_analyst,
+            consensus,
+            executed,
         )
 
         # --- Store in cross-session history ---
-        _reflection_history.append({
-            "symbol": symbol,
-            "executed": executed,
-            "confidence_accuracy": confidence_accuracy,
-            "evaluation": evaluation_parts,
-            "suggestions": suggestions,
-            "timestamp": datetime.now(UTC).isoformat(),
-        })
+        _reflection_history.append(
+            {
+                "symbol": symbol,
+                "executed": executed,
+                "confidence_accuracy": confidence_accuracy,
+                "evaluation": evaluation_parts,
+                "suggestions": suggestions,
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+        )
         if len(_reflection_history) > CROSS_SESSION_HISTORY_SIZE:
             _reflection_history = _reflection_history[-CROSS_SESSION_HISTORY_SIZE:]
 
@@ -188,8 +194,13 @@ def _extract_agent_outputs(inputs: ReflectionInput) -> dict[str, Any]:
     """
     output_map: dict[str, Any] = {}
     agent_names = [
-        "market_analyst", "quant", "news", "vision", "consensus",
-        "risk", "execution",
+        "market_analyst",
+        "quant",
+        "news",
+        "vision",
+        "consensus",
+        "risk",
+        "execution",
     ]
     for name in agent_names:
         val = getattr(inputs, f"{name}_output", None)
@@ -215,7 +226,8 @@ def _compute_confidence_accuracy(
     confidence levels:
     - If consensus.approved = True and trade executed → high accuracy if high confidence
     - If consensus.approved = False and trade not executed → high accuracy (correct rejection)
-    - If consensus.approved = True but trade not executed (risk rejected) → high accuracy if agents were correctly confident
+    - If consensus.approved = True but trade not executed (risk rejected) → high accuracy if agents were
+      correctly confident
     - If consensus.approved = False but trade executed (shouldn't happen) → low accuracy
 
     The key insight: confidence accuracy measures how well the AGENTS' predictions
@@ -268,8 +280,7 @@ def _generate_suggestions(
 
     if errors:
         suggestions.append(
-            f"Investigate {len(errors)} error(s) in the pipeline — "
-            f"check agent reliability and fallback chains"
+            f"Investigate {len(errors)} error(s) in the pipeline — check agent reliability and fallback chains"
         )
 
     if not executed:
@@ -278,17 +289,14 @@ def _generate_suggestions(
         ma_conf = float(market_analyst.get("confidence", 0)) if market_analyst else 0
         if ma_conf < 60:
             suggestions.append(
-                "Market analyst confidence was low — consider gathering more data "
-                "before executing marginal signals"
+                "Market analyst confidence was low — consider gathering more data before executing marginal signals"
             )
 
     # Consensus disgreement
     if consensus:
         comp_conf = float(consensus.get("composite_confidence", 0))
         if 50 < comp_conf < 80:
-            suggestions.append(
-                "Composite confidence in moderate range — review agent alignment"
-            )
+            suggestions.append("Composite confidence in moderate range — review agent alignment")
 
     if not suggestions:
         suggestions.append("No significant issues detected — current pipeline operating nominally")
@@ -310,10 +318,7 @@ def _generate_knowledge_updates(
         updates.append(f"Market analysis: {direction} signal at {confidence}% confidence")
 
     if consensus:
-        updates.append(
-            f"Consensus: composite confidence was "
-            f"{consensus.get('composite_confidence', 'N/A')}%"
-        )
+        updates.append(f"Consensus: composite confidence was {consensus.get('composite_confidence', 'N/A')}%")
 
     if executed:
         updates.append("Signal passed all gates and was executed")

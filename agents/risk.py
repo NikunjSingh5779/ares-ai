@@ -36,6 +36,7 @@ MAX_RISK_SCORE: float = 70.0
 # Input schema
 # ---------------------------------------------------------------------------
 
+
 class RiskInput(BaseModel):
     """Input for the Risk Agent.
 
@@ -158,8 +159,7 @@ def build_risk_prompt(
         )
 
     context_parts.append(
-        "\nAssess the risk of this trade and return your decision "
-        "as valid JSON matching the specified schema."
+        "\nAssess the risk of this trade and return your decision as valid JSON matching the specified schema."
     )
 
     return [
@@ -171,6 +171,7 @@ def build_risk_prompt(
 # ---------------------------------------------------------------------------
 # Rule-based risk assessment (degraded mode)
 # ---------------------------------------------------------------------------
+
 
 def _rule_based_risk(
     symbol: str,
@@ -202,10 +203,7 @@ def _rule_based_risk(
         ma_dir = str(market_analyst_output.get("direction", "flat"))
         quant_dir = str(quant_output.get("direction", "flat"))
         consensus_approved = (
-            ma_conf >= 80.0
-            and quant_conf >= 80.0
-            and ma_dir == quant_dir
-            and ma_dir in ("long", "short")
+            ma_conf >= 80.0 and quant_conf >= 80.0 and ma_dir == quant_dir and ma_dir in ("long", "short")
         )
 
     if not consensus_approved:
@@ -309,6 +307,7 @@ def _compute_risk_score(
 # Response parser
 # ---------------------------------------------------------------------------
 
+
 def _parse_risk_response(
     response_text: str | None,
     fallback_result: dict[str, Any],
@@ -375,6 +374,7 @@ def _parse_risk_response(
 # RiskAgent
 # ---------------------------------------------------------------------------
 
+
 class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
     """Risk assessment agent for trade approval.
 
@@ -418,13 +418,16 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
 
         # Step 2: Try LLM analysis
         llm_result = await self._llm_risk(
-            inputs.symbol, indicators, inputs,
+            inputs.symbol,
+            indicators,
+            inputs,
         )
 
         # Step 3: Fall back to rule-based if needed
         if llm_result is None:
             llm_result = _rule_based_risk(
-                inputs.symbol, indicators,
+                inputs.symbol,
+                indicators,
                 market_analyst_output=inputs.market_analyst_output,
                 quant_output=inputs.quant_output,
                 consensus_output=inputs.consensus_output,
@@ -459,7 +462,8 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
     ) -> dict[str, Any] | None:
         """Attempt LLM-based risk assessment. Returns None if unavailable."""
         messages = build_risk_prompt(
-            symbol, indicators,
+            symbol,
+            indicators,
             market_analyst_output=inputs.market_analyst_output,
             quant_output=inputs.quant_output,
             consensus_output=inputs.consensus_output,
@@ -496,7 +500,8 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
                 pass
 
         fallback = _rule_based_risk(
-            symbol, indicators,
+            symbol,
+            indicators,
             market_analyst_output=inputs.market_analyst_output,
             quant_output=inputs.quant_output,
             consensus_output=inputs.consensus_output,

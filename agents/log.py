@@ -54,23 +54,26 @@ class AgentLogger:
         """)
 
         async with async_session_factory() as session:
-            await session.execute(stmt, {
-                "agent_name": agent_name,
-                "model_used": model_used,
-                "model_chain": model_chain,
-                "input_schema": json.dumps(input_schema) if input_schema else None,
-                "output_schema": json.dumps(output_schema) if output_schema else None,
-                "input_data": json.dumps(input_data) if input_data else None,
-                "output_data": json.dumps(output_data) if output_data else None,
-                "latency_ms": latency_ms,
-                "token_count": token_count,
-                "success": success,
-                "error_type": error_type,
-                "error_message": error_message,
-                "retry_count": retry_count,
-                "circuit_breaker_tripped": circuit_breaker_tripped,
-                "degraded_mode": degraded_mode,
-            })
+            await session.execute(
+                stmt,
+                {
+                    "agent_name": agent_name,
+                    "model_used": model_used,
+                    "model_chain": model_chain,
+                    "input_schema": json.dumps(input_schema) if input_schema else None,
+                    "output_schema": json.dumps(output_schema) if output_schema else None,
+                    "input_data": json.dumps(input_data) if input_data else None,
+                    "output_data": json.dumps(output_data) if output_data else None,
+                    "latency_ms": latency_ms,
+                    "token_count": token_count,
+                    "success": success,
+                    "error_type": error_type,
+                    "error_message": error_message,
+                    "retry_count": retry_count,
+                    "circuit_breaker_tripped": circuit_breaker_tripped,
+                    "degraded_mode": degraded_mode,
+                },
+            )
             await session.commit()
 
         return {}

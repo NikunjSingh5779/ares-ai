@@ -1,4 +1,5 @@
 """Tests for ConsensusEngine."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -10,6 +11,7 @@ from agents.consensus import ConsensusEngine
 # ---------------------------------------------------------------------------
 # Shared test data
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def valid_ma_long() -> dict[str, Any]:
@@ -34,6 +36,7 @@ def valid_quant_short() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # ConsensusEngine Tests
 # ---------------------------------------------------------------------------
+
 
 class TestConsensusEngine:
     def test_both_above_80_agree_long(self, valid_ma_long: dict[str, Any], valid_quant_long: dict[str, Any]) -> None:
@@ -102,7 +105,9 @@ class TestConsensusEngine:
         assert "Market Analyst" in result["rationale"]
         assert "Quant" in result["rationale"]
 
-    def test_agreement_metrics_are_present(self, valid_ma_long: dict[str, Any], valid_quant_long: dict[str, Any]) -> None:
+    def test_agreement_metrics_are_present(
+        self, valid_ma_long: dict[str, Any], valid_quant_long: dict[str, Any]
+    ) -> None:
         """Agreement metrics contain all expected keys."""
         result = ConsensusEngine.evaluate("BTC-USD", valid_ma_long, valid_quant_long)
         metrics = result["agreement_metrics"]
@@ -117,7 +122,9 @@ class TestConsensusEngine:
         assert metrics["quant_direction"] == "long"
         assert metrics["directions_agree"] is True
 
-    def test_composite_confidence_average(self, valid_ma_long: dict[str, Any], valid_quant_long: dict[str, Any]) -> None:
+    def test_composite_confidence_average(
+        self, valid_ma_long: dict[str, Any], valid_quant_long: dict[str, Any]
+    ) -> None:
         """Composite confidence is the average of both."""
         result = ConsensusEngine.evaluate("BTC-USD", valid_ma_long, valid_quant_long)
         assert result["composite_confidence"] == (85.0 + 90.0) / 2

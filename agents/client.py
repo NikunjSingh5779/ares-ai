@@ -68,8 +68,8 @@ class LLMClient:
                 key = os.getenv(key_env)
                 if self._is_valid_key(key):
                     self.providers[provider] = {
-                        "api_key": key.strip(), # type: ignore[union-attr]
-                        "base_url": os.getenv(url_env, default_url).rstrip("/")
+                        "api_key": key.strip(),  # type: ignore[union-attr]
+                        "base_url": os.getenv(url_env, default_url).rstrip("/"),
                     }
 
     def _get_client(self, provider: str) -> httpx.AsyncClient:
@@ -77,10 +77,7 @@ class LLMClient:
             config = self.providers.get(provider) or self.providers.get("default")
             if not config:
                 # Fallback to OpenRouter default if no config found
-                config = {
-                    "api_key": "",
-                    "base_url": "https://openrouter.ai/api/v1"
-                }
+                config = {"api_key": "", "base_url": "https://openrouter.ai/api/v1"}
 
             api_key = config.get("api_key", "").strip()
             headers = {
@@ -175,8 +172,12 @@ class LLMClient:
             return response_json
         except httpx.HTTPStatusError as e:
             if e.response.status_code in [429, 503, 529]:
-                logger.warning(f"Provider '{provider}' rate limited or down ({e.response.status_code}). Triggering router fallback chain.")
+                logger.warning(
+                    f"Provider '{provider}' rate limited or down ({e.response.status_code}). "
+                    "Triggering router fallback chain."
+                )
                 import asyncio
+
                 if provider == "google":
                     if not hasattr(self, "_google_429_count"):
                         self._google_429_count = 0
@@ -271,10 +272,12 @@ class NoOpLLMClient:
             "choices": [
                 {
                     "message": {
-                        "content": json.dumps({
-                            "error": "LLM client not configured — no API key",
-                            "degraded": True,
-                        })
+                        "content": json.dumps(
+                            {
+                                "error": "LLM client not configured — no API key",
+                                "degraded": True,
+                            }
+                        )
                     }
                 }
             ],
@@ -302,18 +305,29 @@ def _is_valid_key(key: str | None) -> bool:
         return False
     return True
 
+
 def create_llm_client() -> LLMClient | NoOpLLMClient:
     """Create the appropriate LLM client based on available configuration."""
     from backend.core.config import settings
+
     providers = {}
     if _is_valid_key(settings.openrouter_api_key):
-        providers["open_router"] = {"api_key": settings.openrouter_api_key.strip(), "base_url": settings.openrouter_base_url}  # type: ignore[union-attr]
+        providers["open_router"] = {
+            "api_key": settings.openrouter_api_key.strip(),
+            "base_url": settings.openrouter_base_url,
+        }  # type: ignore[union-attr]
     if _is_valid_key(settings.opencode_api_key):
         providers["opencode"] = {"api_key": settings.opencode_api_key.strip(), "base_url": settings.opencode_base_url}  # type: ignore[union-attr]
     if _is_valid_key(getattr(settings, "gemini_api_key", "")):
-        providers["google"] = {"api_key": getattr(settings, "gemini_api_key").strip(), "base_url": settings.gemini_base_url}
+        providers["google"] = {
+            "api_key": getattr(settings, "gemini_api_key").strip(),
+            "base_url": settings.gemini_base_url,
+        }
     if _is_valid_key(getattr(settings, "mistral_api_key", "")):
-        providers["mistral"] = {"api_key": getattr(settings, "mistral_api_key").strip(), "base_url": settings.mistral_base_url}
+        providers["mistral"] = {
+            "api_key": getattr(settings, "mistral_api_key").strip(),
+            "base_url": settings.mistral_base_url,
+        }
 
     if providers:
         return LLMClient(providers=providers)

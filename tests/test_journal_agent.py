@@ -9,9 +9,7 @@ class TestJournalAgent:
     async def test_output_structure(self) -> None:
         """Output should contain all JournalOutput fields."""
         agent = JournalAgent()
-        result = await agent.process(
-            JournalInput(symbol="BTC-USD", request="Analyze BTC")
-        )
+        result = await agent.process(JournalInput(symbol="BTC-USD", request="Analyze BTC"))
         assert "entry_id" in result
         assert "mistakes" in result
         assert "lessons" in result
@@ -83,9 +81,7 @@ class TestJournalAgent:
     async def test_lessons_extracted(self) -> None:
         """Lessons should always be populated."""
         agent = JournalAgent()
-        result = await agent.process(
-            JournalInput(symbol="BTC-USD", request="test")
-        )
+        result = await agent.process(JournalInput(symbol="BTC-USD", request="test"))
         assert len(result["lessons"]) > 0
         assert isinstance(result["lessons"], list)
 

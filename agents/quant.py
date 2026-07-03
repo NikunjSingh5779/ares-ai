@@ -29,6 +29,7 @@ from backend.data.models import MarketDataRequest, OHLCVData
 # Input schema
 # ---------------------------------------------------------------------------
 
+
 class QuantInput(BaseModel):
     """Input for the Quant Agent.
 
@@ -141,15 +142,11 @@ def build_quant_prompt(
     if indicators.get("macd", {}).get("macd") is not None:
         macd = indicators["macd"]
         ind_lines.append(
-            f"MACD: {macd['macd']} / Signal: {macd.get('signal', 'N/A')} "
-            f"/ Histogram: {macd.get('histogram', 'N/A')}"
+            f"MACD: {macd['macd']} / Signal: {macd.get('signal', 'N/A')} / Histogram: {macd.get('histogram', 'N/A')}"
         )
     if indicators.get("bollinger_bands", {}).get("middle") is not None:
         bb = indicators["bollinger_bands"]
-        ind_lines.append(
-            f"Bollinger Bands: Mid={bb['middle']:.2f} Upper={bb['upper']:.2f} "
-            f"Lower={bb['lower']:.2f}"
-        )
+        ind_lines.append(f"Bollinger Bands: Mid={bb['middle']:.2f} Upper={bb['upper']:.2f} Lower={bb['lower']:.2f}")
     if indicators.get("atr_14") is not None:
         ind_lines.append(f"ATR(14): ${indicators['atr_14']:.2f}")
         atr_ratio = _atr_ratio(indicators)
@@ -200,9 +197,15 @@ def build_quant_prompt(
 # Rule-based quant analysis (degraded mode)
 # ---------------------------------------------------------------------------
 
-VALID_STRATEGIES = frozenset({
-    "momentum", "mean_reversion", "trend_following", "breakout", "neutral",
-})
+VALID_STRATEGIES = frozenset(
+    {
+        "momentum",
+        "mean_reversion",
+        "trend_following",
+        "breakout",
+        "neutral",
+    }
+)
 
 
 def _rule_based_quant(
@@ -250,6 +253,7 @@ def _rule_based_quant(
 # ---------------------------------------------------------------------------
 # Strategy detectors
 # ---------------------------------------------------------------------------
+
 
 def _detect_momentum(indicators: dict[str, Any]) -> bool:
     """Momentum strategy trigger: SMA crossover with non-extreme RSI."""
@@ -304,6 +308,7 @@ def _detect_breakout(indicators: dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------------
 # Signal builders
 # ---------------------------------------------------------------------------
+
 
 def _atr_ratio(indicators: dict[str, Any]) -> float | None:
     """ATR as percentage of current price."""
@@ -381,10 +386,10 @@ def _build_mean_reversion_signal(indicators: dict[str, Any]) -> dict[str, Any]:
             "entry_threshold": round(rsi, 1),
             "exit_threshold": 50.0,
             "stop_loss_pct": round(abs(price - bb.get("lower", price)) / price * 100, 2)
-                if is_oversold and bb.get("lower")
-                else round(abs(bb.get("upper", price) - price) / price * 100, 2)
-                if not is_oversold and bb.get("upper")
-                else None,
+            if is_oversold and bb.get("lower")
+            else round(abs(bb.get("upper", price) - price) / price * 100, 2)
+            if not is_oversold and bb.get("upper")
+            else None,
             "risk_per_trade_pct": 1.5,
         },
         "rationale": (
@@ -479,6 +484,7 @@ def _build_neutral_signal(indicators: dict[str, Any]) -> dict[str, Any]:
 # Response parser
 # ---------------------------------------------------------------------------
 
+
 def _strip_markdown_fences(text: str) -> str:
     """Strip markdown code fences from a string."""
     if text.startswith("```"):
@@ -559,6 +565,7 @@ def _parse_quant_response(
 # ---------------------------------------------------------------------------
 # QuantAgent
 # ---------------------------------------------------------------------------
+
 
 class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
     """Quantitative analysis agent combining technical indicators with LLM-based

@@ -62,16 +62,28 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --cov=backend --cov=agents --cov=database --cov=backtesting --cov=paper_trading --cov=live_trading --cov-report=term --cov-report=html --cov-fail-under=80"
+filterwarnings = [
+    "ignore:.*iscoroutinefunction.*:DeprecationWarning",
+    "ignore:.*coroutine 'Connection._cancel'.*:RuntimeWarning"
+]
 
 [tool.mypy]
 python_version = "3.11"
+exclude = [
+    "\\.venv",
+    "venv"
+]
 strict = true
 ignore_missing_imports = true
 disallow_untyped_defs = false
 
+[[tool.mypy.overrides]]
+module = "numpy.*"
+follow_imports = "skip"
+
 [tool.ruff]
 target-version = "py311"
-line-length = 100
+line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]

@@ -139,9 +139,7 @@ class MarketDataCache:
         try:
             async with self._redis.pipeline(transaction=False) as pipe:
                 for candle in candles:
-                    key = self._make_key(
-                        candle.source, candle.symbol, candle.interval, candle.timestamp
-                    )
+                    key = self._make_key(candle.source, candle.symbol, candle.interval, candle.timestamp)
                     pipe.setex(key, ttl, candle.model_dump_json())
                 await pipe.execute()
             return len(candles)

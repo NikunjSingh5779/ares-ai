@@ -98,7 +98,11 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         account_id = (await session.execute(text("SELECT id FROM accounts WHERE exchange='paper' LIMIT 1"))).scalar()
         if not account_id:
             return None
-        portfolio_id = (await session.execute(text("SELECT id FROM portfolio WHERE account_id=:account_id LIMIT 1"), {"account_id": account_id})).scalar()
+        portfolio_id = (
+            await session.execute(
+                text("SELECT id FROM portfolio WHERE account_id=:account_id LIMIT 1"), {"account_id": account_id}
+            )
+        ).scalar()
         if portfolio_id:
             return str(account_id), str(portfolio_id)
         return None
@@ -168,7 +172,9 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         parts = []
         is_live_auto = False
         if self.live_engine and getattr(self.live_engine, "is_connected", False):
-            if self.live_engine.mode == TradingMode.AUTO and self.live_engine.paper_record.get("promotion", {}).get("passed", False):
+            if self.live_engine.mode == TradingMode.AUTO and self.live_engine.paper_record.get("promotion", {}).get(
+                "passed", False
+            ):
                 is_live_auto = True
 
         if is_live_auto and self.live_engine is not None:
@@ -179,7 +185,7 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                     symbol=inputs.symbol,
                     side=side_literal,  # type: ignore
                     quantity=quantity,
-                    order_type="market"
+                    order_type="market",
                 )
                 if live_order.status == "failed":
                     return ExecutionOutput(
@@ -187,7 +193,9 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                         fill_price=fill_price,
                         rationale=f"Live trade failed: {live_order.raw.get('error', 'unknown error')}",
                     )
-                parts.append(f"LIVE EXECUTED {direction} position for {inputs.symbol} at market price. Order ID: {live_order.id}")
+                parts.append(
+                    f"LIVE EXECUTED {direction} position for {inputs.symbol} at market price. Order ID: {live_order.id}"
+                )
                 return ExecutionOutput(
                     executed=True,
                     order_id=live_order.id,
@@ -240,15 +248,19 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
 
                         # Handle reversal
                         if result.get("reversal") and closed_trade:
-                            await session.execute(text("""
+                            await session.execute(
+                                text("""
                                 UPDATE positions
                                 SET is_open = false, closed_at = NOW()
                                 WHERE symbol = :symbol
                                   AND is_open = true
                                   AND portfolio_id = :portfolio_id
-                            """), {"symbol": inputs.symbol, "portfolio_id": portfolio_id})
+                            """),
+                                {"symbol": inputs.symbol, "portfolio_id": portfolio_id},
+                            )
 
-                            await session.execute(text("""
+                            await session.execute(
+                                text("""
                                 INSERT INTO trade_history
                                 (
                                     account_id, symbol, side, quantity, entry_price,
@@ -261,21 +273,24 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                                     :exit_price, :entry_at, NOW(), :pnl, :pnl_pct,
                                     true, :strategy_name
                                 )
-                            """), {
-                                "account_id": account_id,
-                                "symbol": closed_trade.get("symbol"),
-                                "side": closed_trade.get("side"),
-                                "quantity": closed_trade.get("quantity"),
-                                "entry_price": closed_trade.get("entry_price"),
-                                "exit_price": closed_trade.get("exit_price"),
-                                "entry_at": closed_trade.get("entry_at"),
-                                "pnl": closed_trade.get("pnl"),
-                                "pnl_pct": closed_trade.get("pnl_pct"),
-                                "strategy_name": closed_trade.get("strategy_name", "")
-                            })
+                            """),
+                                {
+                                    "account_id": account_id,
+                                    "symbol": closed_trade.get("symbol"),
+                                    "side": closed_trade.get("side"),
+                                    "quantity": closed_trade.get("quantity"),
+                                    "entry_price": closed_trade.get("entry_price"),
+                                    "exit_price": closed_trade.get("exit_price"),
+                                    "entry_at": closed_trade.get("entry_at"),
+                                    "pnl": closed_trade.get("pnl"),
+                                    "pnl_pct": closed_trade.get("pnl_pct"),
+                                    "strategy_name": closed_trade.get("strategy_name", ""),
+                                },
+                            )
 
                         # Insert new position
-                        await session.execute(text("""
+                        await session.execute(
+                            text("""
                             INSERT INTO positions
                             (
                                 id, portfolio_id, symbol, asset_type, quantity,
@@ -288,17 +303,19 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                                 :entry_price, :entry_price, :market_value, :stop_loss,
                                 :take_profit, :strategy_name
                             )
-                        """), {
-                            "id": position_id,
-                            "portfolio_id": portfolio_id,
-                            "symbol": inputs.symbol,
-                            "quantity": quantity,
-                            "entry_price": fill_price,
-                            "market_value": quantity * fill_price,
-                            "stop_loss": stop_loss,
-                            "take_profit": None,
-                            "strategy_name": strategy_name
-                        })
+                        """),
+                            {
+                                "id": position_id,
+                                "portfolio_id": portfolio_id,
+                                "symbol": inputs.symbol,
+                                "quantity": quantity,
+                                "entry_price": fill_price,
+                                "market_value": quantity * fill_price,
+                                "stop_loss": stop_loss,
+                                "take_profit": None,
+                                "strategy_name": strategy_name,
+                            },
+                        )
                         await session.commit()
             except Exception as e:
                 parts.append(f"(DB persistence failed: {str(e)})")

@@ -15,6 +15,7 @@ from backend.data.models import OHLCVData
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _validate_prices(prices: list[float], min_periods: int = 2) -> list[float]:
     """Validate and clean price data. Returns list guaranteed to have min_periods."""
     cleaned = [p for p in prices if p is not None and p > 0 and not (isinstance(p, float) and math.isnan(p))]
@@ -43,6 +44,7 @@ def _extract_volumes(candles: list[OHLCVData]) -> list[float]:
 # ---------------------------------------------------------------------------
 # Moving Averages
 # ---------------------------------------------------------------------------
+
 
 def compute_sma(prices: list[float], period: int = 20) -> float | None:
     """Simple Moving Average."""
@@ -82,6 +84,7 @@ def compute_emas(prices: list[float], periods: list[int]) -> dict[int, float | N
 # RSI
 # ---------------------------------------------------------------------------
 
+
 def compute_rsi(prices: list[float], period: int = 14) -> float | None:
     """Relative Strength Index.
 
@@ -120,6 +123,7 @@ def compute_rsi(prices: list[float], period: int = 14) -> float | None:
 # ---------------------------------------------------------------------------
 # MACD
 # ---------------------------------------------------------------------------
+
 
 def compute_macd(prices: list[float]) -> dict[str, float | None]:
     """MACD (Moving Average Convergence Divergence).
@@ -167,7 +171,7 @@ def _compute_macd_series(prices: list[float]) -> list[float]:
 
     result = []
     for i in range(26, len(prices)):
-        segment = prices[:i + 1]
+        segment = prices[: i + 1]
         ema_12 = compute_ema(segment, 12)
         ema_26 = compute_ema(segment, 26)
         if ema_12 is not None and ema_26 is not None:
@@ -178,6 +182,7 @@ def _compute_macd_series(prices: list[float]) -> list[float]:
 # ---------------------------------------------------------------------------
 # Bollinger Bands
 # ---------------------------------------------------------------------------
+
 
 def compute_bollinger_bands(
     prices: list[float],
@@ -212,6 +217,7 @@ def compute_bollinger_bands(
 # ATR (Average True Range)
 # ---------------------------------------------------------------------------
 
+
 def compute_atr(candles: list[OHLCVData], period: int = 14) -> float | None:
     """Average True Range — measures market volatility."""
     if len(candles) < period + 1:
@@ -240,6 +246,7 @@ def compute_atr(candles: list[OHLCVData], period: int = 14) -> float | None:
 # ---------------------------------------------------------------------------
 # Composite indicator computation
 # ---------------------------------------------------------------------------
+
 
 def compute_all_indicators(
     candles: list[OHLCVData],
@@ -306,12 +313,8 @@ def compute_all_indicators(
         "resistance_levels": resistance_levels,
         "high_52w": max(closes) if closes else None,
         "low_52w": min(closes) if closes else None,
-        "price_change_1d": round(
-            ((closes[-1] - closes[-2]) / closes[-2]) * 100, 2
-        ) if len(closes) >= 2 else None,
-        "price_change_1w": round(
-            ((closes[-1] - closes[-7]) / closes[-7]) * 100, 2
-        ) if len(closes) >= 8 else None,
+        "price_change_1d": round(((closes[-1] - closes[-2]) / closes[-2]) * 100, 2) if len(closes) >= 2 else None,
+        "price_change_1w": round(((closes[-1] - closes[-7]) / closes[-7]) * 100, 2) if len(closes) >= 8 else None,
     }
 
 
@@ -321,7 +324,7 @@ def _find_support_levels(prices: list[float], lookback: int = 3) -> list[float]:
         return []
     levels = []
     for i in range(lookback, len(prices) - lookback):
-        window = prices[i - lookback: i + lookback + 1]
+        window = prices[i - lookback : i + lookback + 1]
         if prices[i] == min(window):
             levels.append(round(prices[i], 2))
     # Return most recent levels, deduped
@@ -340,7 +343,7 @@ def _find_resistance_levels(prices: list[float], lookback: int = 3) -> list[floa
         return []
     levels = []
     for i in range(lookback, len(prices) - lookback):
-        window = prices[i - lookback: i + lookback + 1]
+        window = prices[i - lookback : i + lookback + 1]
         if prices[i] == max(window):
             levels.append(round(prices[i], 2))
     seen: set[float] = set()

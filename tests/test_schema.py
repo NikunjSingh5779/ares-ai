@@ -37,10 +37,24 @@ def test_all_17_tables_present() -> None:
     table_names = {t.lower() for t in tables}
 
     expected_tables = {
-        "users", "accounts", "portfolio", "positions", "orders",
-        "signals", "trade_history", "journal", "strategies", "agent_logs",
-        "memories", "market_data", "metrics", "alerts", "risk_metrics",
-        "backtests", "paper_trades", "live_trades",
+        "users",
+        "accounts",
+        "portfolio",
+        "positions",
+        "orders",
+        "signals",
+        "trade_history",
+        "journal",
+        "strategies",
+        "agent_logs",
+        "memories",
+        "market_data",
+        "metrics",
+        "alerts",
+        "risk_metrics",
+        "backtests",
+        "paper_trades",
+        "live_trades",
     }
 
     missing = expected_tables - table_names
@@ -70,8 +84,7 @@ def test_indexes_present() -> None:
     content = SCHEMA_PATH.read_text()
     indexes = INDEX_PATTERN.findall(content)
     assert len(indexes) >= 20, (
-        f"Expected at least 20 indexes, found {len(indexes)}. "
-        f"Add more indexes for query performance."
+        f"Expected at least 20 indexes, found {len(indexes)}. Add more indexes for query performance."
     )
 
 
@@ -79,12 +92,8 @@ def test_updated_at_triggers_present() -> None:
     """Tables with updated_at must have auto-update triggers."""
     content = SCHEMA_PATH.read_text()
     triggers = TRIGGER_PATTERN.findall(content)
-    assert len(triggers) >= 8, (
-        f"Expected at least 8 updated_at triggers, found {len(triggers)}"
-    )
-    assert "update_updated_at_column" in content, (
-        "Missing update_updated_at_column function"
-    )
+    assert len(triggers) >= 8, f"Expected at least 8 updated_at triggers, found {len(triggers)}"
+    assert "update_updated_at_column" in content, "Missing update_updated_at_column function"
 
 
 def test_uuid_extension() -> None:
@@ -97,17 +106,13 @@ def test_uuid_extension() -> None:
 def test_risk_check_constraints() -> None:
     """Risk_score must be bounded 0-100 where used."""
     content = SCHEMA_PATH.read_text()
-    assert "CHECK (risk_score >= 0 AND risk_score <= 100)" in content, (
-        "risk_score must have a 0-100 check constraint"
-    )
+    assert "CHECK (risk_score >= 0 AND risk_score <= 100)" in content, "risk_score must have a 0-100 check constraint"
 
 
 def test_execution_protocol_constraints() -> None:
     """Live trades must enforce human_approval trading_mode."""
     content = SCHEMA_PATH.read_text()
-    assert "human_approval" in content, (
-        "Schema must enforce human_approval trading mode per EXECUTION PROTOCOL"
-    )
+    assert "human_approval" in content, "Schema must enforce human_approval trading mode per EXECUTION PROTOCOL"
     assert "kill_switch_active" in content, (
         "live_trades must have kill_switch_active column per LIVE TRADING safety gates"
     )
@@ -116,20 +121,12 @@ def test_execution_protocol_constraints() -> None:
 def test_strategy_promotion_gate() -> None:
     """Strategies must have paper->live promotion gates."""
     content = SCHEMA_PATH.read_text()
-    assert "min_paper_trades_required" in content, (
-        "strategies table must enforce min_paper_trades_required"
-    )
-    assert "min_paper_days_required" in content, (
-        "strategies table must enforce min_paper_days_required"
-    )
+    assert "min_paper_trades_required" in content, "strategies table must enforce min_paper_trades_required"
+    assert "min_paper_days_required" in content, "strategies table must enforce min_paper_days_required"
 
 
 def test_agent_logs_tracks_degradation() -> None:
     """Agent logs must track circuit breaker and degradation state."""
     content = SCHEMA_PATH.read_text()
-    assert "circuit_breaker_tripped" in content, (
-        "agent_logs needs circuit_breaker_tripped column"
-    )
-    assert "degraded_mode" in content, (
-        "agent_logs needs degraded_mode column"
-    )
+    assert "circuit_breaker_tripped" in content, "agent_logs needs circuit_breaker_tripped column"
+    assert "degraded_mode" in content, "agent_logs needs degraded_mode column"

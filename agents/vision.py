@@ -106,7 +106,9 @@ class VisionAgent(BaseAgent[VisionInput, VisionOutput]):
         resistance_levels = _detect_resistance_levels(candles)
         chart_pattern, pattern_confidence = _detect_chart_pattern(candles)
         pattern_rationale = _build_pattern_rationale(
-            chart_pattern, support_levels, resistance_levels,
+            chart_pattern,
+            support_levels,
+            resistance_levels,
         )
 
         # ── Vision model enhancement (optional) ───────────────────────

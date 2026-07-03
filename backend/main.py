@@ -163,9 +163,7 @@ async def _check_chromadb() -> bool:
             host=settings.chroma_host,
             port=settings.chroma_port,
         )
-        await asyncio.wait_for(
-            asyncio.to_thread(client.heartbeat), timeout=3
-        )
+        await asyncio.wait_for(asyncio.to_thread(client.heartbeat), timeout=3)
         return True
     except Exception:
         return False

@@ -65,19 +65,19 @@ def _get_open_positions(engine: PaperTradingEngine) -> list[dict[str, Any]]:
     positions_list: list[dict[str, Any]] = []
     # Access via the internal _positions list (no public getter)
     for pos in engine._positions:  # noqa: SLF001
-        positions_list.append({
-            "id": pos.id,
-            "symbol": pos.symbol,
-            "side": pos.side,
-            "quantity": pos.quantity,
-            "entry_price": pos.entry_price,
-            "entry_at": pos.entry_at.isoformat()
-            if hasattr(pos.entry_at, "isoformat")
-            else str(pos.entry_at),
-            "stop_loss": pos.stop_loss,
-            "take_profit": pos.take_profit,
-            "strategy_name": pos.strategy_name,
-        })
+        positions_list.append(
+            {
+                "id": pos.id,
+                "symbol": pos.symbol,
+                "side": pos.side,
+                "quantity": pos.quantity,
+                "entry_price": pos.entry_price,
+                "entry_at": pos.entry_at.isoformat() if hasattr(pos.entry_at, "isoformat") else str(pos.entry_at),
+                "stop_loss": pos.stop_loss,
+                "take_profit": pos.take_profit,
+                "strategy_name": pos.strategy_name,
+            }
+        )
     return positions_list
 
 
@@ -141,12 +141,8 @@ def _trade_to_dict(trade: Any) -> dict[str, Any]:
         "quantity": trade.quantity,
         "entry_price": trade.entry_price,
         "exit_price": trade.exit_price,
-        "entry_at": trade.entry_at.isoformat()
-        if hasattr(trade.entry_at, "isoformat")
-        else str(trade.entry_at),
-        "exit_at": trade.exit_at.isoformat()
-        if hasattr(trade.exit_at, "isoformat")
-        else str(trade.exit_at),
+        "entry_at": trade.entry_at.isoformat() if hasattr(trade.entry_at, "isoformat") else str(trade.entry_at),
+        "exit_at": trade.exit_at.isoformat() if hasattr(trade.exit_at, "isoformat") else str(trade.exit_at),
         "pnl": trade.pnl,
         "pnl_pct": trade.pnl_pct,
         "exit_reason": trade.exit_reason,

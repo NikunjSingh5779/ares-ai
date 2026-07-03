@@ -114,7 +114,7 @@ async def main():
 
     lookback = 40
     total_to_test = min(args.limit, len(candles) - lookback)
-    test_candles = candles[-(total_to_test + lookback):]
+    test_candles = candles[-(total_to_test + lookback) :]
 
     print(f"\n[3] Running true walk-forward simulation on last {total_to_test} candles...")
     signals = []
@@ -123,7 +123,7 @@ async def main():
 
     for i in range(lookback, len(test_candles)):
         current_idx = i
-        window = test_candles[:current_idx+1]
+        window = test_candles[: current_idx + 1]
         current_candle = window[-1]
 
         print(f"    Step {i - lookback + 1}/{total_to_test} | Candle: {current_candle.timestamp}")
@@ -144,7 +144,11 @@ async def main():
                 sl_pct = out_state.quant.params.get("stop_loss_pct", 5.0) / 100.0
                 sl = current_candle.close * (1 - sl_pct) if direction == "long" else current_candle.close * (1 + sl_pct)
                 expected_return = getattr(out_state.quant, "expected_return", 5.0) / 100.0
-                tp = current_candle.close * (1 + expected_return) if direction == "long" else current_candle.close * (1 - expected_return)
+                tp = (
+                    current_candle.close * (1 + expected_return)
+                    if direction == "long"
+                    else current_candle.close * (1 - expected_return)
+                )
 
             signal = {
                 "direction": direction,
@@ -153,7 +157,7 @@ async def main():
                 "entry_price": current_candle.close,
                 "take_profit": tp,
                 "stop_loss": sl,
-                "confidence": out_state.consensus.composite_confidence
+                "confidence": out_state.consensus.composite_confidence,
             }
             signals.append(signal)
             dual_consensus_count += 1
@@ -198,8 +202,8 @@ async def main():
     print(f"Max Drawdown:    {metrics.get('max_drawdown_pct'):.2f}%")
     print(f"Profit Factor:   {metrics.get('profit_factor'):.2f}")
 
-    ma_confs = confidence_distribution['ma']
-    q_confs = confidence_distribution['quant']
+    ma_confs = confidence_distribution["ma"]
+    q_confs = confidence_distribution["quant"]
     avg_ma = sum(ma_confs) / len(ma_confs) if ma_confs else 0.0
     avg_q = sum(q_confs) / len(q_confs) if q_confs else 0.0
     print("\n--- Confidence Distribution ---")
@@ -208,7 +212,7 @@ async def main():
     print(f"80%+ Dual Consensus Occurrences: {dual_consensus_count}")
     print("==============================")
 
-    if metrics.get('total_trades', 0) >= 50 and metrics.get('total_return_pct', 0) > 0:
+    if metrics.get("total_trades", 0) >= 50 and metrics.get("total_return_pct", 0) > 0:
         print("\n[SUCCESS] PROMOTION GATE CRITERIA MET!")
         print("          (> 50 trades and positive PnL achieved)")
     else:

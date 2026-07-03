@@ -79,10 +79,7 @@ class ConsensusEngine:
                     "quant_direction": "unknown",
                     "directions_agree": False,
                 },
-                "rationale": (
-                    f"Consensus rejected: {', '.join(missing)} agent(s) "
-                    f"produced no output for {symbol}"
-                ),
+                "rationale": (f"Consensus rejected: {', '.join(missing)} agent(s) produced no output for {symbol}"),
             }
 
         # Extract fields
@@ -92,16 +89,10 @@ class ConsensusEngine:
         quant_direction = str(quant_output.get("direction", "flat"))
 
         # Check confidence thresholds
-        both_confident = (
-            ma_confidence >= REQUIRED_CONFIDENCE
-            and quant_confidence >= REQUIRED_CONFIDENCE
-        )
+        both_confident = ma_confidence >= REQUIRED_CONFIDENCE and quant_confidence >= REQUIRED_CONFIDENCE
 
         # Check direction agreement (both must agree and neither is flat)
-        directions_agree = (
-            ma_direction == quant_direction
-            and ma_direction in ("long", "short")
-        )
+        directions_agree = ma_direction == quant_direction and ma_direction in ("long", "short")
 
         approved = both_confident and directions_agree
         composite_confidence = (ma_confidence + quant_confidence) / 2.0
@@ -115,8 +106,7 @@ class ConsensusEngine:
             )
         elif not directions_agree:
             rationale = (
-                f"Consensus rejected: direction mismatch. "
-                f"Market Analyst: {ma_direction}, Quant: {quant_direction}"
+                f"Consensus rejected: direction mismatch. Market Analyst: {ma_direction}, Quant: {quant_direction}"
             )
         else:
             rationale = (

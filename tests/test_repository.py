@@ -19,14 +19,22 @@ def sample_candles() -> list[OHLCVData]:
             source="yahoo",
             interval="1d",
             timestamp=datetime(2024, 1, 1, tzinfo=UTC),
-            open=42000.0, high=42500.0, low=41500.0, close=42200.0, volume=100.0,
+            open=42000.0,
+            high=42500.0,
+            low=41500.0,
+            close=42200.0,
+            volume=100.0,
         ),
         OHLCVData(
             symbol="BTC-USD",
             source="yahoo",
             interval="1d",
             timestamp=datetime(2024, 1, 2, tzinfo=UTC),
-            open=42200.0, high=43000.0, low=41800.0, close=42800.0, volume=150.0,
+            open=42200.0,
+            high=43000.0,
+            low=41800.0,
+            close=42800.0,
+            volume=150.0,
         ),
     ]
 
@@ -56,9 +64,15 @@ class TestMarketDataRepository:
         mock_session = AsyncMock()
         # Pydantic model validates at construction, so bypass with model_construct
         bad_candle = OHLCVData.model_construct(
-            symbol="BTC-USD", source="yahoo", interval="10m",
+            symbol="BTC-USD",
+            source="yahoo",
+            interval="10m",
             timestamp=datetime(2024, 1, 1, tzinfo=UTC),
-            open=1, high=2, low=1, close=1.5, volume=0,
+            open=1,
+            high=2,
+            low=1,
+            close=1.5,
+            volume=0,
         )
 
         with pytest.raises(AssertionError, match="Invalid interval"):
@@ -68,9 +82,15 @@ class TestMarketDataRepository:
         repo = MarketDataRepository()
         mock_session = AsyncMock()
         bad_candle = OHLCVData.model_construct(
-            symbol="BTC-USD", source="unknown_source", interval="1d",
+            symbol="BTC-USD",
+            source="unknown_source",
+            interval="1d",
             timestamp=datetime(2024, 1, 1, tzinfo=UTC),
-            open=1, high=2, low=1, close=1.5, volume=0,
+            open=1,
+            high=2,
+            low=1,
+            close=1.5,
+            volume=0,
         )
 
         with pytest.raises(AssertionError, match="Invalid source"):
@@ -83,8 +103,19 @@ class TestMarketDataRepository:
 
         mock_result = MagicMock()
         mock_result.fetchall.return_value = [
-            ("BTC-USD", "yahoo", "1d", datetime(2024, 1, 1, tzinfo=UTC),
-             42000.0, 42500.0, 41500.0, 42200.0, 100.0, None, None),
+            (
+                "BTC-USD",
+                "yahoo",
+                "1d",
+                datetime(2024, 1, 1, tzinfo=UTC),
+                42000.0,
+                42500.0,
+                41500.0,
+                42200.0,
+                100.0,
+                None,
+                None,
+            ),
         ]
         mock_session.execute = AsyncMock(return_value=mock_result)
 
