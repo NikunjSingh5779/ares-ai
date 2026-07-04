@@ -14,7 +14,11 @@ Strategies (evaluated by rule-based fallback):
 from __future__ import annotations
 
 import json
+import logging
+import re
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
@@ -485,18 +489,6 @@ def _build_neutral_signal(indicators: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _strip_markdown_fences(text: str) -> str:
-    """Strip markdown code fences from a string."""
-    if text.startswith("```"):
-        lines = text.split("\n")
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-    return text
-
-
 def _parse_quant_response(
     response_text: str | None,
     fallback_result: dict[str, Any],
@@ -506,21 +498,44 @@ def _parse_quant_response(
     If parsing fails, returns the fallback result.
     """
     if not response_text:
+        fallback_result["used_fallback"] = True
+        fallback_result["fallback_reason"] = "Empty response from LLM"
         return fallback_result
 
-    text = _strip_markdown_fences(response_text.strip())
+    text = response_text.strip()
+    cleaned = re.sub(r'^```(?:json)?\s*|\s*```$', '', text, flags=re.MULTILINE)
 
+    data = None
     try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        logger.error(f"LLM JSON parse FAILED: {e}. Raw output: {text[:500]}")
+        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if match:
+            try:
+                data = json.loads(match.group())
+                logger.warning("Recovered JSON via regex extraction")
+            except json.JSONDecodeError:
+                pass
+                
+    if data is None:
+        logger.error("Falling back to rule-based analysis due to JSON parse failure.")
+        fallback_result["used_fallback"] = True
+        fallback_result["fallback_reason"] = "JSONDecodeError"
         return fallback_result
 
     # Validate required fields
     required_fields = {"confidence", "direction", "rationale"}
     if not required_fields.issubset(data.keys()):
+        logger.error(f"Missing required fields. Found keys: {list(data.keys())}")
+        fallback_result["used_fallback"] = True
+        fallback_result["fallback_reason"] = "Missing required fields in LLM output"
         return fallback_result
 
     if data.get("direction") not in ("long", "short", "flat"):
+        logger.error(f"Invalid direction in LLM output: {data.get('direction')}")
+        fallback_result["used_fallback"] = True
+        fallback_result["fallback_reason"] = "Invalid direction in LLM output"
         return fallback_result
 
     # Clamp confidence
@@ -559,6 +574,8 @@ def _parse_quant_response(
         "strategy_name": strategy,
         "params": {**fallback_result.get("params", {}), **params},
         "rationale": rationale,
+        "used_fallback": False,
+        "fallback_reason": None,
     }
 
 

@@ -31,6 +31,8 @@ class MarketAnalystOutput(BaseModel):
         description="Technical indicator values",
     )
     rationale: str = Field(..., description="Explanation of the analysis")
+    used_fallback: bool = Field(default=False, description="True if LLM failed and rule-based fallback was used")
+    fallback_reason: str | None = Field(default=None, description="Reason for fallback if used")
 
 
 class QuantOutput(BaseModel):
@@ -42,6 +44,8 @@ class QuantOutput(BaseModel):
     strategy_name: str = ""
     params: dict[str, Any] = Field(default_factory=dict)
     rationale: str = Field(...)
+    used_fallback: bool = Field(default=False, description="True if LLM failed and fallback was used")
+    fallback_reason: str | None = Field(default=None, description="Reason for fallback if used")
 
 
 class NewsOutput(BaseModel):
