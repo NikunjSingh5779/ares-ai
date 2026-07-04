@@ -84,20 +84,7 @@ All model IDs are stored in `configs/models.yaml`, never hardcoded in agent sour
 
 Every agent is assigned a **Primary** model and an ordered **Fallback chain**. If Primary returns an error, times out, or is rate-limited, the agent retries against the next model in the chain (see RELIABILITY section). If the entire chain is exhausted, fall back to `open_router/openrouter/free` (auto-router) as the universal last resort, and log a degraded-mode alert.
 
-| Agent | Primary | Fallback 1 | Fallback 2 |
-|---|---|---|---|
-| Supervisor | `opencode/deepseek-v4-flash-free` | `open_router/qwen/qwen3-next-80b-a3b-instruct:free` | `opencode/nemotron-3-ultra-free` |
-| Coding | `open_router/qwen/qwen3-coder:free` | `open_router/north-mini-code:free` | `open_router/poolside/laguna-m.1:free` |
-| Market Analyst | `open_router/nvidia/nemotron-3-ultra-550b-a55b:free` | `open_router/qwen/qwen3-next-80b-a3b-instruct:free` | `open_router/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` |
-| Quant | `open_router/openai/gpt-oss-120b:free` | `open_router/openai/gpt-oss-20b:free` | `open_router/nvidia/nemotron-3-nano-30b-a3b:free` |
-| Risk | `open_router/nvidia/nemotron-3-super-120b-a12b:free` | `open_router/qwen/qwen3-next-80b-a3b-instruct:free` | `open_router/google/gemma-4-31b-it:free` |
-| News | `open_router/nex-agi/nex-n2-pro:free` | `open_router/google/gemma-4-26b-a4b-it:free` | `open_router/nvidia/nemotron-nano-9b-v2:free` |
-| Reflection | `open_router/meta-llama/llama-3.3-70b-instruct:free` | `open_router/qwen/qwen3-next-80b-a3b-instruct:free` | `opencode/mimo-v2.5-free` |
-| Memory | `opencode/minimax-m3-free` | `opencode/nemotron-3-ultra-free` | `open_router/nvidia/nemotron-nano-9b-v2:free` |
-| Vision | `open_router/nvidia/nemotron-nano-12b-v2-vl:free` | *(none — see note)* | *(none)* |
-| Fast | `opencode/qwen3.6-plus-free` | `open_router/liquid/lfm-2.5-1.2b-thinking:free` | `open_router/openrouter/free` |
-| Coding (extra capacity) | — | `open_router/poolside/laguna-xs.2:free` | — |
-| Coding (Fallback 3 — provider-level redundancy) | — | — | `opencode/north-mini-code-free` |
+**CRITICAL**: Do NOT list models here. `configs/models.yaml` is the SINGLE SOURCE OF TRUTH for the model roster and fallback chains. Refer to that file for the current lineup.
 
 **Open issue — flag, don't silently ignore:** the Vision Agent has no fallback because `nemotron-nano-12b-v2-vl` is the only vision-capable model in the roster. If it's unavailable, the system must **degrade gracefully** — skip chart-image confirmation rather than blocking the whole pipeline, and surface this as a reduced-confidence flag to the Consensus Engine (chart-pattern confirmation becomes "unavailable" rather than "failed"). Adding a second VL-capable free model to the roster is recommended.
 
