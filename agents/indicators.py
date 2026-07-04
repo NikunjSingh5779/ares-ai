@@ -10,6 +10,7 @@ import math
 from typing import Any
 
 from backend.data.models import OHLCVData
+from agents.candlesticks import detect_candlestick_patterns
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -242,6 +243,132 @@ def compute_atr(candles: list[OHLCVData], period: int = 14) -> float | None:
     recent_tr = true_ranges[-period:]
     return round(sum(recent_tr) / period, 4)
 
+# ---------------------------------------------------------------------------
+# Stochastic Oscillator
+# ---------------------------------------------------------------------------
+
+
+def compute_stochastic(candles: list[OHLCVData], period: int = 14, smooth_k: int = 3, smooth_d: int = 3) -> dict[str, float | None]:
+    """Stochastic Oscillator (%K and %D)."""
+    if len(candles) < period + smooth_k + smooth_d:
+        return {"k": None, "d": None}
+
+    closes = _extract_closes(candles)
+    highs = _extract_highs(candles)
+    lows = _extract_lows(candles)
+
+    raw_k = []
+    for i in range(period, len(candles) + 1):
+        highest_high = max(highs[i - period:i])
+        lowest_low = min(lows[i - period:i])
+        current_close = closes[i - 1]
+        
+        if highest_high == lowest_low:
+            k = 50.0
+        else:
+            k = ((current_close - lowest_low) / (highest_high - lowest_low)) * 100
+        raw_k.append(k)
+        
+    if len(raw_k) < smooth_k:
+        return {"k": None, "d": None}
+    
+    smoothed_k = []
+    for i in range(smooth_k, len(raw_k) + 1):
+        smoothed_k.append(sum(raw_k[i-smooth_k:i]) / smooth_k)
+        
+    if len(smoothed_k) < smooth_d:
+        return {"k": round(smoothed_k[-1], 2) if smoothed_k else None, "d": None}
+        
+    smoothed_d = sum(smoothed_k[-smooth_d:]) / smooth_d
+    
+    return {"k": round(smoothed_k[-1], 2), "d": round(smoothed_d, 2)}
+
+# ---------------------------------------------------------------------------
+# ADX (Average Directional Index) - simplified
+# ---------------------------------------------------------------------------
+
+def compute_adx(candles: list[OHLCVData], period: int = 14) -> float | None:
+    """Simplified ADX calculation for trend strength."""
+    if len(candles) < period * 2:
+        return None
+    try:
+        import pandas as pd
+        import numpy as np
+        
+        high = pd.Series([c.high for c in candles])
+        low = pd.Series([c.low for c in candles])
+        close = pd.Series([c.close for c in candles])
+        
+        plus_dm = high.diff()
+        minus_dm = low.diff()
+        plus_dm[plus_dm < 0] = 0
+        minus_dm[minus_dm > 0] = 0
+        
+        tr1 = pd.DataFrame(high - low)
+        tr2 = pd.DataFrame(abs(high - close.shift(1)))
+        tr3 = pd.DataFrame(abs(low - close.shift(1)))
+        frames = [tr1, tr2, tr3]
+        tr = pd.concat(frames, axis=1, join='inner').max(axis=1)
+        
+        atr = tr.rolling(period).mean()
+        plus_di = 100 * (plus_dm.rolling(period).mean() / atr)
+        minus_di = abs(100 * (minus_dm.rolling(period).mean() / atr))
+        
+        dx = (abs(plus_di - minus_di) / abs(plus_di + minus_di)) * 100
+        adx = dx.rolling(period).mean()
+        val = adx.iloc[-1]
+        if pd.isna(val):
+            return None
+        return round(float(val), 2)
+    except Exception:
+        return None
+
+# ---------------------------------------------------------------------------
+# Time Series Metrics (Stationarity & STL)
+# ---------------------------------------------------------------------------
+
+def compute_time_series_metrics(candles: list[OHLCVData]) -> dict[str, Any]:
+    """Compute ADF stationarity and STL decomposition metrics using statsmodels."""
+    try:
+        import pandas as pd
+        from statsmodels.tsa.stattools import adfuller
+        from statsmodels.tsa.seasonal import STL
+    except ImportError:
+        return {"stationarity": "unknown", "trend_strength": None, "seasonal_strength": None}
+
+    if len(candles) < 30:
+        return {"stationarity": "unknown", "trend_strength": None, "seasonal_strength": None}
+
+    closes = _extract_closes(candles)
+    series = pd.Series(closes)
+
+    try:
+        adf_result = adfuller(series.dropna())
+        is_stationary = adf_result[1] < 0.05
+    except Exception:
+        is_stationary = False
+
+    trend_strength = None
+    seasonal_strength = None
+    try:
+        if len(series) >= 14:
+            stl = STL(series, period=7, robust=True).fit()
+            resid_var = stl.resid.var()
+            if resid_var > 0:
+                trend_strength = max(0.0, 1.0 - float(resid_var / (stl.trend + stl.resid).var()))
+                seasonal_strength = max(0.0, 1.0 - float(resid_var / (stl.seasonal + stl.resid).var()))
+            else:
+                trend_strength = 1.0
+                seasonal_strength = 1.0
+    except Exception:
+        pass
+
+    return {
+        "stationarity": "stationary" if is_stationary else "non-stationary",
+        "trend_strength": round(trend_strength, 2) if trend_strength is not None else None,
+        "seasonal_strength": round(seasonal_strength, 2) if seasonal_strength is not None else None,
+    }
+
 
 # ---------------------------------------------------------------------------
 # Composite indicator computation
@@ -279,6 +406,13 @@ def compute_all_indicators(
     bb = compute_bollinger_bands(closes, 20)
     atr_14 = compute_atr(candles, 14)
 
+    # Advanced Momentum / Trend
+    stoch = compute_stochastic(candles)
+    adx_14 = compute_adx(candles, 14)
+    
+    # Time Series Stats
+    ts_metrics = compute_time_series_metrics(candles)
+
     # Volume
     volume_sma = compute_sma(volumes, 20) if len(volumes) >= 20 else None
     current_volume = volumes[-1] if volumes else 0.0
@@ -295,6 +429,9 @@ def compute_all_indicators(
     support_levels = _find_support_levels(closes, 3)
     resistance_levels = _find_resistance_levels(closes, 3)
 
+    # Candlestick Patterns
+    candlestick_patterns = detect_candlestick_patterns(candles)
+
     return {
         "current_price": current_price,
         "sma_20": sma_20,
@@ -303,14 +440,18 @@ def compute_all_indicators(
         "ema_12": ema_12,
         "ema_26": ema_26,
         "rsi_14": rsi_14,
+        "stochastic": stoch,
         "macd": macd,
         "bollinger_bands": bb,
         "atr_14": atr_14,
+        "adx_14": adx_14,
         "volume_sma_20": volume_sma,
         "current_volume": current_volume,
         "trend": trend,
         "support_levels": support_levels,
         "resistance_levels": resistance_levels,
+        "time_series": ts_metrics,
+        "candlestick_patterns": candlestick_patterns,
         "high_52w": max(closes) if closes else None,
         "low_52w": min(closes) if closes else None,
         "price_change_1d": round(((closes[-1] - closes[-2]) / closes[-2]) * 100, 2) if len(closes) >= 2 else None,

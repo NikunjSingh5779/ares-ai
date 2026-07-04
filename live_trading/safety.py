@@ -17,6 +17,9 @@ import datetime
 from enum import StrEnum
 from typing import Any
 
+import redis
+from configs.settings import settings
+
 
 class TradingMode(StrEnum):
     """Live trading mode."""
@@ -50,30 +53,42 @@ class KillSwitch:
       threshold is breached via ``.auto_trigger()``.
 
     Once active, a human must call ``.arm()`` to re-enable trading.
+    This implementation uses Redis for atomic state management to prevent
+    race conditions during concurrent agent evaluations.
     """
 
-    def __init__(self, max_drawdown_pct: float = 15.0) -> None:
-        self._active = False
-        self._triggered_by: str | None = None
-        self._triggered_at: datetime.datetime | None = None
+    def __init__(self, max_drawdown_pct: float = 15.0, redis_client: redis.Redis | None = None) -> None:
         self._auto_drawdown_pct = max_drawdown_pct
+        if redis_client is None:
+            self._redis = redis.Redis(
+                host=settings.redis_host,
+                port=settings.redis_port,
+                password=settings.redis_password or None,
+                db=settings.redis_db,
+                decode_responses=True
+            )
+        else:
+            self._redis = redis_client
 
     # ── State ──────────────────────────────────────────────────────
 
     @property
     def is_active(self) -> bool:
         """``True`` if the kill switch has been tripped."""
-        return self._active
+        return self._redis.get("ares:kill_switch:active") == "1"
 
     @property
     def triggered_by(self) -> str | None:
         """Who or what triggered the kill switch."""
-        return self._triggered_by
+        return self._redis.get("ares:kill_switch:reason")
 
     @property
     def triggered_at(self) -> datetime.datetime | None:
         """When the kill switch was triggered."""
-        return self._triggered_at
+        ts = self._redis.get("ares:kill_switch:timestamp")
+        if ts:
+            return datetime.datetime.fromisoformat(ts)
+        return None
 
     @property
     def max_drawdown_pct(self) -> float:
@@ -84,36 +99,41 @@ class KillSwitch:
 
     def activate(self, reason: str = "manual") -> None:
         """Manually activate the kill switch."""
-        self._active = True
-        self._triggered_by = reason
-        self._triggered_at = datetime.datetime.now(datetime.UTC)
+        if self._redis.set("ares:kill_switch:active", "1", nx=True):
+            self._redis.set("ares:kill_switch:reason", reason)
+            self._redis.set("ares:kill_switch:timestamp", datetime.datetime.now(datetime.UTC).isoformat())
 
     def auto_trigger(self, drawdown_pct: float) -> bool:
         """Automatically trigger if *drawdown_pct* exceeds the threshold.
 
         Returns ``True`` if the switch was tripped, ``False`` otherwise.
         """
-        if drawdown_pct >= self._auto_drawdown_pct and not self._active:
-            self._active = True
-            self._triggered_by = f"auto:drawdown={drawdown_pct:.1f}%"
-            self._triggered_at = datetime.datetime.now(datetime.UTC)
-            return True
+        if drawdown_pct >= self._auto_drawdown_pct:
+            reason = f"auto:drawdown={drawdown_pct:.1f}%"
+            # Atomic set NX prevents race conditions
+            if self._redis.set("ares:kill_switch:active", "1", nx=True):
+                self._redis.set("ares:kill_switch:reason", reason)
+                self._redis.set("ares:kill_switch:timestamp", datetime.datetime.now(datetime.UTC).isoformat())
+                return True
         return False
 
     def arm(self) -> None:
         """Re-arm the kill switch (human confirmation required)."""
-        self._active = False
-        self._triggered_by = None
-        self._triggered_at = None
+        self._redis.delete(
+            "ares:kill_switch:active",
+            "ares:kill_switch:reason",
+            "ares:kill_switch:timestamp"
+        )
 
     # ── Pre-trade check ────────────────────────────────────────────
 
     def check(self) -> SafetyCheckResult:
         """Safe-guard check: is the kill switch active?"""
-        if self._active:
+        if self.is_active:
+            reason = self.triggered_by or "unknown"
             return SafetyCheckResult(
                 passed=False,
-                reason=f"Kill switch active — triggered by: {self._triggered_by}",
+                reason=f"Kill switch active — triggered by: {reason}",
             )
         return SafetyCheckResult(passed=True)
 

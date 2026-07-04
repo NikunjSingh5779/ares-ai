@@ -83,6 +83,16 @@ class TestBuildAnalysisPrompt:
         assert "SMA" in content
         assert "ETH-USD" in content
 
+    def test_user_prompt_contains_candlestick_patterns(
+        self, sample_candles: list[OHLCVData], sample_indicators: dict
+    ) -> None:
+        sample_indicators["candlestick_patterns"] = ["Doji", "Bullish Engulfing"]
+        messages = build_analysis_prompt("BTC-USD", sample_indicators, sample_candles)
+        content = messages[1]["content"]
+        assert "Candlestick Patterns" in content
+        assert "Doji" in content
+        assert "Bullish Engulfing" in content
+
     def test_handles_empty_indicators(self, sample_candles: list[OHLCVData]) -> None:
         messages = build_analysis_prompt("BTC-USD", {}, sample_candles)
         assert len(messages) == 2
@@ -185,7 +195,7 @@ class TestRuleBasedAnalysis:
 
 class TestParseLLMResponse:
     def test_parses_valid_json(self) -> None:
-        response = '{"confidence": 85, "direction": "long", "indicators": {"rsi": 55}, "rationale": "Bullish setup"}'
+        response = '{"confidence": 85, "direction": "long", "bias": "bullish", "setup": "RSI Oversold", "entry_zone": "100", "stop_loss": "90", "targets": ["120"], "invalidation": "close below 90", "confluence": "none", "indicators": {"rsi": 55}, "rationale": "Bullish setup"}'
         fallback = {"confidence": 30, "direction": "flat", "indicators": {}, "rationale": "fallback"}
         result = _parse_llm_response(response, fallback)
         assert result["confidence"] == 85.0
@@ -193,7 +203,7 @@ class TestParseLLMResponse:
         assert result["indicators"]["rsi"] == 55
 
     def test_handles_markdown_fenced_json(self) -> None:
-        response = '```json\n{"confidence": 70, "direction": "short", "indicators": {}, "rationale": "test"}\n```'
+        response = '```json\n{"confidence": 70, "direction": "short", "bias": "bearish", "setup": "test", "entry_zone": "test", "stop_loss": "test", "targets": [], "invalidation": "test", "confluence": "test", "indicators": {}, "rationale": "test"}\n```'
         fallback = {"confidence": 0, "direction": "flat", "indicators": {}, "rationale": "fb"}
         result = _parse_llm_response(response, fallback)
         assert result["direction"] == "short"
@@ -201,7 +211,7 @@ class TestParseLLMResponse:
 
     def test_handles_markdown_without_lang(self) -> None:
         response = (
-            '```\n{"confidence": 60, "direction": "flat", "indicators": {"rsi": 50}, "rationale": "neutral"}\n```'
+            '```\n{"confidence": 60, "direction": "flat", "bias": "neutral", "setup": "test", "entry_zone": "test", "stop_loss": "test", "targets": [], "invalidation": "test", "confluence": "test", "indicators": {"rsi": 50}, "rationale": "neutral"}\n```'
         )
         fallback = {"confidence": 0, "direction": "flat", "indicators": {}, "rationale": "fb"}
         result = _parse_llm_response(response, fallback)
@@ -216,7 +226,7 @@ class TestParseLLMResponse:
 
     def test_fallback_on_missing_required_fields(self) -> None:
         response = '{"confidence": 80}'  # missing direction and rationale
-        fallback = {"confidence": 10, "direction": "flat", "indicators": {}, "rationale": "fb"}
+        fallback = {"confidence": 10, "direction": "flat", "bias": "neutral", "setup": "test", "entry_zone": "test", "stop_loss": "test", "targets": [], "invalidation": "test", "confluence": "test", "indicators": {}, "rationale": "fb"}
         result = _parse_llm_response(response, fallback)
         assert result == fallback
 
@@ -228,7 +238,7 @@ class TestParseLLMResponse:
 
     def test_clamps_confidence_bounds(self) -> None:
         """Confidence is clamped to [0, 100]."""
-        response = '{"confidence": 999, "direction": "long", "indicators": {}, "rationale": "test"}'
+        response = '{"confidence": 999, "direction": "long", "bias": "bullish", "setup": "test", "entry_zone": "test", "stop_loss": "test", "targets": [], "invalidation": "test", "confluence": "test", "indicators": {}, "rationale": "test"}'
         fallback = {"confidence": 0, "direction": "flat", "indicators": {}, "rationale": "fb"}
         result = _parse_llm_response(response, fallback)
         assert result["confidence"] == 100.0
@@ -296,7 +306,7 @@ class TestMarketAnalystAgentProcess:
                 {
                     "message": {
                         "content": (
-                            '{"confidence": 82.5, "direction": "long", '
+                            '{"confidence": 82.5, "direction": "long", "bias": "bullish", "setup": "test", "entry_zone": "test", "stop_loss": "test", "targets": [], "invalidation": "test", "confluence": "test", '
                             '"indicators": {"rsi": 58.2}, '
                             '"rationale": "Bullish trend with momentum"}'
                         ),

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw, TrendingUp } from "lucide-react";
-import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, ColorType } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, CandlestickData } from "lightweight-charts";
 import { analyze, getAgentStatus } from "@/lib/api";
 import type { AgentStatusResponse } from "@/types/api";
 
@@ -41,67 +41,95 @@ export default function MarketsPage() {
     if (!chartRef.current) return;
 
     if (!chartApiRef.current) {
-      const chart = createChart(chartRef.current, {
-        layout: {
-          background: { type: ColorType.Solid, color: "transparent" },
-          textColor: "#52525b",
-          fontFamily: "JetBrains Mono, monospace",
-        },
-        grid: {
-          vertLines: { color: "rgba(255,255,255,0.04)" },
-          horzLines: { color: "rgba(255,255,255,0.04)" },
-        },
-        width: chartRef.current.clientWidth,
-        height: 400,
-        crosshair: {
-          vertLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
-          horzLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
-        },
-        timeScale: {
-          borderColor: "rgba(255,255,255,0.08)",
-          timeVisible: true,
-        },
-        rightPriceScale: {
-          borderColor: "rgba(255,255,255,0.08)",
-        },
-      });
+      import("lightweight-charts").then(({ createChart, ColorType }) => {
+        if (!chartRef.current) return;
+        const chart = createChart(chartRef.current, {
+          layout: {
+            background: { type: ColorType.Solid, color: "transparent" },
+            textColor: "#52525b",
+            fontFamily: "JetBrains Mono, monospace",
+          },
+          grid: {
+            vertLines: { color: "rgba(255,255,255,0.04)" },
+            horzLines: { color: "rgba(255,255,255,0.04)" },
+          },
+          width: chartRef.current.clientWidth,
+          height: 400,
+          crosshair: {
+            vertLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
+            horzLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
+          },
+          timeScale: {
+            borderColor: "rgba(255,255,255,0.08)",
+            timeVisible: true,
+          },
+          rightPriceScale: {
+            borderColor: "rgba(255,255,255,0.08)",
+          },
+        });
 
-      const series = chart.addCandlestickSeries({
-        upColor: "#22c55e",
-        downColor: "#ef4444",
-        borderUpColor: "#22c55e",
-        borderDownColor: "#ef4444",
-        wickUpColor: "#22c55e",
-        wickDownColor: "#ef4444",
-      });
+        const series = chart.addCandlestickSeries({
+          upColor: "#22c55e",
+          downColor: "#ef4444",
+          borderUpColor: "#22c55e",
+          borderDownColor: "#ef4444",
+          wickUpColor: "#22c55e",
+          wickDownColor: "#ef4444",
+        });
 
-      chartApiRef.current = chart;
-      seriesRef.current = series;
+        chartApiRef.current = chart;
+        seriesRef.current = series;
+
+        // Generate sample candlestick data
+        const now = Math.floor(Date.now() / 1000);
+        const DAY = 86400;
+        const data: CandlestickData[] = [];
+        let price = symbol.includes("BTC") ? 65000 : symbol.includes("ETH") ? 3400 : 180;
+
+        for (let i = 60; i >= 1; i--) {
+          const change = price * (Math.random() - 0.48) * 0.02;
+          const open = price;
+          const close = price + change;
+          const high = Math.max(open, close) + Math.abs(change) * 0.5;
+          const low = Math.min(open, close) - Math.abs(change) * 0.5;
+          data.push({
+            time: (now - i * DAY) as CandlestickData["time"],
+            open,
+            high,
+            low,
+            close,
+          });
+          price = close;
+        }
+
+        series.setData(data);
+        chart.timeScale().fitContent();
+      });
+    } else if (seriesRef.current) {
+      // Generate sample candlestick data
+      const now = Math.floor(Date.now() / 1000);
+      const DAY = 86400;
+      const data: CandlestickData[] = [];
+      let price = symbol.includes("BTC") ? 65000 : symbol.includes("ETH") ? 3400 : 180;
+
+      for (let i = 60; i >= 1; i--) {
+        const change = price * (Math.random() - 0.48) * 0.02;
+        const open = price;
+        const close = price + change;
+        const high = Math.max(open, close) + Math.abs(change) * 0.5;
+        const low = Math.min(open, close) - Math.abs(change) * 0.5;
+        data.push({
+          time: (now - i * DAY) as CandlestickData["time"],
+          open,
+          high,
+          low,
+          close,
+        });
+        price = close;
+      }
+      seriesRef.current.setData(data);
+      chartApiRef.current?.timeScale().fitContent();
     }
-
-    // Generate sample candlestick data
-    const now = Math.floor(Date.now() / 1000);
-    const DAY = 86400;
-    const data: CandlestickData[] = [];
-    let price = symbol.includes("BTC") ? 65000 : symbol.includes("ETH") ? 3400 : 180;
-
-    for (let i = 60; i >= 1; i--) {
-      const change = price * (Math.random() - 0.48) * 0.02;
-      const open = price;
-      const close = price + change;
-      const high = Math.max(open, close) + Math.abs(change) * 0.5;
-      const low = Math.min(open, close) - Math.abs(change) * 0.5;
-      data.push({
-        time: (now - i * DAY) as CandlestickData["time"],
-        open,
-        high,
-        low,
-        close,
-      });
-      price = close;
-    }
-
-    seriesRef.current?.setData(data);
 
     const handleResize = () => {
       if (chartRef.current) {

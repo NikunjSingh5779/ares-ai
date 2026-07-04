@@ -13,13 +13,17 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
+from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from configs.settings import settings
 from database.connection import async_session_factory
+from backend.db.models import User
+from backend.services import user_service
 
 security_scheme = HTTPBearer(auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 # Sentinel for default key — if still set, debug-mode bypass is allowed
@@ -40,38 +44,44 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def verify_auth(
-    credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
+    token: str | None = Depends(oauth2_scheme),
     api_key: str | None = Depends(api_key_header),
 ) -> str:
-    """Validate authentication via Bearer token or X-API-Key header.
-
-    In debug mode with the default secret key, any non-empty credential is
-    accepted for development convenience.
-
-    In production (non-default secret key), the credential must match
-    ``settings.api_secret_key`` exactly.
-    """
+    """Validate authentication via Bearer token (JWT) or X-API-Key header."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
     # ── Debug mode with default key: accept anything ──────────────
     if settings.api_debug and settings.api_secret_key == _DEFAULT_SECRET:
-        if credentials:
-            return credentials.credentials
+        if token:
+            return token
         if api_key:
             return api_key
         return "dev-user-id"
 
-    # ── Production: validate against api_secret_key ───────────────
-    token: str | None = None
-    if credentials:
-        token = credentials.credentials
-    elif api_key:
-        token = api_key
+    # ── JWT Validation ───────────────
+    if token:
+        try:
+            payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+            email: str | None = payload.get("sub")
+            if email is None:
+                raise credentials_exception
+            return email
+        except JWTError:
+            pass # Fallback to api key if JWT fails
 
-    if token is not None and token == settings.api_secret_key:
+    # ── API Key Validation (Server-to-Server) ───────────────
+    if token == settings.api_secret_key:
         return token
+    if api_key and api_key == settings.api_secret_key:
+        return api_key
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or missing API key. Provide via Authorization: Bearer or X-API-Key header.",
+        detail="Invalid or missing API key/token. Provide via Authorization: Bearer or X-API-Key header.",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
@@ -79,9 +89,22 @@ async def verify_auth(
 async def get_current_user_id(
     auth: str = Depends(verify_auth),
 ) -> str:
-    """Extract the current user identifier from auth credentials.
-
-    In production this will resolve the token to a user record from the
-    users table. For now it returns the raw credential value.
-    """
+    """Extract the current user identifier from auth credentials."""
     return auth
+
+
+async def get_current_user(
+    auth: str = Depends(verify_auth),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """Resolve the current user record from the database."""
+    if auth == settings.api_secret_key or auth == "dev-user-id":
+        # Server-to-server or dev mode fallback
+        raise HTTPException(status_code=403, detail="A real user context is required.")
+        
+    user = await user_service.get_by_email(db, auth)
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return user

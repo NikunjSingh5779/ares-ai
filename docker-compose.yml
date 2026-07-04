@@ -88,6 +88,8 @@ services:
       - CHROMA_PORT=8000
       - API_DEBUG=false
       - LOG_LEVEL=INFO
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy

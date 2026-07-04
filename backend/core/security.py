@@ -11,9 +11,42 @@ Adds security-related HTTP headers to every response:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, UTC
+from typing import Any
+
+from jose import jwt, JWTError
+from passlib.context import CryptContext
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
+from configs.settings import settings
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def hash_password(password: str) -> str:
+    """Hash a plaintext password using bcrypt."""
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plaintext password against its hash."""
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
+    """Create a JWT access token."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(UTC) + expires_delta
+    else:
+        expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
+    
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    return encoded_jwt
+
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -21,8 +54,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     CSP_DEFAULT = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://js.stripe.com; "
-        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline' https://js.stripe.com https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "img-src 'self' data: https:; "
         "font-src 'self' data:; "
         "connect-src 'self' http://localhost:8000 ws://localhost:8000; "

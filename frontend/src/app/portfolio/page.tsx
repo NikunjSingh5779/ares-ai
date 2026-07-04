@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { createChart, type IChartApi, type ISeriesApi, type LineData, ColorType } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, LineData } from "lightweight-charts";
 import { MetricCard } from "@/components/MetricCard";
 import { DataTable, type Column } from "@/components/DataTable";
 import { getPortfolio, getPositions, getOrders, getPaperRecord } from "@/lib/api";
@@ -49,55 +49,77 @@ export default function PortfolioPage() {
     if (!portfolio || !chartRef.current || orders.length === 0) return;
 
     if (!chartApiRef.current) {
-      const chart = createChart(chartRef.current, {
-        layout: {
-          background: { type: ColorType.Solid, color: "transparent" },
-          textColor: "#52525b",
-          fontFamily: "JetBrains Mono, monospace",
-        },
-        grid: {
-          vertLines: { color: "rgba(255,255,255,0.04)" },
-          horzLines: { color: "rgba(255,255,255,0.04)" },
-        },
-        width: chartRef.current.clientWidth,
-        height: 300,
-        crosshair: {
-          vertLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
-          horzLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
-        },
-        timeScale: {
-          borderColor: "rgba(255,255,255,0.08)",
-        },
-        rightPriceScale: {
-          borderColor: "rgba(255,255,255,0.08)",
-        },
+      import("lightweight-charts").then(({ createChart, ColorType }) => {
+        if (!chartRef.current) return;
+        const chart = createChart(chartRef.current, {
+          layout: {
+            background: { type: ColorType.Solid, color: "transparent" },
+            textColor: "#52525b",
+            fontFamily: "JetBrains Mono, monospace",
+          },
+          grid: {
+            vertLines: { color: "rgba(255,255,255,0.04)" },
+            horzLines: { color: "rgba(255,255,255,0.04)" },
+          },
+          width: chartRef.current.clientWidth,
+          height: 300,
+          crosshair: {
+            vertLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
+            horzLine: { color: "rgba(99,102,241,0.3)", labelBackgroundColor: "#6366f1" },
+          },
+          timeScale: {
+            borderColor: "rgba(255,255,255,0.08)",
+          },
+          rightPriceScale: {
+            borderColor: "rgba(255,255,255,0.08)",
+          },
+        });
+
+        const series = chart.addLineSeries({
+          color: "#22c55e",
+          lineWidth: 2,
+          crosshairMarkerBackgroundColor: "#22c55e",
+          crosshairMarkerBorderColor: "#22c55e",
+          lastValueVisible: true,
+          priceFormat: {
+            type: "price",
+            precision: 2,
+            minMove: 0.01,
+          },
+        });
+
+        chart.subscribeCrosshairMove((param) => {
+          if (param.time && param.point) {
+            chartRef.current?.style.setProperty("cursor", "crosshair");
+          }
+        });
+
+        chartApiRef.current = chart;
+        seriesRef.current = series;
+
+        // Build cumulative PnL data
+        const data: LineData[] = [];
+        let pnl = portfolio.total_equity;
+        
+        // Reverse order so oldest is first
+        const sorted = [...orders].sort((a, b) => 
+          new Date(a.exit_time).getTime() - new Date(b.exit_time).getTime()
+        );
+        
+        sorted.forEach((o) => {
+          data.push({
+            time: new Date(o.exit_time).getTime() / 1000 as any,
+            value: pnl,
+          });
+          pnl += o.pnl;
+        });
+
+        series.setData(data);
+        chart.timeScale().fitContent();
       });
-
-      const series = chart.addLineSeries({
-        color: "#22c55e",
-        lineWidth: 2,
-        crosshairMarkerBackgroundColor: "#22c55e",
-        crosshairMarkerBorderColor: "#22c55e",
-        lastValueVisible: true,
-        priceFormat: {
-          type: "price",
-          precision: 2,
-          minMove: 0.01,
-        },
-      });
-
-      chart.subscribeCrosshairMove((param) => {
-        if (param.time && param.point) {
-          chartRef.current?.style.setProperty("cursor", "crosshair");
-        }
-      });
-
-      chartApiRef.current = chart;
-      seriesRef.current = series;
-    }
-
-    // Build cumulative PnL data
-    const data: LineData[] = [];
+    } else if (seriesRef.current) {
+      // Build cumulative PnL data
+      const data: LineData[] = [];
     let cumulativePnL = 0;
     data.push({ time: orders[0]?.entry_at?.split("T")[0] || "2024-01-01", value: portfolio.initial_capital });
 
@@ -110,6 +132,7 @@ export default function PortfolioPage() {
     }
 
     seriesRef.current?.setData(data);
+    }
 
     const handleResize = () => {
       if (chartRef.current) {

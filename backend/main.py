@@ -22,6 +22,8 @@ from backend.routers import (
     monitoring_router,
     trading_router,
 )
+from backend.routers.auth import router as auth_router
+from backend.routers.users import router as users_router
 from configs.settings import settings
 
 logger = logging.getLogger("ares")
@@ -55,13 +57,28 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+from backend.core.error_handlers import setup_exception_handlers
+
 # ── Logging configuration ──────────────────────────────────────────────
 
 setup_logging(level=settings.log_level.upper())
 
+# ── Exception Handlers ─────────────────────────────────────────────────
+
+setup_exception_handlers(app)
+
 # ── Middleware (order matters: outermost first) ────────────────────────
 
-# 1. CORS — must be early to handle preflight
+# 1. Prometheus metrics — records request count, duration, status
+app.add_middleware(MetricsMiddleware)
+
+# 2. Rate limiting — per-endpoint token bucket
+app.add_middleware(RateLimitMiddleware, default_limit=settings.api_rate_limit_per_minute)
+
+# 3. Security headers — apply to every response
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 4. CORS — must be outermost to catch exception responses
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.api_cors_origins.split(","),
@@ -70,17 +87,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Security headers — apply to every response (after CORS for proper header order)
-app.add_middleware(SecurityHeadersMiddleware)
-
-# 3. Rate limiting — per-endpoint token bucket
-app.add_middleware(RateLimitMiddleware, default_limit=settings.api_rate_limit_per_minute)
-
-# 4. Prometheus metrics — records request count, duration, status
-app.add_middleware(MetricsMiddleware)
-
 # ── Domain routers ─────────────────────────────────────────────────────
 
+app.include_router(auth_router)
+app.include_router(users_router)
 app.include_router(analysis_router)
 app.include_router(trading_router)
 app.include_router(journal_router)

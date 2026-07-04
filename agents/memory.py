@@ -14,6 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+import chromadb
+from configs.settings import settings
 from agents.base import AgentContext, BaseAgent
 from agents.state import MemoryOutput
 
@@ -31,6 +33,7 @@ class MemoryInput(BaseModel):
 
     symbol: str = Field(default="", description="Ticker symbol")
     request: str = Field(default="", description="Original user request")
+    strategy_id: str = Field(default="default", description="Strategy identifier for namespacing")
     rolling_memory: list[dict[str, Any]] = Field(default_factory=list, description="Historical memory rolling window")
     model_config = ConfigDict(extra="allow")
 
@@ -71,6 +74,25 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
 
     def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
         super().__init__(context=context)
+        try:
+            self.chroma_client = chromadb.HttpClient(
+                host=settings.chromadb_host,
+                port=settings.chromadb_port,
+            )
+        except Exception:
+            self.chroma_client = None
+
+    def get_collection(self, strategy_id: str) -> chromadb.Collection | None:
+        """Always namespace by strategy ID."""
+        if not self.chroma_client:
+            return None
+        try:
+            return self.chroma_client.get_or_create_collection(
+                name=f"ares_memory_{strategy_id}",
+                metadata={"hnsw:space": "cosine"}
+            )
+        except Exception:
+            return None
 
     async def process(self, inputs: MemoryInput) -> dict[str, Any]:
         """Consolidate the pipeline run into memory records.
@@ -166,6 +188,27 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
         rolling_memory.extend(memories)
         # Enforce strict 10-item window
         rolling_memory = rolling_memory[-10:]
+
+        # --- Store in ChromaDB ---
+        if self.chroma_client and memories:
+            collection = self.get_collection(inputs.strategy_id)
+            if collection:
+                ids = []
+                docs = []
+                metadatas = []
+                for i, mem in enumerate(memories):
+                    doc_id = f"{symbol}_{datetime.now(UTC).timestamp()}_{i}"
+                    ids.append(doc_id)
+                    docs.append(mem["content"])
+                    metadatas.append({
+                        "type": mem["type"],
+                        "importance": mem["importance"],
+                        "timestamp": mem["timestamp"]
+                    })
+                try:
+                    collection.add(ids=ids, documents=docs, metadatas=metadatas)
+                except Exception:
+                    pass
 
         return {
             "relevant_memories": memories,

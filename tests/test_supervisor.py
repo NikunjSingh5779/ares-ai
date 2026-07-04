@@ -59,8 +59,8 @@ def queue_registry() -> QueueRegistry:
 
 
 @pytest.fixture
-def logger() -> AgentLogger:
-    return AgentLogger()
+def logger() -> AsyncMock:
+    return AsyncMock(spec=AgentLogger)
 
 
 @pytest.fixture
@@ -268,14 +268,14 @@ class TestSupervisorWithMockedRouter:
 
     @pytest.mark.asyncio
     async def test_mocked_pipeline_completes(self, mock_registry: AgentRegistry, mock_router: ModelRouter) -> None:
-        sup = Supervisor(registry=mock_registry, router=mock_router, logger=AgentLogger())
+        sup = Supervisor(registry=mock_registry, router=mock_router, logger=AsyncMock(spec=AgentLogger))
         sup.build_graph()
         result = await sup.run(symbol="BTC-USD", request="analyze")
         assert isinstance(result, AgentState)
 
     @pytest.mark.asyncio
     async def test_mocked_pipeline_sets_outputs(self, mock_registry: AgentRegistry, mock_router: ModelRouter) -> None:
-        sup = Supervisor(registry=mock_registry, router=mock_router, logger=AgentLogger())
+        sup = Supervisor(registry=mock_registry, router=mock_router, logger=AsyncMock(spec=AgentLogger))
         sup.build_graph()
         result = await sup.run(symbol="BTC-USD", request="analyze")
 
@@ -313,6 +313,13 @@ class TestSupervisorLogging:
             market_analyst=MarketAnalystOutput(
                 confidence=85.0,
                 direction="long",
+                bias="bullish",
+                setup="RSI Oversold",
+                entry_zone="100",
+                stop_loss="90",
+                targets=["120"],
+                invalidation="close below 90",
+                confluence="none",
                 indicators={"rsi": 55},
                 rationale="Bullish setup",
             ),

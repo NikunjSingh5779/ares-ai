@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from typing import Any
 
 import httpx
@@ -47,6 +48,23 @@ class LLMClient:
         self._populate_from_env()
 
         self._clients: dict[str, httpx.AsyncClient] = {}
+        self._circuit_breakers: dict[str, dict[str, Any]] = {}
+
+    def _check_circuit_breaker(self, model: str) -> None:
+        cb = self._circuit_breakers.get(model)
+        if cb and cb["failures"] >= 3:
+            if time.time() - cb["last_failure"] < 60:
+                raise ValueError(f"Circuit breaker open for model {model}")
+
+    def _record_success(self, model: str) -> None:
+        if model in self._circuit_breakers:
+            self._circuit_breakers[model]["failures"] = 0
+
+    def _record_failure(self, model: str) -> None:
+        if model not in self._circuit_breakers:
+            self._circuit_breakers[model] = {"failures": 0, "last_failure": 0}
+        self._circuit_breakers[model]["failures"] += 1
+        self._circuit_breakers[model]["last_failure"] = time.time()
 
     def _is_valid_key(self, key: str | None) -> bool:
         if not key:
@@ -140,6 +158,7 @@ class LLMClient:
             clean_model = clean_model.replace("mistral/", "", 1)
             provider = "mistral"
 
+        self._check_circuit_breaker(model)
         client = self._get_client(provider)
 
         payload: dict[str, Any] = {
@@ -167,8 +186,10 @@ class LLMClient:
             if provider == "open_router" and isinstance(response_json, dict) and "error" in response_json:
                 error_msg = response_json["error"]
                 logger.error(f"OpenRouter downstream payload error: {error_msg}")
+                self._record_failure(model)
                 raise ValueError(f"OpenRouter payload error: {error_msg}")
 
+            self._record_success(model)
             return response_json
         except httpx.HTTPStatusError as e:
             if e.response.status_code in [429, 503, 529]:
@@ -176,25 +197,16 @@ class LLMClient:
                     f"Provider '{provider}' rate limited or down ({e.response.status_code}). "
                     "Triggering router fallback chain."
                 )
+                self._record_failure(model)
                 import asyncio
-
-                if provider == "google":
-                    if not hasattr(self, "_google_429_count"):
-                        self._google_429_count = 0
-                    self._google_429_count += 1
-
-                    if self._google_429_count >= 2:
-                        logger.warning("Skipping google after 2 consecutive 429s.")
-                        raise ValueError("Skipping provider due to consecutive 429s")
-                    else:
-                        await asyncio.sleep(30)
-                else:
-                    await asyncio.sleep(5)
+                await asyncio.sleep(5)
             else:
                 logger.error(f"HTTP error from provider '{provider}': {e.response.text}")
+                self._record_failure(model)
             raise e
         except Exception as e:
             logger.error(f"Unexpected connection error with provider '{provider}': {str(e)}")
+            self._record_failure(model)
             raise e
 
     async def chat_completion_with_fallback(

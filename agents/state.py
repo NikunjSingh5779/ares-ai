@@ -19,9 +19,16 @@ class MarketAnalystOutput(BaseModel):
 
     confidence: float = Field(..., ge=0, le=100, description="Confidence score (0-100)")
     direction: str = Field(..., pattern="^(long|short|flat)$")
-    indicators: dict[str, float] = Field(
+    bias: str = Field(..., pattern="^(bullish|bearish|neutral)$", description="Directional bias")
+    setup: str = Field(..., description="Pattern or indicator trigger")
+    entry_zone: str = Field(..., description="Entry zone or exact level")
+    stop_loss: str = Field(..., description="Stop loss level")
+    targets: list[str] = Field(..., description="Take profit targets (Target 1, Target 2, etc.)")
+    invalidation: str = Field(..., description="What would prove this thesis wrong")
+    confluence: str = Field(..., description="List of confirming factors")
+    indicators: dict[str, Any] = Field(
         default_factory=dict,
-        description="Technical indicator values (e.g., {'rsi': 45.2, 'macd': 0.15})",
+        description="Technical indicator values",
     )
     rationale: str = Field(..., description="Explanation of the analysis")
 

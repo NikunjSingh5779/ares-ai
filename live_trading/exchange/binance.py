@@ -88,7 +88,10 @@ class BinanceConnector(ExchangeConnector):
             "apiKey": api_key,
             "secret": secret,
             "enableRateLimit": True,
-            "options": {"defaultType": "spot"},
+            "options": {
+                "defaultType": "spot",
+                "adjustForTimeDifference": True,
+            },
         }
 
         try:

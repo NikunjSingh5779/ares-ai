@@ -6,9 +6,12 @@ requires-python = ">=3.11"
 authors = [{ name = "ARES AI Team" }]
 
 dependencies = [
-    # API
+    # Core API
     "fastapi>=0.138.0",
     "uvicorn[standard]>=0.49.0",
+    "python-multipart>=0.0.18",
+    "passlib[bcrypt]>=1.7.4",
+    "python-jose[cryptography]>=3.3.0",
 
     # Database
     "sqlalchemy[asyncio]>=2.0.35",
@@ -16,7 +19,7 @@ dependencies = [
     "alembic>=1.13.0",
 
     # Validation
-    "pydantic>=2.9.0",
+    "pydantic[email]>=2.9.0",
     "pydantic-settings>=2.5.0",
 
     # Agent orchestration
@@ -41,6 +44,10 @@ dependencies = [
     
     # Trading & Exchange
     "ccxt>=4.0.0",
+
+    # Data Science & Time Series
+    "pandas>=2.0.0",
+    "statsmodels>=0.14.0",
 ]
 
 [project.optional-dependencies]

@@ -56,14 +56,21 @@ produce a structured trading signal.
 Rules:
 1. Return ONLY valid JSON — no markdown, no explanation outside the JSON.
 2. Your JSON must match this schema exactly:
-   {{
+   {
      "confidence": <float 0-100, how confident you are in this signal>,
      "direction": <"long" | "short" | "flat">,
-     "indicators": {{ <indicator_name>: <value>, ... }},
+     "bias": <"bullish" | "bearish" | "neutral">,
+     "setup": <"pattern or indicator trigger">,
+     "entry_zone": <"Entry zone or exact level">,
+     "stop_loss": <"Stop loss level">,
+     "targets": ["Target 1", "Target 2"],
+     "invalidation": <"What would prove this thesis wrong">,
+     "confluence": <"List of confirming factors">,
+     "indicators": { <indicator_name>: <value>, ... },
      "rationale": "<string explaining your reasoning>"
-   }}
+   }
 3. confidence < 50 means you're uncertain — prefer "flat" in that case.
-4. Consider: trend, momentum (RSI), volatility (Bollinger Bands), volume.
+4. Consider: market structure (higher highs, lower lows), candlestick patterns, trend, momentum (RSI), volatility (Bollinger Bands), volume, Stochastic, ADX, and Time Series metrics.
 5. Be conservative. It's better to miss a trade than to take a bad one."""
 
 
@@ -105,6 +112,9 @@ def build_analysis_prompt(
         ind_lines.append(f"SMA(200): ${indicators['sma_200']:.2f}")
     if indicators.get("rsi_14") is not None:
         ind_lines.append(f"RSI(14): {indicators['rsi_14']:.1f}")
+    if indicators.get("stochastic", {}).get("k") is not None:
+        stoch = indicators["stochastic"]
+        ind_lines.append(f"Stochastic: %K={stoch['k']} / %D={stoch['d']}")
     if indicators.get("macd", {}).get("macd") is not None:
         macd = indicators["macd"]
         ind_lines.append(
@@ -115,6 +125,17 @@ def build_analysis_prompt(
         ind_lines.append(f"Bollinger Bands: Mid={bb['middle']:.2f} Upper={bb['upper']:.2f} Lower={bb['lower']:.2f}")
     if indicators.get("atr_14") is not None:
         ind_lines.append(f"ATR(14): ${indicators['atr_14']:.2f}")
+    if indicators.get("adx_14") is not None:
+        ind_lines.append(f"ADX(14): {indicators['adx_14']:.1f}")
+    if indicators.get("time_series") is not None:
+        ts = indicators["time_series"]
+        ind_lines.append(
+            f"Time Series: Stationarity={ts.get('stationarity')} / Trend Strength={ts.get('trend_strength')} / Seasonal Strength={ts.get('seasonal_strength')}"
+        )
+    if indicators.get("candlestick_patterns") is not None:
+        patterns = indicators["candlestick_patterns"]
+        pattern_str = ", ".join(patterns) if patterns else "None detected"
+        ind_lines.append(f"Candlestick Patterns: {pattern_str}")
 
     indicator_summary = "\n".join(ind_lines)
 
@@ -246,6 +267,13 @@ def _rule_based_analysis(
     return {
         "confidence": round(confidence, 1),
         "direction": direction,
+        "bias": trend if trend in ("bullish", "bearish") else "neutral",
+        "setup": "Rule-based technicals",
+        "entry_zone": f"{current_price}",
+        "stop_loss": f"{round(current_price * 0.95, 2)}" if direction == "long" else f"{round(current_price * 1.05, 2)}",
+        "targets": [f"{round(current_price * 1.1, 2)}" if direction == "long" else f"{round(current_price * 0.9, 2)}"],
+        "invalidation": "Trend reversal or MACD cross",
+        "confluence": "RSI + SMA alignment",
         "indicators": output_indicators,
         "rationale": rationale,
     }
@@ -311,6 +339,13 @@ def _parse_llm_response(
     return {
         "confidence": confidence,
         "direction": data["direction"],
+        "bias": str(data.get("bias", "neutral")),
+        "setup": str(data.get("setup", "Unknown")),
+        "entry_zone": str(data.get("entry_zone", "Market")),
+        "stop_loss": str(data.get("stop_loss", "Unknown")),
+        "targets": data.get("targets", []),
+        "invalidation": str(data.get("invalidation", "Unknown")),
+        "confluence": str(data.get("confluence", "None")),
         "indicators": {**fallback_result.get("indicators", {}), **indicators},
         "rationale": rationale or fallback_result["rationale"],
     }
@@ -365,6 +400,13 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
             return {
                 "confidence": 0.0,
                 "direction": "flat",
+                "bias": "neutral",
+                "setup": "No Data",
+                "entry_zone": "N/A",
+                "stop_loss": "N/A",
+                "targets": [],
+                "invalidation": "N/A",
+                "confluence": "N/A",
                 "indicators": {},
                 "rationale": f"No market data available for {inputs.symbol}",
             }
