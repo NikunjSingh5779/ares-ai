@@ -16,20 +16,19 @@ defaults:
 agents:
   supervisor:
     # Needs fast, low-latency routing decisions
-    primary: open_router/google/gemini-2.0-flash
+    primary: opencode/deepseek-v4-flash-free
     fallbacks:
-      - open_router/mistral/mistral-small-latest
-      - open_router/nvidia/nemotron-3-nano-30b-a3b:free
-      - opencode/deepseek-v4-flash-free # [UNVERIFIED]
+      - open_router/qwen/qwen3-next-80b-a3b-instruct:free
+      - opencode/nemotron-3-ultra-free
     timeout_seconds: 30
     max_retries: 3
 
   coding:
     # Needs excellent code generation capabilities
-    primary: open_router/nvidia/nemotron-3-super-120b-a12b:free
+    primary: open_router/qwen/qwen3-coder:free
     fallbacks:
-      - open_router/google/gemma-4-31b-it:free
-      - opencode/north-mini-code-free # [UNVERIFIED]
+      - open_router/north-mini-code:free
+      - open_router/poolside/laguna-m.1:free
     timeout_seconds: 120
 
   market_analyst:
@@ -58,48 +57,47 @@ agents:
 
   news:
     # Needs large context windows and strong text sentiment analysis
-    primary: open_router/google/gemini-2.0-flash
+    primary: open_router/nex-agi/nex-n2-pro:free
     fallbacks:
-      - open_router/mistral/mistral-small-latest
-      - open_router/nvidia/nemotron-3-super-120b-a12b:free
+      - open_router/google/gemma-4-26b-a4b-it:free
+      - open_router/nvidia/nemotron-nano-9b-v2:free
     timeout_seconds: 45
 
   consensus:
     # Consensus is deterministic (no LLM), but needs a config entry
     primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
     fallbacks:
-      - opencode/qwen3.6-plus-free # [UNVERIFIED]
+      - opencode/qwen3.6-plus-free
     timeout_seconds: 15
 
   reflection:
     # Needs strong post-trade reasoning and evaluation capabilities
-    primary: open_router/google/gemini-2.5-flash
+    primary: open_router/meta-llama/llama-3.3-70b-instruct:free
     fallbacks:
-      - open_router/mistral/mistral-small-latest
-      - open_router/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
-      - opencode/mimo-v2.5-free # [UNVERIFIED]
+      - open_router/qwen/qwen3-next-80b-a3b-instruct:free
+      - opencode/mimo-v2.5-free
     timeout_seconds: 60
 
   journal:
     # Journal is deterministic (no LLM)
     primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
     fallbacks:
-      - opencode/qwen3.6-plus-free # [UNVERIFIED]
+      - opencode/qwen3.6-plus-free
     timeout_seconds: 15
 
   memory:
     # Memory is deterministic (no LLM)
     primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
     fallbacks:
-      - opencode/minimax-m3-free # [UNVERIFIED]
-      - opencode/qwen3.6-plus-free # [UNVERIFIED]
+      - opencode/minimax-m3-free
+      - opencode/qwen3.6-plus-free
     timeout_seconds: 15
 
   execution:
     # Execution is deterministic (no LLM)
     primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
     fallbacks:
-      - opencode/qwen3.6-plus-free # [UNVERIFIED]
+      - opencode/qwen3.6-plus-free
     timeout_seconds: 15
 
   vision:
@@ -110,9 +108,8 @@ agents:
 
   fast:
     # Fallback for fast generic tasks
-    primary: open_router/google/gemini-2.0-flash
+    primary: opencode/qwen3.6-plus-free
     fallbacks:
-      - open_router/mistral/mistral-small-latest
-      - open_router/nvidia/nemotron-3-nano-30b-a3b:free
-      - opencode/qwen3.6-plus-free # [UNVERIFIED]
+      - open_router/liquid/lfm-2.5-1.2b-thinking:free
+      - open_router/openrouter/free
     timeout_seconds: 15
