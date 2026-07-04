@@ -461,7 +461,8 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
                 )
                 result = await self.ingestor.ingest(request)
                 return result.candles
-            except Exception:
+            except Exception as e:
+                logger.error(f"Unhandled exception: {e}", exc_info=True)
                 return []
 
         return []
@@ -482,7 +483,8 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
             rpm = self.context.model_preferences.get("rpm", 10)
             temperature = self.context.model_preferences.get("temperature", 0.3)
             max_tokens = self.context.model_preferences.get("max_tokens", 1024)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
             model_chain = []
             rpm = 10
             temperature = 0.3

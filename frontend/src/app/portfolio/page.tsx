@@ -99,16 +99,16 @@ export default function PortfolioPage() {
 
         // Build cumulative PnL data
         const data: LineData[] = [];
-        let pnl = portfolio.total_equity;
+        let pnl = portfolio.initial_capital + portfolio.total_pnl;
         
         // Reverse order so oldest is first
         const sorted = [...orders].sort((a, b) => 
-          new Date(a.exit_time).getTime() - new Date(b.exit_time).getTime()
+          new Date(a.exit_at).getTime() - new Date(b.exit_at).getTime()
         );
         
         sorted.forEach((o) => {
           data.push({
-            time: new Date(o.exit_time).getTime() / 1000 as any,
+            time: new Date(o.exit_at).getTime() / 1000 as any,
             value: pnl,
           });
           pnl += o.pnl;

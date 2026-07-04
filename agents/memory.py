@@ -9,6 +9,8 @@ Fully deterministic — no LLM calls.
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
 from datetime import UTC, datetime
 from typing import Any
 
@@ -79,7 +81,8 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                 host=settings.chromadb_host,
                 port=settings.chromadb_port,
             )
-        except Exception:
+        except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
             self.chroma_client = None
 
     def get_collection(self, strategy_id: str) -> chromadb.Collection | None:
@@ -91,7 +94,8 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                 name=f"ares_memory_{strategy_id}",
                 metadata={"hnsw:space": "cosine"}
             )
-        except Exception:
+        except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
             return None
 
     async def process(self, inputs: MemoryInput) -> dict[str, Any]:
@@ -207,7 +211,8 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                     })
                 try:
                     collection.add(ids=ids, documents=docs, metadatas=metadatas)
-                except Exception:
+                except Exception as e:
+                    logger.error(f"Unhandled exception: {e}", exc_info=True)
                     pass
 
         return {

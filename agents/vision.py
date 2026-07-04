@@ -13,6 +13,8 @@ Per CLAUDE.md:
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -118,7 +120,8 @@ class VisionAgent(BaseAgent[VisionInput, VisionOutput]):
         if model_available:
             try:
                 model_rationale = await self._analyze_with_model(inputs)
-            except Exception:
+            except Exception as e:
+                logger.error(f"Unhandled exception: {e}", exc_info=True)
                 model_available = False  # Graceful degradation
 
         # ── Build output ──────────────────────────────────────────────

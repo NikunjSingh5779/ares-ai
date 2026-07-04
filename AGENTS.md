@@ -225,33 +225,21 @@ After every trade:
 
 ```
 ares-ai/
-  agents/
-    supervisor/
-    coding/
-    market_analyst/
-    quant/
-    risk/
-    news/
-    reflection/
-    memory/
-    vision/
-  backend/
-  frontend/
-  api/
-  database/
-  vector_db/
-  redis/
-  strategies/
-  backtesting/
-  paper_trading/
-  live_trading/
-  monitoring/
-  docker/
-  tests/
-  docs/
-  prompts/
-  configs/
-    models.yaml
+  agents/         # Single-file agents (supervisor.py, quant.py, etc.)
+  backend/        # FastAPI application and services
+  backtesting/    # VectorBT/Backtrader integration
+  configs/        # YAML configuration (models.yaml, etc.)
+  database/       # PostgreSQL schema and connections
+  docker/         # Docker Compose and Dockerfiles
+  docs/           # Architectural documentation and roadmaps
+  frontend/       # Next.js trading dashboard
+  landing/        # Astro marketing landing page
+  live_trading/   # Exchange connectors and execution safety gates
+  logs/           # System and agent logs
+  migrations/     # Alembic database migrations
+  paper_trading/  # Simulated execution engine
+  scripts/        # Utility and simulation scripts
+  tests/          # Pytest suite
 ```
 
 ---------------------------------------------------------------------

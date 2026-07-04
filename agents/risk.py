@@ -9,6 +9,8 @@ with LLM analysis + rule-based fallback.
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
 import json
 from typing import Any
 
@@ -450,7 +452,8 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
                 )
                 result = await self.ingestor.ingest(req)
                 return result.candles
-            except Exception:
+            except Exception as e:
+                logger.error(f"Unhandled exception: {e}", exc_info=True)
                 return []
         return []
 
@@ -475,7 +478,8 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
             rpm = self.context.model_preferences.get("rpm", 10)
             temperature = self.context.model_preferences.get("temperature", 0.3)
             max_tokens = self.context.model_preferences.get("max_tokens", 1024)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
             model_chain = []
 
         if not model_chain:

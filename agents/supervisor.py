@@ -13,6 +13,8 @@ Per RELIABILITY section:
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
 import json
 import uuid
 from datetime import UTC, datetime
@@ -149,6 +151,7 @@ def _try_parse_output(
         parsed = schema.model_validate(data)
         return parsed, None
     except Exception as e:
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
         return None, f"Schema validation failed for {agent_name}: {e}"
 
 
@@ -453,6 +456,7 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
             "pipeline_status": _merge_pipeline_status(state, completed=["vision"]),
         }
     except Exception as e:
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
         # Vision never blocks — return degraded result on any error
         return {
             "vision": VisionOutput(
@@ -574,6 +578,7 @@ async def _execute_agent_impl(
         return update
 
     except Exception as e:
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
         update["pipeline_status"].failed_nodes = state.pipeline_status.failed_nodes + [agent_name]
         update["errors"] = state.errors + [
             {

@@ -8,6 +8,8 @@ Implements the RELIABILITY section requirements:
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
 import time
 from typing import Any
 
@@ -159,6 +161,7 @@ class ModelRouter:
                     # Continue to next model in chain
 
             except Exception as e:
+                logger.error(f"Unhandled exception: {e}", exc_info=True)
                 attempt_info["error"] = str(e)
                 attempt_info["error_type"] = type(e).__name__
                 attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)

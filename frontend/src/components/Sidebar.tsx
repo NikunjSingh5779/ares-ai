@@ -10,6 +10,7 @@ import {
   BookOpen,
   Cpu,
   Radio,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,6 +27,7 @@ const navItems: NavItem[] = [
   { label: "Portfolio", href: "/portfolio", icon: Wallet },
   { label: "Journal", href: "/journal", icon: BookOpen },
   { label: "Agents", href: "/agents", icon: Cpu },
+  { label: "Backtests", href: "/backtests", icon: Activity },
   { label: "Live Trading", href: "/live", icon: Radio },
 ];
 

@@ -224,6 +224,7 @@ class LLMClient:
         try:
             return await self.chat_completion(model, messages, **kwargs)
         except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
             error_type = type(e).__name__
             status_code = getattr(e, "response", None) and e.response.status_code  # type: ignore[union-attr]
             return {
