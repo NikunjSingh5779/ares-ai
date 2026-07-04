@@ -24,6 +24,7 @@ from agents.journal import JournalAgent
 from agents.log import AgentLogger
 from agents.market_analyst import MarketAnalystAgent
 from agents.memory import MemoryAgent
+from agents.news import NewsAgent
 from agents.models import load_model_roster
 from agents.quant import QuantAgent
 from agents.queue import QueueRegistry
@@ -80,6 +81,7 @@ async def main():
     registry.register("journal", agent=JournalAgent())
     registry.register("reflection", agent=ReflectionAgent())
     registry.register("memory", agent=MemoryAgent())
+    registry.register("news", agent=NewsAgent(router=router_model))
 
     # Register any missing stubs
     for name in roster.agent_names:

@@ -48,6 +48,12 @@ class QuantOutput(BaseModel):
     fallback_reason: str | None = Field(default=None, description="Reason for fallback if used")
 
 
+class NewsInput(BaseModel):
+    """Input for the News Agent."""
+
+    symbol: str = Field(..., description="Ticker symbol (e.g. BTC-USD, AAPL)")
+
+
 class NewsOutput(BaseModel):
     """Output from the News Agent."""
 

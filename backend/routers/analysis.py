@@ -79,6 +79,7 @@ def _get_supervisor() -> Supervisor:
     from agents.quant import QuantAgent
     from agents.reflection import ReflectionAgent
     from agents.risk import RiskAgent
+    from agents.news import NewsAgent
     from backend.data.ingestor import MarketDataIngestor
     from backend.data.repository import MarketDataRepository
     from backend.routers.live import _get_engine as get_live_engine
@@ -106,9 +107,8 @@ def _get_supervisor() -> Supervisor:
     registry.register("consensus")
     registry.register("vision")
 
-    # "news" is advisory and lacks a real implementation currently.
-    # Leaving it unregistered with no agent.
-    registry.register("news")
+    # Register news agent
+    registry.register("news", agent=NewsAgent(router=router_model))
 
     # 6. Supervisor
     supervisor = Supervisor(
