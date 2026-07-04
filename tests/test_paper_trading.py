@@ -186,7 +186,7 @@ class TestStopLossTakeProfit:
     def test_stop_loss_hit_long(self, engine: PaperTradingEngine) -> None:
         engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=48000.0)
         # Candle low triggers stop loss
-        closed = engine.check_sl_tp(high=50500.0, low=47500.0)
+        closed = engine.check_sl_tp("BTC-USD", high=51000.0, low=47000.0)
         assert len(closed) == 1
         assert closed[0].exit_reason == "stop_loss"
         assert closed[0].pnl == pytest.approx(-2000.0)  # (48000 - 50000) * 1
@@ -194,7 +194,7 @@ class TestStopLossTakeProfit:
     def test_take_profit_hit_long(self, engine: PaperTradingEngine) -> None:
         engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, take_profit=55000.0)
         # Candle high triggers take profit
-        closed = engine.check_sl_tp(high=56000.0, low=51000.0)
+        closed = engine.check_sl_tp("BTC-USD", high=56000.0, low=51000.0)
         assert len(closed) == 1
         assert closed[0].exit_reason == "take_profit"
         assert closed[0].pnl == pytest.approx(5000.0)
@@ -202,35 +202,35 @@ class TestStopLossTakeProfit:
     def test_stop_loss_hit_short(self, engine: PaperTradingEngine) -> None:
         engine.execute_signal("ETH-USD", "short", 10.0, 3000.0, stop_loss=3200.0)
         # Candle high triggers stop loss for short
-        closed = engine.check_sl_tp(high=3300.0, low=2900.0)
+        closed = engine.check_sl_tp("ETH-USD", high=3300.0, low=2900.0)
         assert len(closed) == 1
         assert closed[0].exit_reason == "stop_loss"
 
     def test_take_profit_hit_short(self, engine: PaperTradingEngine) -> None:
         engine.execute_signal("ETH-USD", "short", 10.0, 3000.0, take_profit=2700.0)
         # Candle low triggers take profit for short
-        closed = engine.check_sl_tp(high=2950.0, low=2600.0)
+        closed = engine.check_sl_tp("ETH-USD", high=2950.0, low=2600.0)
         assert len(closed) == 1
         assert closed[0].exit_reason == "take_profit"
 
     def test_sl_tp_not_hit(self, engine: PaperTradingEngine) -> None:
         engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=48000.0, take_profit=55000.0)
         # Candle stays within range
-        closed = engine.check_sl_tp(high=52000.0, low=49000.0)
+        closed = engine.check_sl_tp("BTC-USD", high=52000.0, low=49000.0)
         assert len(closed) == 0
 
     def test_sl_and_tp_both_reached_long_tp_checked_first(self, engine: PaperTradingEngine) -> None:
         """For long, take_profit is checked before stop_loss."""
         engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=49000.0, take_profit=51000.0)
         # Both TP and SL levels breached
-        closed = engine.check_sl_tp(high=51500.0, low=48500.0)
+        closed = engine.check_sl_tp("BTC-USD", high=51500.0, low=48500.0)
         assert len(closed) == 1
         assert closed[0].exit_reason == "take_profit"  # TP checked first
 
     def test_sl_and_tp_both_reached_short_tp_checked_first(self, engine: PaperTradingEngine) -> None:
         """For short, take_profit is checked before stop_loss."""
         engine.execute_signal("ETH-USD", "short", 10.0, 3000.0, stop_loss=3100.0, take_profit=2900.0)
-        closed = engine.check_sl_tp(high=3150.0, low=2850.0)
+        closed = engine.check_sl_tp("ETH-USD", high=3150.0, low=2850.0)
         assert len(closed) == 1
         assert closed[0].exit_reason == "take_profit"
 

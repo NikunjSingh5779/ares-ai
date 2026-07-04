@@ -23,11 +23,17 @@ from backend.routers import (
     trading_router,
 )
 from backend.routers.auth import router as auth_router
+from backend.routers.backtest import router as backtest_router
 from backend.routers.users import router as users_router
 from configs.settings import settings
 
 logger = logging.getLogger("ares")
 
+
+from backend.data.ingestor import MarketDataIngestor
+from backend.routers.trading import _get_engine as get_paper_trading_engine
+from database.connection import async_session_factory
+from paper_trading.worker import PaperTradingWorker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,9 +47,25 @@ async def lifespan(app: FastAPI):
             "debug": settings.api_debug,
         },
     )
+    
+    # Start Paper Trading background worker
+    engine = get_paper_trading_engine()
+    ingestor = MarketDataIngestor()
+    worker = PaperTradingWorker(
+        engine=engine,
+        ingestor=ingestor,
+        session_factory=async_session_factory,
+        poll_interval_seconds=60,
+    )
+    worker.start()
+    app.state.paper_trading_worker = worker
+
     yield
     # ── Shutdown ──────────────────────────────────────────────────
     logger.info("ARES AI shutting down")
+    worker = getattr(app.state, "paper_trading_worker", None)
+    if worker:
+        await worker.stop()
 
 
 # ── Application instance ────────────────────────────────────────────────
@@ -97,6 +119,7 @@ app.include_router(journal_router)
 app.include_router(agents_router)
 app.include_router(monitoring_router)
 app.include_router(live_router)
+app.include_router(backtest_router)
 
 # ── Prometheus /metrics endpoint (ASGI mount) ─────────────────────────
 

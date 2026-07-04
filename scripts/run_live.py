@@ -17,6 +17,7 @@ from agents.journal import JournalAgent
 from agents.log import AgentLogger
 from agents.market_analyst import MarketAnalystAgent
 from agents.memory import MemoryAgent
+from agents.news import NewsAgent
 from agents.models import load_model_roster
 from agents.quant import QuantAgent
 from agents.queue import QueueRegistry
@@ -134,6 +135,7 @@ async def main():
     registry.register("memory", agent=MemoryAgent())
     registry.register("consensus")
     registry.register("vision")
+    registry.register("news", agent=NewsAgent(router=router_model))
 
     symbol = "ETH-USD"
     interval = "1m"

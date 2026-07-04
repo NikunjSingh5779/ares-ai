@@ -235,6 +235,37 @@ export interface JournalHistoryEntry {
   created_at: string;
 }
 
+// ─── Backtest ─────────────────────────────────────────────────────
+
+export interface BacktestMetrics {
+  total_return_pct: number;
+  sharpe_ratio: number;
+  sortino_ratio: number;
+  win_rate: number;
+  profit_factor: number;
+  max_drawdown_pct: number;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  expectancy: number;
+  recovery_factor: number;
+  initial_capital: number;
+  final_value: number;
+  gross_profit: number;
+  gross_loss: number;
+}
+
+export interface BacktestResult {
+  symbol: string;
+  metrics: BacktestMetrics;
+  trades: ClosedTrade[];
+  equity_curve: number[];
+  signals_generated: number;
+  start_date: string | null;
+  end_date: string | null;
+  errors: string[];
+}
+
 // ─── Live Trading ──────────────────────────────────────────────
 
 export interface LiveStatusResponse {

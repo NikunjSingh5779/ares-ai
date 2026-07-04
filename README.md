@@ -62,7 +62,7 @@ graph TD
 ARES AI is built with strict safety gates that cannot be bypassed:
 * **Human Approval Mode**: Enabled by default for all strategies. Autonomous live trading must be explicitly unlocked by a human operator.
 * **Promotion Gate**: A trading strategy cannot go live until it has a minimum paper trading history of **30 trading days** or **50 closed paper trades** (whichever is longer) meeting risk thresholds.
-* **Automatic Kill Switch**: Instantly halts all trading activity if max drawdown (default 20%) or exposure limits are breached.
+* **Automatic Kill Switch**: Instantly halts all trading activity if max drawdown (default 15%) or exposure limits are breached.
 * **Schema-Enforced I/O**: Every agent input/output is strictly validated. A validation failure automatically triggers correction or shifts to fallbacks; it *never* defaults to an approval.
 
 ---

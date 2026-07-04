@@ -6,6 +6,8 @@ Handles edge cases: insufficient data, zero division, NaN propagation.
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
 import math
 from typing import Any
 
@@ -320,7 +322,8 @@ def compute_adx(candles: list[OHLCVData], period: int = 14) -> float | None:
         if pd.isna(val):
             return None
         return round(float(val), 2)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
         return None
 
 # ---------------------------------------------------------------------------
@@ -345,7 +348,8 @@ def compute_time_series_metrics(candles: list[OHLCVData]) -> dict[str, Any]:
     try:
         adf_result = adfuller(series.dropna())
         is_stationary = adf_result[1] < 0.05
-    except Exception:
+    except Exception as e:
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
         is_stationary = False
 
     trend_strength = None
@@ -360,7 +364,8 @@ def compute_time_series_metrics(candles: list[OHLCVData]) -> dict[str, Any]:
             else:
                 trend_strength = 1.0
                 seasonal_strength = 1.0
-    except Exception:
+    except Exception as e:
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
         pass
 
     return {

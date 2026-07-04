@@ -12,6 +12,8 @@ Per AGENT I/O CONTRACTS (see CLAUDE.md):
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -203,6 +205,7 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                     rationale=". ".join(parts),
                 )
             except Exception as e:
+                logger.error(f"Unhandled exception: {e}", exc_info=True)
                 return ExecutionOutput(
                     executed=False,
                     fill_price=fill_price,
@@ -318,6 +321,7 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                         )
                         await session.commit()
             except Exception as e:
+                logger.error(f"Unhandled exception: {e}", exc_info=True)
                 parts.append(f"(DB persistence failed: {str(e)})")
 
         return ExecutionOutput(

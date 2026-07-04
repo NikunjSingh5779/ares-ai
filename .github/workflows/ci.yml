@@ -1,29 +1,112 @@
-name: CI
+name: CI Pipeline
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
-  test:
+  backend-test:
+    name: Backend Tests
     runs-on: ubuntu-latest
+    
+    # Required for integration tests
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ares
+          POSTGRES_PASSWORD: ares
+          POSTGRES_DB: ares_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      # Use uv for faster Python package management
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: uv pip install -e ".[dev]" --system
         
       - name: Lint with ruff
-        run: ruff check .
+        run: uv run ruff check .
         
-      - name: Test with pytest
+      - name: Run Pytest
         env:
           PYTHONPATH: .
-        run: pytest tests/
+          DATABASE_URL: postgresql://ares:ares@localhost:5432/ares_test
+          REDIS_URL: redis://localhost:6379/0
+        run: uv run pytest tests/ --cov=. --cov-report=xml
+
+  frontend-typecheck:
+    name: Frontend Typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+        
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+          run_install: false
+          
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+            
+      - name: Install dependencies
+        run: pnpm install
+        
+      - name: Run Typecheck
+        run: pnpm tsc --noEmit
+
+  docker-config:
+    name: Docker Compose Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate docker-compose.yml
+        run: docker-compose config > /dev/null

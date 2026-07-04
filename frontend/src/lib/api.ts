@@ -20,6 +20,8 @@ import type {
   SignalHistoryEntry,
   AnalyzeResponse,
   JournalHistoryEntry,
+  BacktestResult,
+  BacktestMetrics,
 } from "@/types/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
@@ -60,6 +62,19 @@ export async function getSignal(
 
 export async function getSignalHistory(): Promise<SignalHistoryEntry[]> {
   return request<SignalHistoryEntry[]>("/api/v1/signals/history");
+}
+
+export async function runBacktest(body: {
+  symbol: string;
+  interval?: string;
+  initial_capital?: number;
+  strategy?: string;
+  days_back?: number;
+}): Promise<BacktestResult> {
+  return request<BacktestResult>("/api/v1/backtest/run", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 // ─── Trading ────────────────────────────────────────────────────

@@ -13,7 +13,11 @@ Implements the CLAUDE.md AGENT I/O CONTRACTS:
 from __future__ import annotations
 
 import json
+import logging
+import re
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
@@ -302,29 +306,46 @@ def _parse_llm_response(
     If parsing fails, returns the fallback result.
     """
     if not response_text:
+        fallback_result["used_fallback"] = True
+        fallback_result["fallback_reason"] = "Empty response from LLM"
         return fallback_result
 
     text = response_text.strip()
     # Strip markdown code fences
-    if text.startswith("```"):
-        lines = text.split("\n")
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
+    cleaned = re.sub(r'^```(?:json)?\s*|\s*```$', '', text, flags=re.MULTILINE)
 
+    data = None
     try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        logger.error(f"LLM JSON parse FAILED: {e}. Raw output: {text[:500]}")
+        # Try regex extraction
+        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if match:
+            try:
+                data = json.loads(match.group())
+                logger.warning("Recovered JSON via regex extraction")
+            except json.JSONDecodeError:
+                pass
+
+    if data is None:
+        logger.error("Falling back to rule-based analysis due to JSON parse failure.")
+        fallback_result["used_fallback"] = True
+        fallback_result["fallback_reason"] = "JSONDecodeError"
         return fallback_result
 
     # Validate structure
     required_fields = {"confidence", "direction", "rationale"}
     if not required_fields.issubset(data.keys()):
+        logger.error(f"Missing required fields. Found keys: {list(data.keys())}")
+        fallback_result["used_fallback"] = True
+        fallback_result["fallback_reason"] = "Missing required fields in LLM output"
         return fallback_result
 
     if data.get("direction") not in ("long", "short", "flat"):
+        logger.error(f"Invalid direction in LLM output: {data.get('direction')}")
+        fallback_result["used_fallback"] = True
+        fallback_result["fallback_reason"] = "Invalid direction in LLM output"
         return fallback_result
 
     confidence = float(data.get("confidence", 0))
@@ -340,14 +361,16 @@ def _parse_llm_response(
         "confidence": confidence,
         "direction": data["direction"],
         "bias": str(data.get("bias", "neutral")),
-        "setup": str(data.get("setup", "Unknown")),
-        "entry_zone": str(data.get("entry_zone", "Market")),
-        "stop_loss": str(data.get("stop_loss", "Unknown")),
-        "targets": data.get("targets", []),
-        "invalidation": str(data.get("invalidation", "Unknown")),
-        "confluence": str(data.get("confluence", "None")),
+        "setup": str(data.get("setup", "LLM Analysis")),
+        "entry_zone": str(data.get("entry_zone", "N/A")),
+        "stop_loss": str(data.get("stop_loss", "N/A")),
+        "targets": [str(t) for t in data.get("targets", [])],
+        "invalidation": str(data.get("invalidation", "N/A")),
+        "confluence": str(data.get("confluence", "N/A")),
         "indicators": {**fallback_result.get("indicators", {}), **indicators},
         "rationale": rationale or fallback_result["rationale"],
+        "used_fallback": False,
+        "fallback_reason": None,
     }
 
 
@@ -438,7 +461,8 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
                 )
                 result = await self.ingestor.ingest(request)
                 return result.candles
-            except Exception:
+            except Exception as e:
+                logger.error(f"Unhandled exception: {e}", exc_info=True)
                 return []
 
         return []
@@ -459,7 +483,8 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
             rpm = self.context.model_preferences.get("rpm", 10)
             temperature = self.context.model_preferences.get("temperature", 0.3)
             max_tokens = self.context.model_preferences.get("max_tokens", 1024)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
             model_chain = []
             rpm = 10
             temperature = 0.3

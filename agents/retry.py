@@ -7,6 +7,8 @@ Implements the RELIABILITY section requirements:
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
 import asyncio
 import random
 import time
@@ -144,6 +146,7 @@ async def with_retry(
             return result
 
         except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
             last_error = e
             result.last_error_type = type(e).__name__
 

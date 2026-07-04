@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { RefreshCw, Cpu } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PipelineFlow } from "@/components/PipelineFlow";
+import { PriceTicker } from "@/components/PriceTicker";
 import { getAgentStatus, analyze } from "@/lib/api";
 import type { AgentStatusResponse, AgentState } from "@/types/api";
 
@@ -72,14 +73,17 @@ export default function AgentsPage() {
             Pipeline Monitor & Agent Outputs
           </p>
         </div>
-        <button
-          onClick={loadData}
-          disabled={loading}
-          className="btn-primary !py-2 !px-3 !text-xs !font-mono disabled:opacity-50"
-        >
-          <Cpu size={12} />
-          {loading ? "Loading..." : "Refresh"}
-        </button>
+        <div className="flex items-center gap-4">
+          <PriceTicker symbol="BTCUSDT" />
+          <button
+            onClick={loadData}
+            disabled={loading}
+            className="btn-primary !py-2 !px-3 !text-xs !font-mono disabled:opacity-50"
+          >
+            <Cpu size={12} />
+            {loading ? "Loading..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {error && (
