@@ -222,10 +222,11 @@ class PaperTradingEngine:
 
         return None
 
-    def check_sl_tp(self, high: float, low: float) -> list[ClosedTrade]:
-        """Check all open positions against a candle's high/low for SL/TP.
+    def check_sl_tp(self, symbol: str, high: float, low: float) -> list[ClosedTrade]:
+        """Check open positions for a symbol against a candle's high/low for SL/TP.
 
         Args:
+            symbol: Ticker symbol.
             high: Current candle's high price.
             low: Current candle's low price.
 
@@ -236,6 +237,9 @@ class PaperTradingEngine:
         closed: list[ClosedTrade] = []
 
         for pos in list(self._positions):
+            if pos.symbol != symbol:
+                continue
+
             exit_price: float | None = None
             reason: str | None = None
 
