@@ -14,7 +14,7 @@ dependencies = [
     "python-jose[cryptography]>=3.3.0",
 
     # Database
-    "sqlalchemy[asyncio]>=2.0.35",
+    "sqlalchemy[asyncio]>=2.0.51",
     "asyncpg>=0.30.0",
     "alembic>=1.13.0",
 
