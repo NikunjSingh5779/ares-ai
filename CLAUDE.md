@@ -283,3 +283,35 @@ Never silently skip implementation within the agreed milestone scope. Never expa
 # RISK & COMPLIANCE NOTE
 
 This system places real trades with real capital once live mode is enabled. It is not financial advice, and no agent's output should be treated as investment advice for anyone other than the system's own operation. Enforce the LIVE TRADING ENGINE safety gates above without exception; do not implement a path that bypasses human-approval mode or the paper-trading promotion requirement, even if asked to "speed things up."
+
+
+<!-- AI-OS VAULT -->
+## AI-OS Knowledge Vault
+
+This project is linked to the AI-OS vault at `../OneDrive/Desktop/AI-OS obsidian`.
+Load vault resources ON DEMAND to save tokens — only read what you need for the current task.
+
+### Available Resources (83 total)
+
+| Resource | Path | Count |
+|----------|------|-------|
+| **User Profile** | `../OneDrive/Desktop/AI-OS obsidian/wiki/entities/people/nikunj-singh` | Your identity, stack, work style |
+| **Agents** | `../OneDrive/Desktop/AI-OS obsidian/agents/*.md` | 28 agent definitions |
+| **Skills** | `../OneDrive/Desktop/AI-OS obsidian/skills/*.md` | 15 skill definitions |
+| **Prompts** | `../OneDrive/Desktop/AI-OS obsidian/prompts/*.md` | 16 prompt templates |
+| **Wiki** | `../OneDrive/Desktop/AI-OS obsidian/wiki/` | 24 wiki pages |
+
+### Quick Reference
+
+- **Need an agent for a task?** → Read `../OneDrive/Desktop/AI-OS obsidian/agents/<agent-name>.md`
+- **Need a skill guide?** → Read `../OneDrive/Desktop/AI-OS obsidian/skills/<skill-name>.md`
+- **Need to understand the user?** → Read `../OneDrive/Desktop/AI-OS obsidian/wiki/entities/people/nikunj-singh`
+- **Need project context?** → Read `../OneDrive/Desktop/AI-OS obsidian/wiki/home`
+
+### How Vault Resources Work
+
+1. **Reference, don't copy** — Agents and skills live in the vault, not in this project
+2. **Load on demand** — The LLM reads files from the vault when needed, not at startup
+3. **Single source of truth** — Update agents/skills in the vault; all linked projects benefit
+4. **Token efficient** — Only the files you actually use are loaded into context
+<!-- /AI-OS VAULT -->
