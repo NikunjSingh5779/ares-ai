@@ -19,8 +19,6 @@ from typing import Any
 
 import redis
 
-from configs.settings import settings
-
 
 class TradingMode(StrEnum):
     """Live trading mode."""
