@@ -13,9 +13,8 @@ Per RELIABILITY section:
 
 from __future__ import annotations
 
-import logging
-logger = logging.getLogger(__name__)
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -41,6 +40,8 @@ from agents.state import (
     RiskOutput,
     VisionOutput,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Agent output schema registry — maps agent names to their Pydantic models

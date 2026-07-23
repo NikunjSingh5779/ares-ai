@@ -1,7 +1,8 @@
-from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from uuid import UUID
-from typing import Optional, List
+
+from pydantic import BaseModel, ConfigDict
+
 
 class AccountBase(BaseModel):
     exchange: str
@@ -34,7 +35,7 @@ class PortfolioResponse(PortfolioBase):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     account_id: UUID
-    last_rebalanced_at: Optional[datetime]
+    last_rebalanced_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
@@ -47,9 +48,9 @@ class PositionBase(BaseModel):
     market_value: float
     unrealized_pnl: float
     unrealized_pnl_pct: float
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
-    strategy_name: Optional[str] = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    strategy_name: str | None = None
     is_open: bool = True
 
 class PositionResponse(PositionBase):
@@ -57,7 +58,7 @@ class PositionResponse(PositionBase):
     id: UUID
     portfolio_id: UUID
     opened_at: datetime
-    closed_at: Optional[datetime]
+    closed_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
@@ -66,21 +67,21 @@ class OrderBase(BaseModel):
     side: str
     order_type: str
     quantity: float
-    price: Optional[float] = None
-    stop_price: Optional[float] = None
-    strategy_name: Optional[str] = None
+    price: float | None = None
+    stop_price: float | None = None
+    strategy_name: str | None = None
 
 class OrderResponse(OrderBase):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     account_id: UUID
-    position_id: Optional[UUID] = None
+    position_id: UUID | None = None
     status: str
-    exchange_order_id: Optional[str] = None
+    exchange_order_id: str | None = None
     filled_quantity: float
     average_fill_price: float
     fee: float
-    fee_currency: Optional[str] = None
-    error_message: Optional[str] = None
+    fee_currency: str | None = None
+    error_message: str | None = None
     created_at: datetime
     updated_at: datetime

@@ -49,26 +49,28 @@ Read the full `SKILL.md` before applying code.
 
 ## 3. Standing Backlog
 
-*Last verified: this session, via direct tool output (git, grep, live CI run) — not a prior summary.*
+*Last verified: this session — `git status`, `ruff check . --statistics`, CI Run #48/#49 live logs*
 
 **✅ Resolved — confirmed by execution, not just file content**
-- **Item 9 — CI branch mismatch.** Fixed: `main` → `master` + `feat/**` + `fix/**` in `ci.yml` triggers. Confirmed via **CI Pipeline Run #48**, the first CI Pipeline run in this repo's history — it triggered and ran (failed after 50s on real pre-existing test failures, which is the correct, expected outcome for a first-ever run against known-broken tests, not a new problem).
+- **Item 9 — CI branch mismatch.** Fixed on branch `fix/ci-branch-trigger` (`main` → `master` + `feat/**` + `fix/**`). Not yet merged to `master` — ci.yml on all other branches still says `branches: [main]`.
 - **Item 1 — Silent JSON-parse fallback.** Confirmed resolved: `used_fallback` + `fallback_reason` fields present and threaded through state in both `agents/market_analyst.py` and `agents/quant.py`.
 - **Item 5 — Missing News Agent.** Confirmed resolved: `agents/news.py` exists with `class NewsAgent(BaseAgent[NewsInput, NewsOutput])`.
+- **`.gitignore` corruption.** Fixed in commit `658f558` — UTF-16 null-byte garbage on L53-54 removed, new ignore entries added for stale artifact files.
+- **Repo root hygiene.** Fixed in commit `658f558` — `backlog_prompt.txt`, `phase5.txt`, `old_pytest_results.txt`, `pytest_v_output.txt` deleted; `test_start.py` → `scripts/test_start.py`.
+- **CI services gap.** ✅ Postgres (15) + Redis (7) service containers verified present in ci.yml. Python version is 3.12. No service-level gap.
 
 **🔴 P0 — open**
-- **Item 2 — Real test baseline from Run #48.** CI has now run for the first time ever. Pull the actual failure list from Run #48's logs — this replaces every previous test-count claim (787 passed, 82% coverage, etc.) as the current source of truth, since none of those numbers were ever CI-verified before. Use Run #48's real output to re-seed Items 3 and 7 below with specifics instead of guesses.
-- **`.gitignore` corruption.** Lines 53–54 contain UTF-16-encoded null-byte garbage (a leftover from an earlier UTF-16 `pytest_results.txt` append) plus a duplicate entry. Doesn't break git, but clean it — a corrupted ignore file is exactly the kind of thing that silently stops matching what it's supposed to.
-- **Repo root hygiene.** `old_pytest_results.txt`, `pytest_v_output.txt`, and `phase5.txt` are still loose and tracked at repo root. Relocate to `scripts/`, `docs/`, or delete if superseded. `test_start.py` at root should move to `scripts/` or `tests/`.
+- **Item 2 — Real test baseline (CI investigation).** Investigated via CI Run #48/#49 live logs + local full test run. Key findings: (a) CI never reaches pytest — ruff lint (286 errors, 174 auto-fixable) kills the pipeline first; (b) 639/639 non-live-trading tests pass locally (100%); (c) 148 live_trading tests hang on import/setup; (d) coverage 72.18% vs 80% gate; (e) Docker Compose validation fails in CI (uses `docker-compose` v1 which doesn't support `x-` extension fields). The test baseline is established; the fix path is: make CI green.
+- **CI pipeline broken — 3 independent failures.** (1) Trigger: `branches: [main]` watches wrong default branch name; fix exists on `fix/ci-branch-trigger` but never merged. (2) Ruff: 286 errors, 174 auto-fixable — blocks pytest from ever running. (3) Docker Compose validation: uses `docker-compose config` (v1) which chokes on `x-logging` extension field.
 
-**🟡 P1 — open, verify against Run #48's real output before starting**
-- **Item 3 — Exchange connector test cluster.** If still failing: check for one shared root cause (ccxt version, ABC signature drift) before touching individual files — historically all four exchanges failed identically, which is the signature of one bug, not four.
-- **Item 7 — ExecutionAgent test failures.** Same approach: one root-cause pass, not per-assertion fixes.
+**🟡 P1 — needs fresh check against actual execution**
+- **Item 3 — Exchange connector test cluster.** Last session confirmed: live_trading tests hang (all 148), not fail. Root cause likely async event loop or CCXT connection attempts. Needs investigation separate from the CI pipeline fix.
+- **Item 7 — ExecutionAgent test failures.** RESOLVED by test run: all 11 `test_execution_agent.py` tests pass (included in 639/639).
+- **Item 4 — Model roster drift.** `configs/models.yaml` clean (no `[UNVERIFIED]`). Still needs: verify `AGENTS.md`/`CLAUDE.md` point to `models.yaml` as SSOT rather than restating roster.
+- **Item 6 — Documentation drift, remainder.** Unconfirmed: README kill-switch percentage vs `live_trading/safety.py` actual default.
 
-**🟡 P1 — needs a fresh full check, last status was "partial"**
-- **Item 4 — Model roster drift.** No `[UNVERIFIED]` markers remain in `configs/models.yaml` (confirmed). Still needs: verify `AGENTS.md`/`CLAUDE.md` actually just point to `models.yaml` as the single source rather than restating a roster that could drift again — spot-check, don't assume the earlier cleanup covered the doc side too.
-- **Item 6 — Documentation drift, remainder.** `docs/milestone-roadmap.md` confirmed fully updated (13/13). Still unconfirmed this session: README kill-switch percentage vs. `live_trading/safety.py`'s actual default.
-- **CI services gap.** `ci.yml` may still lack Postgres/Redis service containers, meaning integration tests can't run in CI. Also check Python version (3.11 vs 3.12+ per docs).
+**🟢 P3**
+- **Item 8 — Frontend completion.** Agent Monitor, Backtest Dashboard — untouched.
 
 **🟢 P3 — not yet checked**
 - **Item 8 — Frontend completion** (Agent Monitor, Backtest Dashboard — live ticker, equity/drawdown chart, data tables). Skills: `react-components`, `data-viz`.

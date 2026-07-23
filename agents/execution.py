@@ -13,7 +13,6 @@ Per AGENT I/O CONTRACTS (see CLAUDE.md):
 from __future__ import annotations
 
 import logging
-logger = logging.getLogger(__name__)
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -27,18 +26,16 @@ from live_trading.engine import LiveTradingEngine
 from live_trading.safety import TradingMode
 from paper_trading.engine import PaperTradingEngine
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Input schema
 # ---------------------------------------------------------------------------
-
-
 class ExecutionInput(BaseModel):
     """Input for the Execution Agent.
-
     Receives upstream agent outputs and market data to execute a trade
     on the paper trading engine.
     """
-
     symbol: str = Field(..., description="Ticker symbol")
     candles: list[OHLCVData] | None = Field(
         default=None,
@@ -56,34 +53,25 @@ class ExecutionInput(BaseModel):
         default=None,
         description="RiskAgent output for approval, stop loss, position size",
     )
-
-
 # ---------------------------------------------------------------------------
 # Execution Agent
 # ---------------------------------------------------------------------------
-
-
 class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
     """Deterministic paper trade execution agent.
-
     No LLM calls — purely rule-based execution that:
     1. Checks if Risk Agent approved the trade
     2. Extracts direction from Market Analyst
     3. Gets fill price from latest candle close
     4. Calls PaperTradingEngine to simulate the trade
     5. Returns ExecutionOutput-compatible dict
-
     Usage::
-
         engine = PaperTradingEngine()
         agent = ExecutionAgent(engine=engine)
         result = await agent.run(ExecutionInput(symbol="BTC-USD", ...))
     """
-
     agent_name: str = "execution"
     input_schema: type[BaseModel] = ExecutionInput
     output_schema: type[BaseModel] = ExecutionOutput
-
     def __init__(
         self,
         engine: PaperTradingEngine,
@@ -95,7 +83,6 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         self.engine = engine
         self.live_engine = live_engine
         self.session_factory = session_factory
-
     async def _get_default_ids(self, session: AsyncSession) -> tuple[str, str] | None:
         account_id = (await session.execute(text("SELECT id FROM accounts WHERE exchange='paper' LIMIT 1"))).scalar()
         if not account_id:
@@ -108,10 +95,8 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         if portfolio_id:
             return str(account_id), str(portfolio_id)
         return None
-
     async def process(self, inputs: ExecutionInput) -> ExecutionOutput:
         """Execute a trade signal against the paper portfolio.
-
         1. Validate that we have trade approval and a price to fill at.
         2. Execute the signal via the PaperTradingEngine.
         3. Return structured ExecutionOutput-compatible result.
@@ -122,13 +107,11 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                 executed=False,
                 rationale=f"No candle data available for {inputs.symbol}",
             )
-
         if inputs.risk_output is None:
             return ExecutionOutput(
                 executed=False,
                 rationale=f"No risk output received for {inputs.symbol} — rejecting trade",
             )
-
         risk_approved = bool(inputs.risk_output.get("approved", False))
         if not risk_approved:
             reasons = inputs.risk_output.get("reasons", [])
@@ -137,39 +120,32 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                 executed=False,
                 rationale=f"Trade rejected by Risk Agent: {rationale}",
             )
-
         # --- Extract signal details ---
         if inputs.market_analyst_output is None:
             return ExecutionOutput(
                 executed=False,
                 rationale=f"No market analyst output for {inputs.symbol}",
             )
-
         direction = inputs.market_analyst_output.get("direction", "flat")
         if direction == "flat":
             return ExecutionOutput(
                 executed=False,
                 rationale=f"Market Analyst signal is flat for {inputs.symbol} — no trade",
             )
-
         # --- Fill price from latest candle close ---
         latest_candle = inputs.candles[-1]
         fill_price = float(latest_candle.close)
-
         if fill_price <= 0:
             return ExecutionOutput(
                 executed=False,
                 rationale=f"Invalid fill price ({fill_price}) for {inputs.symbol}",
             )
-
         # --- Quantity ---
         max_position_size = inputs.risk_output.get("max_position_size")
         stop_loss = inputs.risk_output.get("stop_loss")
         strategy_name = inputs.market_analyst_output.get("strategy_name", "")
-
         # Use risk's max_position_size, or default to 1 unit
         quantity = float(max_position_size) if max_position_size else 1.0
-
         # --- Execution Routing ---
         parts = []
         is_live_auto = False
@@ -178,7 +154,6 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                 "passed", False
             ):
                 is_live_auto = True
-
         if is_live_auto and self.live_engine is not None:
             # LIVE EXECUTION
             side_literal = "buy" if direction == "long" else "sell"
@@ -222,24 +197,20 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                 take_profit=None,
                 strategy_name=strategy_name,
             )
-
             if not result.get("accepted", False):
                 return ExecutionOutput(
                     executed=False,
                     fill_price=fill_price,
                     rationale=f"Paper trade not accepted: {result.get('reason', 'unknown')}",
                 )
-
             position_id = result.get("position_id")
             closed_trade = result.get("closed_trade")
-
             parts.append(f"PAPER EXECUTED {direction} position for {inputs.symbol} at ${fill_price:.2f}")
             if result.get("reversal"):
                 parts.append("(reversal — closed existing opposite position)")
             if closed_trade:
                 pnl = closed_trade.get("pnl", 0)
                 parts.append(f"Closed previous trade with PnL=${pnl:.2f}")
-
             # --- Persist to DB ---
         session_factory = getattr(self, "session_factory", None)
         if session_factory is not None and position_id:
@@ -248,7 +219,6 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                     ids = await self._get_default_ids(session)
                     if ids:
                         account_id, portfolio_id = ids
-
                         # Handle reversal
                         if result.get("reversal") and closed_trade:
                             await session.execute(
@@ -261,7 +231,6 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                             """),
                                 {"symbol": inputs.symbol, "portfolio_id": portfolio_id},
                             )
-
                             await session.execute(
                                 text("""
                                 INSERT INTO trade_history
@@ -290,7 +259,6 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                                     "strategy_name": closed_trade.get("strategy_name", ""),
                                 },
                             )
-
                         # Insert new position
                         await session.execute(
                             text("""
@@ -323,7 +291,6 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
             except Exception as e:
                 logger.error(f"Unhandled exception: {e}", exc_info=True)
                 parts.append(f"(DB persistence failed: {str(e)})")
-
         return ExecutionOutput(
             executed=True,
             order_id=position_id,

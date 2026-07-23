@@ -13,14 +13,14 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
-from jose import jwt, JWTError
+from fastapi.security import APIKeyHeader, HTTPBearer, OAuth2PasswordBearer
+from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from configs.settings import settings
-from database.connection import async_session_factory
 from backend.db.models import User
 from backend.services import user_service
+from configs.settings import settings
+from database.connection import async_session_factory
 
 security_scheme = HTTPBearer(auto_error=False)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
@@ -53,7 +53,7 @@ async def verify_auth(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     # ── Debug mode with default key: accept anything ──────────────
     if settings.api_debug and settings.api_secret_key == _DEFAULT_SECRET:
         if token:
@@ -101,7 +101,7 @@ async def get_current_user(
     if auth == settings.api_secret_key or auth == "dev-user-id":
         # Server-to-server or dev mode fallback
         raise HTTPException(status_code=403, detail="A real user context is required.")
-        
+
     user = await user_service.get_by_email(db, auth)
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")

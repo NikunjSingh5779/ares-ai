@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.main import app
 from backend.data.models import OHLCVData
-from datetime import datetime, UTC, timedelta
+from backend.main import app
 
 client = TestClient(app)
 
@@ -60,20 +61,20 @@ async def test_run_backtest_success(monkeypatch):
         "strategy": "momentum",
         "initial_capital": 50000.0,
     }
-    
+
     response = client.post("/api/v1/backtest/run", json=payload)
     assert response.status_code == 200, response.text
-    
+
     data = response.json()
     assert data["symbol"] == "BTC-USD"
     assert "metrics" in data
     assert "trades" in data
     assert "equity_curve" in data
-    
+
     # We should have evaluated at least 300 - 200 = 100 candles
     # Depending on the synthetic data and _rule_based_quant, signals_generated may vary.
     assert "signals_generated" in data
-    
+
     metrics = data["metrics"]
     assert metrics["initial_capital"] == 50000.0
     assert "total_return_pct" in metrics

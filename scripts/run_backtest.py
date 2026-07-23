@@ -24,8 +24,8 @@ from agents.journal import JournalAgent
 from agents.log import AgentLogger
 from agents.market_analyst import MarketAnalystAgent
 from agents.memory import MemoryAgent
-from agents.news import NewsAgent
 from agents.models import load_model_roster
+from agents.news import NewsAgent
 from agents.quant import QuantAgent
 from agents.queue import QueueRegistry
 from agents.reflection import ReflectionAgent

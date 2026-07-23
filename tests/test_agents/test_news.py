@@ -1,11 +1,13 @@
 import json
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock
 
-from agents.news import NewsAgent
-from agents.state import NewsInput, NewsOutput
+import pytest
+
 from agents.base import AgentContext
+from agents.news import NewsAgent
 from agents.router import RouterResult
+from agents.state import NewsInput, NewsOutput
+
 
 @pytest.fixture
 def mock_context():
@@ -89,8 +91,9 @@ async def test_news_agent_no_news_fallback(news_agent, mock_router):
 
 def test_parse_llm_response_with_regex(news_agent):
     # Tests the regex fallback inside _parse_llm_response
-    content = "Here is my JSON:\n```json\n{\"sentiment\": 0.5, \"key_events\": [], \"impact_scores\": {}, \"sources\": [], \"rationale\": \"Ok\"}\n```\nSome other text."
-    
+    content = "Here is my JSON:\n```json\n{\"sentiment\": 0.5, \"key_events\": [], " \
+        "\"impact_scores\": {}, \"sources\": [], \"rationale\": \"Ok\"}\n```\nSome other text."
+
     parsed = news_agent._parse_llm_response(content)
     assert parsed["sentiment"] == 0.5
     assert parsed["rationale"] == "Ok"
