@@ -35,6 +35,8 @@ grafana/
 
 # Testing
 .coverage
+coverage.xml
+htmlcov/
 htmlcov/
 .pytest_cache/
 .mypy_cache/

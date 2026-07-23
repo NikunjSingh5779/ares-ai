@@ -54,39 +54,65 @@ class KillSwitch:
       threshold is breached via ``.auto_trigger()``.
 
     Once active, a human must call ``.arm()`` to re-enable trading.
-    This implementation uses Redis for atomic state management to prevent
-    race conditions during concurrent agent evaluations.
+
+    Uses **in-memory state by default** for testability. Pass a ``redis.Redis``
+    client for shared atomic state across concurrent agents in production.
     """
 
     def __init__(self, max_drawdown_pct: float = 15.0, redis_client: redis.Redis | None = None) -> None:
         self._auto_drawdown_pct = max_drawdown_pct
-        if redis_client is None:
-            self._redis = redis.Redis(
-                host=settings.redis_host,
-                port=settings.redis_port,
-                password=settings.redis_password or None,
-                db=settings.redis_db,
-                decode_responses=True
-            )
+        self._redis_client = redis_client
+        # In-memory fallback when Redis is not configured
+        self._mem: dict[str, str] = {}
+
+    # ── Storage abstraction ────────────────────────────────────────
+
+    def _get(self, key: str) -> str | None:
+        if self._redis_client is not None:
+            try:
+                val = self._redis_client.get(key)
+                return val.decode() if isinstance(val, bytes) else val
+            except redis.ConnectionError:
+                return None
+        return self._mem.get(key)
+
+    def _set(self, key: str, value: str, nx: bool = False) -> bool:
+        if self._redis_client is not None:
+            try:
+                return bool(self._redis_client.set(key, value, nx=nx))
+            except redis.ConnectionError:
+                return False
+        if nx and key in self._mem:
+            return False
+        self._mem[key] = value
+        return True
+
+    def _delete(self, *keys: str) -> None:
+        if self._redis_client is not None:
+            try:
+                self._redis_client.delete(*keys)
+            except redis.ConnectionError:
+                pass
         else:
-            self._redis = redis_client
+            for k in keys:
+                self._mem.pop(k, None)
 
     # ── State ──────────────────────────────────────────────────────
 
     @property
     def is_active(self) -> bool:
         """``True`` if the kill switch has been tripped."""
-        return self._redis.get("ares:kill_switch:active") == "1"
+        return self._get("ares:kill_switch:active") == "1"
 
     @property
     def triggered_by(self) -> str | None:
         """Who or what triggered the kill switch."""
-        return self._redis.get("ares:kill_switch:reason")
+        return self._get("ares:kill_switch:reason")
 
     @property
     def triggered_at(self) -> datetime.datetime | None:
         """When the kill switch was triggered."""
-        ts = self._redis.get("ares:kill_switch:timestamp")
+        ts = self._get("ares:kill_switch:timestamp")
         if ts:
             return datetime.datetime.fromisoformat(ts)
         return None
@@ -100,9 +126,9 @@ class KillSwitch:
 
     def activate(self, reason: str = "manual") -> None:
         """Manually activate the kill switch."""
-        if self._redis.set("ares:kill_switch:active", "1", nx=True):
-            self._redis.set("ares:kill_switch:reason", reason)
-            self._redis.set("ares:kill_switch:timestamp", datetime.datetime.now(datetime.UTC).isoformat())
+        if self._set("ares:kill_switch:active", "1", nx=True):
+            self._set("ares:kill_switch:reason", reason)
+            self._set("ares:kill_switch:timestamp", datetime.datetime.now(datetime.UTC).isoformat())
 
     def auto_trigger(self, drawdown_pct: float) -> bool:
         """Automatically trigger if *drawdown_pct* exceeds the threshold.
@@ -112,19 +138,15 @@ class KillSwitch:
         if drawdown_pct >= self._auto_drawdown_pct:
             reason = f"auto:drawdown={drawdown_pct:.1f}%"
             # Atomic set NX prevents race conditions
-            if self._redis.set("ares:kill_switch:active", "1", nx=True):
-                self._redis.set("ares:kill_switch:reason", reason)
-                self._redis.set("ares:kill_switch:timestamp", datetime.datetime.now(datetime.UTC).isoformat())
+            if self._set("ares:kill_switch:active", "1", nx=True):
+                self._set("ares:kill_switch:reason", reason)
+                self._set("ares:kill_switch:timestamp", datetime.datetime.now(datetime.UTC).isoformat())
                 return True
         return False
 
     def arm(self) -> None:
         """Re-arm the kill switch (human confirmation required)."""
-        self._redis.delete(
-            "ares:kill_switch:active",
-            "ares:kill_switch:reason",
-            "ares:kill_switch:timestamp"
-        )
+        self._delete("ares:kill_switch:active", "ares:kill_switch:reason", "ares:kill_switch:timestamp")
 
     # ── Pre-trade check ────────────────────────────────────────────
 

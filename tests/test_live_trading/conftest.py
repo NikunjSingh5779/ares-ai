@@ -4,8 +4,13 @@ import redis
 from configs.settings import settings
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def clear_kill_switch_redis():
+    """Clear Redis-backed kill switch state between tests.
+
+    Only used by tests that exercise Redis-persisted kill switch state.
+    Does not auto-apply — tests must explicitly request this fixture.
+    """
     r = redis.Redis(
         host=settings.redis_host,
         port=settings.redis_port,
