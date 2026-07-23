@@ -49,10 +49,11 @@ Read the full `SKILL.md` before applying code.
 
 ## 3. Standing Backlog
 
-*Last verified: this session — `git status`, `ruff check . --statistics`, CI Run #48/#49 live logs*
+*Last verified: CI Run #50 — fired on push to `fix/workflow-consolidation`, ruff passes, frontend typecheck passes, pytest runs for the first time in CI*
 
 **✅ Resolved — confirmed by execution, not just file content**
-- **Item 9 — CI branch mismatch.** Fixed on branch `fix/ci-branch-trigger` (`main` → `master` + `feat/**` + `fix/**`). Not yet merged to `master` — ci.yml on all other branches still says `branches: [main]`.
+- **Item 9 — CI branch mismatch → RESOLVED.** Trigger fixed in commit `f0b9c2f` (`main` → `master` + `feat/**` + `fix/**`). Confirmed via CI Run #50 which fired on push to `fix/workflow-consolidation`.
+- **Item 2 — CI pipeline: ruff lint.** 286 errors → 0 (174 auto-fixed by `ruff check --fix`, 112 manually: 76 E402 import-ordering in 11 files, 28 E501 line-length in 6 files, 5 W291/E741/F841 in 6 files). Confirmed via CI Run #50 — ruff step passes.
 - **Item 1 — Silent JSON-parse fallback.** Confirmed resolved: `used_fallback` + `fallback_reason` fields present and threaded through state in both `agents/market_analyst.py` and `agents/quant.py`.
 - **Item 5 — Missing News Agent.** Confirmed resolved: `agents/news.py` exists with `class NewsAgent(BaseAgent[NewsInput, NewsOutput])`.
 - **`.gitignore` corruption.** Fixed in commit `658f558` — UTF-16 null-byte garbage on L53-54 removed, new ignore entries added for stale artifact files.
@@ -60,20 +61,17 @@ Read the full `SKILL.md` before applying code.
 - **CI services gap.** ✅ Postgres (15) + Redis (7) service containers verified present in ci.yml. Python version is 3.12. No service-level gap.
 
 **🔴 P0 — open**
-- **Item 2 — Real test baseline (CI investigation).** Investigated via CI Run #48/#49 live logs + local full test run. Key findings: (a) CI never reaches pytest — ruff lint (286 errors, 174 auto-fixable) kills the pipeline first; (b) 639/639 non-live-trading tests pass locally (100%); (c) 148 live_trading tests hang on import/setup; (d) coverage 72.18% vs 80% gate; (e) Docker Compose validation fails in CI (uses `docker-compose` v1 which doesn't support `x-` extension fields). The test baseline is established; the fix path is: make CI green.
-- **CI pipeline broken — 3 independent failures.** (1) Trigger: `branches: [main]` watches wrong default branch name; fix exists on `fix/ci-branch-trigger` but never merged. (2) Ruff: 286 errors, 174 auto-fixable — blocks pytest from ever running. (3) Docker Compose validation: uses `docker-compose config` (v1) which chokes on `x-logging` extension field.
+- **CI Run #50: Pytest fails in CI.** For the first time in the repo's history, pytest actually ran in CI (was previously blocked by ruff). The failure needs investigation. Next step: pull CI Run #50's pytest logs and triage the failures.
+- **CI Run #50: Docker Compose validation.** Still failing after `docker-compose` → `docker compose` fix. The `docker compose config` command works locally (exit 0). Root cause in CI unknown — likely Docker version issue or line-ending problem on the ubuntu runner. Needs investigation.
 
 **🟡 P1 — needs fresh check against actual execution**
-- **Item 3 — Exchange connector test cluster.** Last session confirmed: live_trading tests hang (all 148), not fail. Root cause likely async event loop or CCXT connection attempts. Needs investigation separate from the CI pipeline fix.
+- **Item 3 — Exchange connector test cluster.** Live_trading tests hang (all 148), not fail. Root cause likely async event loop or CCXT connection attempts.
 - **Item 7 — ExecutionAgent test failures.** RESOLVED by test run: all 11 `test_execution_agent.py` tests pass (included in 639/639).
 - **Item 4 — Model roster drift.** `configs/models.yaml` clean (no `[UNVERIFIED]`). Still needs: verify `AGENTS.md`/`CLAUDE.md` point to `models.yaml` as SSOT rather than restating roster.
 - **Item 6 — Documentation drift, remainder.** Unconfirmed: README kill-switch percentage vs `live_trading/safety.py` actual default.
 
 **🟢 P3**
 - **Item 8 — Frontend completion.** Agent Monitor, Backtest Dashboard — untouched.
-
-**🟢 P3 — not yet checked**
-- **Item 8 — Frontend completion** (Agent Monitor, Backtest Dashboard — live ticker, equity/drawdown chart, data tables). Skills: `react-components`, `data-viz`.
 
 **Standing checks, every relevant iteration**
 - Before trusting any backtest/promotion-gate pass: run `backtesting`'s red-flag checklist.
