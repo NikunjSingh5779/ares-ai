@@ -15,7 +15,7 @@ from agents.market_analyst import (
     _rule_based_analysis,
     build_analysis_prompt,
 )
-from agents.router import RouterResult
+from agents.router import ModelRouter, RouterResult
 from backend.data.models import OHLCVData
 
 # ---------------------------------------------------------------------------
@@ -280,7 +280,7 @@ class TestMarketAnalystAgentProcess:
     @pytest.mark.asyncio
     async def test_returns_valid_structure(self, sample_candles: list[OHLCVData]) -> None:
         """Agent returns valid output with pre-fetched candles."""
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         router.execute.return_value = RouterResult()
 
         agent = MarketAnalystAgent(router=router)
@@ -300,7 +300,7 @@ class TestMarketAnalystAgentProcess:
     @pytest.mark.asyncio
     async def test_with_empty_candles(self) -> None:
         """Empty candles should return flat/no confidence."""
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
 
         agent = MarketAnalystAgent(router=router)
         result = await agent.run(MarketAnalystInput(symbol="BTC-USD", candles=[]))
@@ -315,7 +315,7 @@ class TestMarketAnalystAgentProcess:
         from agents.base import AgentContext
         from agents.router import RouterResult
 
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         llm_response = RouterResult()
         llm_response.success = True
         llm_response.response = {
@@ -356,7 +356,7 @@ class TestMarketAnalystAgentProcess:
         """When LLM fails, rule-based analysis should be used."""
         from agents.router import RouterResult
 
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         empty_result = RouterResult()  # success=False by default
         router.execute.return_value = empty_result
 
@@ -376,7 +376,7 @@ class TestMarketAnalystAgentProcess:
     @pytest.mark.asyncio
     async def test_with_insufficient_candles(self) -> None:
         """Very few candles should not crash."""
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         agent = MarketAnalystAgent(router=router)
         result = await agent.run(
             MarketAnalystInput(
@@ -403,7 +403,7 @@ class TestMarketAnalystAgentProcess:
         """Agent context model_preferences should be respected."""
         from agents.router import RouterResult
 
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         router.execute.return_value = RouterResult()
 
         agent = MarketAnalystAgent(router=router)

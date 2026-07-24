@@ -148,17 +148,30 @@ and return your sentiment analysis as valid JSON matching the specified schema."
 
         # 3. Call LLM via router
         try:
+            # Derive model preferences from context (same pattern as market_analyst/quant/risk)
+            model_chain = self.context.model_preferences.get("model_chain", [])
+            rpm = self.context.model_preferences.get("rpm", 10)
+
+            if not model_chain:
+                return NewsOutput(
+                    sentiment=0.0,
+                    key_events=["Error: No model chain configured"],
+                    impact_scores={},
+                    sources=[],
+                    rationale="No model chain available for news analysis."
+                )
+
             # We want temperature 0.1 for consistent sentiment scoring (as per sentiment-analysis skill)
-            result: RouterResult = await self.router.route(
-                agent_name="news",
+            result: RouterResult = await self.router.execute(
+                model_chain=model_chain,
                 messages=messages,
                 temperature=0.1,
-                max_tokens=500
+                max_tokens=500,
+                rpm=rpm,
             )
 
             if result.fallback_used:
-                news_chain = self.context.model_preferences.get("model_chain", [])
-                record_agent_fallback(self.agent_name, news_chain[0] if news_chain else "unknown", result.model_used)
+                record_agent_fallback(self.agent_name, model_chain[0], result.model_used)
 
             if not result.success:
                 logger.error(f"Router failed to get successful response. Errors: {result.errors}")

@@ -26,7 +26,7 @@ from agents.quant import (
     _volume_ratio,
     build_quant_prompt,
 )
-from agents.router import RouterResult
+from agents.router import ModelRouter, RouterResult
 from backend.data.models import OHLCVData
 
 # ---------------------------------------------------------------------------
@@ -599,7 +599,7 @@ class TestQuantAgentProcess:
     @pytest.mark.asyncio
     async def test_returns_valid_structure(self, sample_candles: list[OHLCVData]) -> None:
         """Agent returns valid output with pre-fetched candles."""
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         router.execute.return_value = RouterResult()
 
         agent = QuantAgent(router=router)
@@ -624,7 +624,7 @@ class TestQuantAgentProcess:
     @pytest.mark.asyncio
     async def test_with_empty_candles(self) -> None:
         """Empty candles should return flat/neutral."""
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         agent = QuantAgent(router=router)
         result = await agent.run(QuantInput(symbol="BTC-USD", candles=[]))
 
@@ -638,7 +638,7 @@ class TestQuantAgentProcess:
         """When LLM returns valid JSON, it should be parsed and returned."""
         from agents.base import AgentContext
 
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         llm_response = RouterResult()
         llm_response.success = True
         llm_response.response = {
@@ -681,7 +681,7 @@ class TestQuantAgentProcess:
         """When LLM fails, rule-based analysis should be used."""
         from agents.base import AgentContext
 
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         empty_result = RouterResult()  # success=False by default
         router.execute.return_value = empty_result
 
@@ -701,7 +701,7 @@ class TestQuantAgentProcess:
     @pytest.mark.asyncio
     async def test_with_insufficient_candles(self) -> None:
         """Very few candles should not crash."""
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         agent = QuantAgent(router=router)
         result = await agent.run(
             QuantInput(
@@ -728,7 +728,7 @@ class TestQuantAgentProcess:
         """Strategy hint in input is passed to fallback when LLM unavailable."""
         from agents.base import AgentContext
 
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         router.execute.return_value = RouterResult()
 
         ctx = AgentContext(model_preferences={"model_chain": ["test-model"]})
