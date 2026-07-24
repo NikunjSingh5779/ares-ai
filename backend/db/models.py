@@ -12,6 +12,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.base import Base
 
 
+# Helper for column defaults
+_utcnow = lambda: datetime.now(UTC)
+
+
+# Helper for column defaults
+_utcnow = lambda: datetime.now(UTC)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -21,8 +29,9 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
+        onupdate=_utcnow, nullable=False)
 
     accounts: Mapped[list[Account]] = relationship("Account", back_populates="user", cascade="all, delete-orphan")
 
@@ -40,11 +49,14 @@ class Account(Base):
     api_secret_encrypted: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     trading_mode: Mapped[str] = mapped_column(String(20), default="human_approval", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
+        onupdate=_utcnow, nullable=False)
 
     user: Mapped[User] = relationship("User", back_populates="accounts")
-    portfolios: Mapped[list[Portfolio]] = relationship("Portfolio", back_populates="account", cascade="all, delete-orphan")
+    last_rebalanced_at: Mapped[datetime | None] = (
+        mapped_column(DateTime(timezone=True), nullable=True)
+    )
     orders: Mapped[list[Order]] = relationship("Order", back_populates="account", cascade="all, delete-orphan")
 
 class Portfolio(Base):
@@ -61,11 +73,14 @@ class Portfolio(Base):
     max_drawdown_pct: Mapped[float] = mapped_column(Numeric(10, 4), default=0, nullable=False)
     currency: Mapped[str] = mapped_column(String(10), default="USD", nullable=False)
     last_rebalanced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
+        onupdate=_utcnow, nullable=False)
 
     account: Mapped[Account] = relationship("Account", back_populates="portfolios")
-    positions: Mapped[list[Position]] = relationship("Position", back_populates="portfolio", cascade="all, delete-orphan")
+    unrealized_pnl_pct: Mapped[float] = (
+        mapped_column(Numeric(10, 4), default=0, nullable=False)
+    )
 
 class Position(Base):
     __tablename__ = "positions"
@@ -88,11 +103,12 @@ class Position(Base):
     stop_loss: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)
     take_profit: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)
     strategy_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_open: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
+        onupdate=_utcnow, nullable=False)
 
     portfolio: Mapped[Portfolio] = relationship("Portfolio", back_populates="positions")
     orders: Mapped[list[Order]] = relationship("Order", back_populates="position")
@@ -120,8 +136,9 @@ class Order(Base):
     avg_fill_price: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     agent_rationale: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
+        onupdate=_utcnow, nullable=False)
 
     account: Mapped[Account] = relationship("Account", back_populates="orders")
     position: Mapped[Position | None] = relationship("Position", back_populates="orders")
@@ -142,7 +159,7 @@ class TradeHistory(Base):
     quantity: Mapped[float] = mapped_column(Numeric(20, 8), nullable=False)
     entry_price: Mapped[float] = mapped_column(Numeric(20, 8), nullable=False)
     exit_price: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)
-    entry_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    entry_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     exit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     pnl: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)
     pnl_pct: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
@@ -150,6 +167,7 @@ class TradeHistory(Base):
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     strategy_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     agent_rationale: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
+        onupdate=_utcnow, nullable=False)
 

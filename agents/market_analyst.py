@@ -273,14 +273,16 @@ def _rule_based_analysis(
         rationale_parts.append(f"Trend={trend}")
     rationale = " | ".join(rationale_parts)
 
+    stop_loss_val = round(current_price * (0.95 if direction == 'long' else 1.05), 2)
+    target_val = round(current_price * (1.1 if direction == 'long' else 0.9), 2)
     return {
         "confidence": round(confidence, 1),
         "direction": direction,
         "bias": trend if trend in ("bullish", "bearish") else "neutral",
         "setup": "Rule-based technicals",
         "entry_zone": f"{current_price}",
-        "stop_loss": f"{round(current_price * 0.95, 2)}" if direction == "long" else f"{round(current_price * 1.05, 2)}",
-        "targets": [f"{round(current_price * 1.1, 2)}" if direction == "long" else f"{round(current_price * 0.9, 2)}"],
+        "stop_loss": f"{stop_loss_val}",
+        "targets": [f"{target_val}"],
         "invalidation": "Trend reversal or MACD cross",
         "confluence": "RSI + SMA alignment",
         "indicators": output_indicators,

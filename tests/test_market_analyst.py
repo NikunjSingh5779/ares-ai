@@ -195,7 +195,13 @@ class TestRuleBasedAnalysis:
 
 class TestParseLLMResponse:
     def test_parses_valid_json(self) -> None:
-        response = '{"confidence": 85, "direction": "long", "bias": "bullish", "setup": "RSI Oversold", "entry_zone": "100", "stop_loss": "90", "targets": ["120"], "invalidation": "close below 90", "confluence": "none", "indicators": {"rsi": 55}, "rationale": "Bullish setup"}'
+        response = (
+            '{"confidence": 85, "direction": "long", "bias": "bullish", '
+            '"setup": "RSI Oversold", "entry_zone": "100", "stop_loss": "90", '
+            '"targets": ["120"], "invalidation": "close below 90", '
+            '"confluence": "none", "indicators": {"rsi": 55}, '
+            '"rationale": "Bullish setup"}'
+        )
         fallback = {"confidence": 30, "direction": "flat", "indicators": {}, "rationale": "fallback"}
         result = _parse_llm_response(response, fallback)
         assert result["confidence"] == 85.0
@@ -203,7 +209,12 @@ class TestParseLLMResponse:
         assert result["indicators"]["rsi"] == 55
 
     def test_handles_markdown_fenced_json(self) -> None:
-        response = '```json\n{"confidence": 70, "direction": "short", "bias": "bearish", "setup": "test", "entry_zone": "test", "stop_loss": "test", "targets": [], "invalidation": "test", "confluence": "test", "indicators": {}, "rationale": "test"}\n```'
+        response = (
+            '```json\n{"confidence": 70, "direction": "short", "bias": "bearish", '
+            '"setup": "test", "entry_zone": "test", "stop_loss": "test", '
+            '"targets": [], "invalidation": "test", "confluence": "test", '
+            '"indicators": {}, "rationale": "test"}\n```'
+        )
         fallback = {"confidence": 0, "direction": "flat", "indicators": {}, "rationale": "fb"}
         result = _parse_llm_response(response, fallback)
         assert result["direction"] == "short"
@@ -211,7 +222,10 @@ class TestParseLLMResponse:
 
     def test_handles_markdown_without_lang(self) -> None:
         response = (
-            '```\n{"confidence": 60, "direction": "flat", "bias": "neutral", "setup": "test", "entry_zone": "test", "stop_loss": "test", "targets": [], "invalidation": "test", "confluence": "test", "indicators": {"rsi": 50}, "rationale": "neutral"}\n```'
+            '```\n{"confidence": 60, "direction": "flat", "bias": "neutral", '
+            '"setup": "test", "entry_zone": "test", "stop_loss": "test", '
+            '"targets": [], "invalidation": "test", "confluence": "test", '
+            '"indicators": {"rsi": 50}, "rationale": "neutral"}\n```'
         )
         fallback = {"confidence": 0, "direction": "flat", "indicators": {}, "rationale": "fb"}
         result = _parse_llm_response(response, fallback)
@@ -226,7 +240,19 @@ class TestParseLLMResponse:
 
     def test_fallback_on_missing_required_fields(self) -> None:
         response = '{"confidence": 80}'  # missing direction and rationale
-        fallback = {"confidence": 10, "direction": "flat", "bias": "neutral", "setup": "test", "entry_zone": "test", "stop_loss": "test", "targets": [], "invalidation": "test", "confluence": "test", "indicators": {}, "rationale": "fb"}
+        fallback = {
+            "confidence": 10,
+            "direction": "flat",
+            "bias": "neutral",
+            "setup": "test",
+            "entry_zone": "test",
+            "stop_loss": "test",
+            "targets": [],
+            "invalidation": "test",
+            "confluence": "test",
+            "indicators": {},
+            "rationale": "fb",
+        }
         result = _parse_llm_response(response, fallback)
         assert result == fallback
 
