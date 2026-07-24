@@ -81,13 +81,18 @@ class KillSwitch:
     @property
     def triggered_by(self) -> str | None:
         """Who or what triggered the kill switch."""
-        return self._redis.get("ares:kill_switch:reason")
+        raw = self._redis.get("ares:kill_switch:reason")
+        if raw is None:
+            return None
+        return raw.decode("utf-8") if isinstance(raw, bytes) else raw
 
     @property
     def triggered_at(self) -> datetime.datetime | None:
         """When the kill switch was triggered."""
         ts = self._redis.get("ares:kill_switch:timestamp")
         if ts:
+            if isinstance(ts, bytes):
+                return datetime.datetime.fromisoformat(ts.decode("utf-8"))
             return datetime.datetime.fromisoformat(ts)
         return None
 

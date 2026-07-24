@@ -24,7 +24,7 @@ import random
 from locust import FastHttpUser, between, task
 
 
-class HealthUser(FastHttpUser):
+class HealthUser(FastHttpUser):  # type: ignore[misc]
     """Lightweight health-check user (no auth needed)."""
 
     wait_time = between(0.5, 2.0)
@@ -34,7 +34,7 @@ class HealthUser(FastHttpUser):
         self.client.get("/health", name="/health")
 
 
-class AnalysisUser(FastHttpUser):
+class AnalysisUser(FastHttpUser):  # type: ignore[misc]
     """Simulates analysis pipeline requests."""
 
     wait_time = between(2.0, 5.0)
@@ -86,7 +86,7 @@ class AnalysisUser(FastHttpUser):
                 resp.success()
 
 
-class MixedUser(FastHttpUser):
+class MixedUser(FastHttpUser):  # type: ignore[misc]
     """Mixed workload — health + authenticated calls."""
 
     wait_time = between(1.0, 3.0)

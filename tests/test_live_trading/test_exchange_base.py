@@ -58,7 +58,7 @@ def test_stub_connectors_implement_abc() -> None:
     from live_trading.exchange.zerodha import ZerodhaStubConnector
 
     for cls in [BybitConnector, ZerodhaStubConnector, IbkrStubConnector]:
-        instance = cls({})
+        instance = cls({})  # type: ignore[abstract]
         assert isinstance(instance, ExchangeConnector)
         assert instance.exchange_name is not None
         assert isinstance(instance.config, dict)

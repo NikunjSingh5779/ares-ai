@@ -85,13 +85,13 @@ class TestClusterLevels:
 
     def test_returns_sorted_ascending(self):
         prices = [10, 20, 10, 20, 10, 30, 40]
-        result = _cluster_levels(prices, ascending=True)
+        result = _cluster_levels(prices, ascending=True)  # type: ignore[arg-type]
         # Most frequent: 10 appears 3 times, 20 appears 2 times
         assert result == sorted(result)  # should be ascending
 
     def test_returns_sorted_descending(self):
         prices = [10, 20, 10, 20, 10, 30, 40]
-        result = _cluster_levels(prices, ascending=False)
+        result = _cluster_levels(prices, ascending=False)  # type: ignore[arg-type]
         assert result == sorted(result, reverse=True)  # should be descending
 
 
@@ -175,21 +175,21 @@ class TestScoreTrendConfidence:
         closes = [100, 106]  # 6% change
         highs = [102, 108]
         lows = [99, 105]
-        score = _score_trend_confidence(closes, highs, lows)
+        score = _score_trend_confidence(closes, highs, lows)  # type: ignore[arg-type]
         assert score > 80  # >5% move → 85
 
     def test_moderate_trend(self):
         closes = [100, 104]  # 4% change
         highs = [102, 106]
         lows = [99, 103]
-        score = _score_trend_confidence(closes, highs, lows)
+        score = _score_trend_confidence(closes, highs, lows)  # type: ignore[arg-type]
         assert 60 <= score < 80  # >3% move → 70
 
     def test_weak_trend(self):
         closes = [100, 101.1]  # 1.1% change → > 0.01 threshold
         highs = [102, 103]
         lows = [99, 100]
-        score = _score_trend_confidence(closes, highs, lows)
+        score = _score_trend_confidence(closes, highs, lows)  # type: ignore[arg-type]
         assert 50 <= score < 60  # >1% move → 55
 
     def test_no_trend(self):

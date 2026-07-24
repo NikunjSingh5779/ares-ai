@@ -11,6 +11,7 @@ Adds security-related HTTP headers to every response:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -72,7 +73,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     }
 
-    async def dispatch(self, request: Request, call_next: callable) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[..., Any]) -> Response:
         response = await call_next(request)
         for header, value in self.HEADERS.items():
             response.headers[header] = value

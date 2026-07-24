@@ -292,14 +292,14 @@ class TestATR:
 class TestSupportResistance:
     def test_find_support_levels(self) -> None:
         prices = [100, 98, 102, 97, 103, 96, 104, 95, 105, 94, 106, 95]
-        levels = _find_support_levels(prices, 2)
+        levels = _find_support_levels(prices, 2)  # type: ignore[arg-type]
         assert len(levels) > 0
         for level in levels:
             assert level < 100  # supports are below the range
 
     def test_find_resistance_levels(self) -> None:
         prices = [100, 105, 99, 106, 98, 107, 97, 108, 96, 109, 95, 108]
-        levels = _find_resistance_levels(prices, 2)
+        levels = _find_resistance_levels(prices, 2)  # type: ignore[arg-type]
         assert len(levels) > 0
         for level in levels:
             assert level > 100  # resistances are above
@@ -318,7 +318,7 @@ class TestAllIndicators:
     def test_compute_all_with_valid_data(self) -> None:
         """compute_all_indicators returns a rich dict with 20+ candles."""
         prices = [100 + (i % 20 - 10) for i in range(100)]
-        candles = _make_candles(prices)
+        candles = _make_candles(prices)  # type: ignore[arg-type]
         result = compute_all_indicators(candles)
 
         assert "current_price" in result
@@ -360,7 +360,7 @@ class TestAllIndicators:
     def test_compute_all_with_volume(self) -> None:
         prices = [float(i) for i in range(50)]
         volumes = [1000 + (i % 5) * 500 for i in range(50)]
-        candles = _make_candles(prices, volumes=volumes)
+        candles = _make_candles(prices, volumes=volumes)  # type: ignore[arg-type]
         result = compute_all_indicators(candles)
         assert result.get("volume_sma_20") is not None
         assert result.get("current_volume") is not None

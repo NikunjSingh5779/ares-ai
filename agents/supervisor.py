@@ -19,7 +19,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from langgraph.graph import END, START, StateGraph
+from langgraph.graph import END, START, CompiledStateGraph, StateGraph
 
 from agents.base import BaseAgent
 from agents.log import AgentLogger
@@ -448,7 +448,12 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
         )
 
         # Convert Pydantic FlexibleSchema to dict
-        result = raw_result.model_dump() if hasattr(raw_result, "model_dump") else raw_result
+        if hasattr(raw_result, "model_dump"):
+            result: dict[str, Any] = raw_result.model_dump()
+        elif isinstance(raw_result, dict):
+            result = raw_result
+        else:
+            result = {}
 
         result["fallback_model"] = fallback_model
         result["available"] = model_available
@@ -551,16 +556,17 @@ async def _execute_agent_impl(
     try:
         agent_class = type(base_agent)
         if agent_name in ("market_analyst", "quant", "risk"):
-            agent_instance = agent_class(
+            agent_instance = agent_class(  # type: ignore[call-arg]
                 router=router, ingestor=getattr(base_agent, "ingestor", None), context=agent_ctx
             )
         elif agent_name == "execution":
-            agent_instance = agent_class(engine=getattr(base_agent, "engine", None), context=agent_ctx)
+            agent_instance = agent_class(  # type: ignore[call-arg]
+                engine=getattr(base_agent, "engine", None), context=agent_ctx)
         elif agent_name in ("journal", "reflection", "memory"):
             agent_instance = agent_class(context=agent_ctx)
         else:
             # Fallback
-            agent_instance = agent_class(router=router, context=agent_ctx)
+            agent_instance = agent_class(router=router, context=agent_ctx)  # type: ignore[call-arg]
 
         output = await agent_instance.run(input_data)
 
@@ -696,7 +702,7 @@ class Supervisor:
         self.registry = registry
         self.router = router
         self.logger = logger
-        self.graph = None
+        self.graph: CompiledStateGraph[AgentState, None, AgentState, AgentState] | None = None
         self._agent_configs: dict[str, AgentModelConfig] = {}
 
     def build_graph(self) -> None:

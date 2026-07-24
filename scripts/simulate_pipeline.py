@@ -64,7 +64,7 @@ class MockExchangeConnector(ExchangeConnector):
         return ExchangeOrder(
             id=order_id,
             symbol=symbol,
-            side=side,
+            side=side,  # type: ignore[arg-type]
             type=order_type,
             quantity=quantity,
             price=price or 50000.0,
@@ -166,7 +166,7 @@ async def main():
     # Create registry
     registry = AgentRegistry(
         model_roster=model_roster,
-        router=None,  # Will set after router creation
+        router=None,  # type: ignore[arg-type]  # Will set after router creation
         breaker_registry=breaker_registry,
         queue_registry=queue_registry,
     )
@@ -197,7 +197,7 @@ async def main():
         "market_analyst": MarketAnalystAgent(router=router, ingestor=shared_ingestor),
         "quant": QuantAgent(router=router, ingestor=shared_ingestor),
         "risk": RiskAgent(router=router, ingestor=shared_ingestor),
-        "execution": ExecutionAgent(engine=None),
+        "execution": ExecutionAgent(engine=None),  # type: ignore[arg-type]
         "journal": JournalAgent(),
         "reflection": ReflectionAgent(),
         "memory": MemoryAgent(),
@@ -205,7 +205,7 @@ async def main():
 
     # Register all agents
     for name in model_roster.agent_names:
-        registry.register(name, agent=agent_instances.get(name))
+        registry.register(name, agent=agent_instances.get(name))  # type: ignore[arg-type]
 
     # Create logger
     logger = AgentLogger()

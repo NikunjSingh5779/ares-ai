@@ -77,7 +77,7 @@ async def main():
     registry.register("market_analyst", agent=MarketAnalystAgent(router=router_model, ingestor=shared_ingestor))
     registry.register("quant", agent=QuantAgent(router=router_model, ingestor=shared_ingestor))
     registry.register("risk", agent=RiskAgent(router=router_model, ingestor=shared_ingestor))
-    registry.register("execution", agent=ExecutionAgent(engine=None))  # execution agent mock for backtesting
+    registry.register("execution", agent=ExecutionAgent(engine=None))  # type: ignore[arg-type]  # execution agent mock for backtesting
     registry.register("journal", agent=JournalAgent())
     registry.register("reflection", agent=ReflectionAgent())
     registry.register("memory", agent=MemoryAgent())

@@ -9,6 +9,8 @@ POST endpoints get the default limit; GET endpoints get 2x.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -54,7 +56,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return self._default_limit * 2
         return self._default_limit
 
-    async def dispatch(self, request: Request, call_next: callable) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[..., Any]) -> Response:
         # Skip rate limiting for health, metrics, docs
         path = request.url.path
         if path in ("/health", "/", "/metrics", "/docs", "/redoc", "/openapi.json"):

@@ -38,7 +38,7 @@ class LLMClient:
         if api_key:
             if "open_router" not in self.providers:
                 self.providers["open_router"] = {
-                    "api_key": api_key,
+                    "api_key": api_key or "",
                     "base_url": base_url or os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1"),
                 }
             if "default" not in self.providers:
@@ -227,7 +227,8 @@ class LLMClient:
         except Exception as e:
             logger.error(f"Unhandled exception: {e}", exc_info=True)
             error_type = type(e).__name__
-            status_code = getattr(e, "response", None) and e.response.status_code
+            resp = getattr(e, "response", None)
+            status_code = resp.status_code if resp is not None else None
             return {
                 "error": True,
                 "error_type": error_type,

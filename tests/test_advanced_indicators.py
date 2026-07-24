@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from agents.indicators import (
     compute_adx,
     compute_stochastic,
@@ -10,7 +12,7 @@ from agents.indicators import (
 from backend.data.models import OHLCVData
 
 
-def _make_candles(prices: list[float], highs: list[float] = None, lows: list[float] = None) -> list[OHLCVData]:
+def _make_candles(prices: list[float], highs: list[float] | None = None, lows: list[float] | None = None) -> list[OHLCVData]:
     candles = []
     for i, p in enumerate(prices):
         h = highs[i] if highs else p * 1.05
@@ -20,7 +22,7 @@ def _make_candles(prices: list[float], highs: list[float] = None, lows: list[flo
                 symbol="TEST",
                 source="yahoo",
                 interval="1d",
-                timestamp=f"2024-01-{(i % 28) + 1:02d}",
+                timestamp=datetime(2024, 1, (i % 28) + 1),
                 open=p,
                 high=h,
                 low=low_val,

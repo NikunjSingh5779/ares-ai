@@ -13,7 +13,11 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from collections.abc import Sequence
+from typing import Any
+
 import chromadb
+from chromadb.api import ClientAPI
 from pydantic import BaseModel, ConfigDict, Field
 
 from agents.base import AgentContext, BaseAgent
@@ -77,6 +81,7 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
 
     def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
         super().__init__(context=context)
+        self.chroma_client: chromadb.ClientAPI | None = None
         try:
             self.chroma_client = chromadb.HttpClient(
                 host=settings.chroma_host,
@@ -208,7 +213,7 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                         {"type": mem["type"], "importance": mem["importance"], "timestamp": mem["timestamp"]}
                     )
                 try:
-                    collection.add(ids=ids, documents=docs, metadatas=metadatas)
+                    collection.add(ids=ids, documents=docs, metadatas=metadatas)  # type: ignore[arg-type]
                 except Exception as e:
                     logger.error(f"Unhandled exception: {e}", exc_info=True)
                     pass

@@ -147,9 +147,14 @@ and return your sentiment analysis as valid JSON matching the specified schema."
 
         # 3. Call LLM via router
         try:
+            # Get model chain from context
+            model_chain = self.context.model_preferences.get("model_chain", [])
+            if not model_chain:
+                model_chain = ["open_router/openrouter/free"]
+
             # We want temperature 0.1 for consistent sentiment scoring (as per sentiment-analysis skill)
-            result: RouterResult = await self.router.route(
-                agent_name="news", messages=messages, temperature=0.1, max_tokens=500
+            result: RouterResult = await self.router.execute(
+                model_chain=model_chain, messages=messages, temperature=0.1, max_tokens=500, rpm=20
             )
 
             if not result.success:
@@ -164,7 +169,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
 
             # Extract content from OpenAI-style response
             try:
-                response_text = result.response["choices"][0]["message"]["content"]
+                response_text = result.response["choices"][0]["message"]["content"]  # type: ignore[index]
             except (KeyError, IndexError, TypeError):
                 response_text = ""
 

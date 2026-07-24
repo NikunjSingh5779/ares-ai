@@ -19,7 +19,7 @@ class TestJournalAgent:
         """Journal entry for an executed trade."""
         agent = JournalAgent()
         result = await agent.process(
-            JournalInput(
+            JournalInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 request="Trade BTC",
                 execution_output={
@@ -43,7 +43,7 @@ class TestJournalAgent:
         """Journal captures mistakes from rejected trade."""
         agent = JournalAgent()
         result = await agent.process(
-            JournalInput(
+            JournalInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 request="Trade BTC",
                 execution_output={
@@ -70,7 +70,7 @@ class TestJournalAgent:
         """Errors in the pipeline are captured as mistakes."""
         agent = JournalAgent()
         result = await agent.process(
-            JournalInput(
+            JournalInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 errors=[{"agent": "market_analyst", "error": "API timeout"}],
             )

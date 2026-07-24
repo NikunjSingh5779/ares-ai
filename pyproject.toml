@@ -88,6 +88,7 @@ disable_error_code = [
     "no-untyped-def",
     "no-untyped-call",
     "comparison-overlap",
+    "untyped-decorator",
 ]
 
 [[tool.mypy.overrides]]

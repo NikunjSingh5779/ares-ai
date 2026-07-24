@@ -15,6 +15,8 @@ Usage in ``backend/main.py``::
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from typing import Any
 
 from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -70,7 +72,7 @@ LIVE_ORDERS_TOTAL = Counter(
 class MetricsMiddleware(BaseHTTPMiddleware):
     """Record request count, duration, and status for every HTTP request."""
 
-    async def dispatch(self, request: Request, call_next: callable) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[..., Any]) -> Response:
         method = request.method
         endpoint = request.url.path
 

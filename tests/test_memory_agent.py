@@ -24,7 +24,7 @@ class TestMemoryAgent:
         """Executed trade should produce memory records."""
         agent = MemoryAgent()
         result = await agent.process(
-            MemoryInput(
+            MemoryInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 request="Trade BTC",
                 execution_output={
@@ -49,7 +49,7 @@ class TestMemoryAgent:
         """Rejected trade should still produce memory records."""
         agent = MemoryAgent()
         result = await agent.process(
-            MemoryInput(
+            MemoryInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 request="Trade BTC",
                 execution_output={
@@ -71,7 +71,7 @@ class TestMemoryAgent:
         """Risk rejection should create a separate memory."""
         agent = MemoryAgent()
         result = await agent.process(
-            MemoryInput(
+            MemoryInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 execution_output={
                     "executed": False,
