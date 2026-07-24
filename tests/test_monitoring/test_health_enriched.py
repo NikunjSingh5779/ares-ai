@@ -171,7 +171,7 @@ async def test_check_connection_exception_logs(caplog: pytest.LogCaptureFixture)
     Uses caplog because ``database.connection`` does **not** call ``setup_logging()``
     at module level — that side effect is unique to ``backend.main``.
     """
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     from database.connection import check_connection
 
