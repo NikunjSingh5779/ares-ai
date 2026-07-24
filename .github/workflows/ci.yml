@@ -58,7 +58,7 @@ jobs:
       - name: Run Pytest
         env:
           PYTHONPATH: .
-          DATABASE_URL: postgresql://ares:ares@localhost:5432/ares_test
+          DATABASE_URL: postgresql+asyncpg://ares:ares@localhost:5432/ares_test
           REDIS_URL: redis://localhost:6379/0
         run: uv run pytest tests/ --cov=. --cov-report=xml
 
@@ -107,6 +107,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Create .env from example
+        run: cp .env.example .env
       
       - name: Validate docker-compose.yml
         run: docker compose config > /dev/null

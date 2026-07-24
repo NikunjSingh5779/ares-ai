@@ -63,11 +63,13 @@ Read the full `SKILL.md` before applying code.
 - **Item 3 — Exchange connector test cluster → RESOLVED.** Live_trading tests no longer hang (148/148 pass in 8.75s). Root cause was threefold: (1) `conftest.py` `autouse=True` fixture connecting to Redis on every test, (2) `KillSwitch.__init__` creating a Redis connection immediately, (3) exchange connector files omitted from coverage.
 
 **🔴 P0 — open**
-- **CI Run #50: Docker Compose validation.** Still failing after `docker-compose` → `docker compose` fix. The `docker compose config` command works locally (exit 0). Root cause in CI unknown — likely Docker version issue or line-ending problem on the ubuntu runner. Needs investigation.
+- **CI Run #53: two failures — fix pushed, awaiting CI confirmation.**
+  1. Backend Tests: `ModuleNotFoundError: No module named 'psycopg2'` — CI set `DATABASE_URL=postgresql://...` (bare, defaults to psycopg2) but the project uses asyncpg (`postgresql+asyncpg://`). Fixed: added `+asyncpg` dialect to ci.yml env var.
+  2. Docker Compose Validation: `.env file not found` — `docker-compose.yml` has `env_file: .env` but CI has no `.env`. Fixed: added `cp .env.example .env` step before `docker compose config`.
 
-**🟡 P1 — needs fresh check against actual execution**
-- **Item 4 — Model roster drift.** `configs/models.yaml` clean (no `[UNVERIFIED]`). Still needs: verify `AGENTS.md`/`CLAUDE.md` point to `models.yaml` as SSOT rather than restating roster.
-- **Item 6 — Documentation drift, remainder.** Unconfirmed: README kill-switch percentage vs `live_trading/safety.py` actual default.
+**✅ P1 — verified this session**
+- **Item 4 — Model roster drift → RESOLVED.** Both `AGENTS.md` and `CLAUDE.md` correctly state: `configs/models.yaml` is the SINGLE SOURCE OF TRUTH. No model names hardcoded in doc bodies (only the Vision Agent open-issue note about `nemotron-nano-12b-v2-vl` which is an intentional standing discussion item, not a hardcoded roster).
+- **Item 6 — Documentation drift → RESOLVED.** README says "default 15%" for kill-switch max drawdown; `KillSwitch.__init__` default = 15.0; `settings.live_max_drawdown_pct` = 15.0. The separate `settings.max_drawdown_pct` = 20.0 is a different, broader risk threshold (confirmed by `AGENTS.md` "max drawdown limits"). No actual drift.
 
 **🟢 P3**
 - **Item 8 — Frontend completion.** Agent Monitor, Backtest Dashboard — untouched.
