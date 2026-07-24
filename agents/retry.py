@@ -7,15 +7,16 @@ Implements the RELIABILITY section requirements:
 
 from __future__ import annotations
 
-import logging
-logger = logging.getLogger(__name__)
 import asyncio
+import logging
 import random
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
 from backend.core.exceptions import ModelUnavailableError
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 

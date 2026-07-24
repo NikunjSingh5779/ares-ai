@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import pandas as pd
-import pytest
-
 from agents.indicators import (
     compute_adx,
     compute_stochastic,
@@ -12,11 +9,12 @@ from agents.indicators import (
 )
 from backend.data.models import OHLCVData
 
+
 def _make_candles(prices: list[float], highs: list[float] = None, lows: list[float] = None) -> list[OHLCVData]:
     candles = []
     for i, p in enumerate(prices):
         h = highs[i] if highs else p * 1.05
-        l = lows[i] if lows else p * 0.95
+        low_val = lows[i] if lows else p * 0.95
         candles.append(
             OHLCVData(
                 symbol="TEST",
@@ -25,7 +23,7 @@ def _make_candles(prices: list[float], highs: list[float] = None, lows: list[flo
                 timestamp=f"2024-01-{(i % 28) + 1:02d}",
                 open=p,
                 high=h,
-                low=l,
+                low=low_val,
                 close=p,
                 volume=1000.0,
             )

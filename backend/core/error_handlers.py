@@ -1,6 +1,8 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from backend.core.exceptions import AresError, AuthenticationError, RateLimitError, ConfigurationError
+
+from backend.core.exceptions import AresError, AuthenticationError, ConfigurationError, RateLimitError
+
 
 async def ares_error_handler(request: Request, exc: AresError) -> JSONResponse:
     """Global exception handler for ARES AI domain errors."""

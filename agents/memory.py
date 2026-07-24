@@ -10,16 +10,17 @@ Fully deterministic — no LLM calls.
 from __future__ import annotations
 
 import logging
-logger = logging.getLogger(__name__)
 from datetime import UTC, datetime
 from typing import Any
 
+import chromadb
 from pydantic import BaseModel, ConfigDict, Field
 
-import chromadb
-from configs.settings import settings
 from agents.base import AgentContext, BaseAgent
 from agents.state import MemoryOutput
+from configs.settings import settings
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Input schema
@@ -78,8 +79,8 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
         super().__init__(context=context)
         try:
             self.chroma_client = chromadb.HttpClient(
-                host=settings.chromadb_host,
-                port=settings.chromadb_port,
+                host=settings.chroma_host,
+                port=settings.chroma_port,
             )
         except Exception as e:
             logger.error(f"Unhandled exception: {e}", exc_info=True)

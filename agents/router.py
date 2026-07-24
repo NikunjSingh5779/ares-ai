@@ -9,7 +9,6 @@ Implements the RELIABILITY section requirements:
 from __future__ import annotations
 
 import logging
-logger = logging.getLogger(__name__)
 import time
 from typing import Any
 
@@ -17,6 +16,8 @@ from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.client import LLMClient, NoOpLLMClient
 from agents.queue import QueueRegistry
 from agents.retry import RetryConfig, with_retry
+
+logger = logging.getLogger(__name__)
 
 
 class RouterResult:

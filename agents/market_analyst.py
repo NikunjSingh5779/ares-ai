@@ -17,8 +17,6 @@ import logging
 import re
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from pydantic import BaseModel, Field
 
 from agents.base import AgentContext, BaseAgent
@@ -27,6 +25,8 @@ from agents.router import ModelRouter, RouterResult
 from agents.state import MarketAnalystOutput
 from backend.data.ingestor import MarketDataIngestor
 from backend.data.models import MarketDataRequest, OHLCVData
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Input schema
@@ -74,7 +74,9 @@ Rules:
      "rationale": "<string explaining your reasoning>"
    }
 3. confidence < 50 means you're uncertain — prefer "flat" in that case.
-4. Consider: market structure (higher highs, lower lows), candlestick patterns, trend, momentum (RSI), volatility (Bollinger Bands), volume, Stochastic, ADX, and Time Series metrics.
+4. Consider: market structure (higher highs, lower lows), candlestick patterns, trend,
+   momentum (RSI), volatility (Bollinger Bands), volume, Stochastic, ADX, and Time Series
+   metrics.
 5. Be conservative. It's better to miss a trade than to take a bad one."""
 
 
@@ -134,7 +136,10 @@ def build_analysis_prompt(
     if indicators.get("time_series") is not None:
         ts = indicators["time_series"]
         ind_lines.append(
-            f"Time Series: Stationarity={ts.get('stationarity')} / Trend Strength={ts.get('trend_strength')} / Seasonal Strength={ts.get('seasonal_strength')}"
+            "Time Series: "
+            f"Stationarity={ts.get('stationarity')} / "
+            f"Trend Strength={ts.get('trend_strength')} / "
+            f"Seasonal Strength={ts.get('seasonal_strength')}"
         )
     if indicators.get("candlestick_patterns") is not None:
         patterns = indicators["candlestick_patterns"]

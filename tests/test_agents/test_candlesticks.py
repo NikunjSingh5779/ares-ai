@@ -1,7 +1,6 @@
 """Tests for the candlesticks module."""
 
-from datetime import datetime, timezone
-import pytest
+from datetime import UTC, datetime
 
 from agents.candlesticks import detect_candlestick_patterns
 from backend.data.models import OHLCVData
@@ -13,7 +12,7 @@ def create_candle(open_price: float, high: float, low: float, close: float) -> O
         symbol="BTC-USD",
         source="yahoo",
         interval="1d",
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp=datetime.now(tz=UTC),
         open=open_price,
         high=high,
         low=low,

@@ -13,7 +13,6 @@ Per AGENT I/O CONTRACTS (see CLAUDE.md):
 from __future__ import annotations
 
 import logging
-logger = logging.getLogger(__name__)
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -26,6 +25,8 @@ from backend.data.models import OHLCVData
 from live_trading.engine import LiveTradingEngine
 from live_trading.safety import TradingMode
 from paper_trading.engine import PaperTradingEngine
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Input schema

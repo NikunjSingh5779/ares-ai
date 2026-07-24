@@ -1,6 +1,8 @@
 import pytest
 import redis
+
 from configs.settings import settings
+
 
 @pytest.fixture(autouse=True)
 def clear_kill_switch_redis():

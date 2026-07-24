@@ -75,7 +75,7 @@ class PaperTradingWorker:
                 break
             except Exception as e:
                 logger.error("Error in PaperTradingWorker loop", extra={"error": str(e)}, exc_info=True)
-            
+
             # Sleep for the polling interval
             await asyncio.sleep(self.poll_interval)
 
@@ -124,11 +124,11 @@ class PaperTradingWorker:
                 account_id = (
                     await session.execute(text("SELECT id FROM accounts WHERE exchange='paper' LIMIT 1"))
                 ).scalar()
-                
+
                 if not account_id:
                     logger.warning("Paper trading account not found in DB. Cannot persist closed trades.")
                     return
-                
+
                 portfolio_id = (
                     await session.execute(
                         text("SELECT id FROM portfolio WHERE account_id=:account_id LIMIT 1"),
@@ -144,7 +144,7 @@ class PaperTradingWorker:
                     await session.execute(
                         text(
                             """
-                            UPDATE positions 
+                            UPDATE positions
                             SET is_open=False, closed_at=:closed_at, current_price=:exit_price,
                                 unrealized_pnl=0, realized_pnl=:pnl, market_value=0
                             WHERE portfolio_id=:portfolio_id AND symbol=:symbol AND side=:side AND is_open=True
@@ -159,7 +159,7 @@ class PaperTradingWorker:
                             "side": trade.side,
                         }
                     )
-                    
+
                     # Update portfolio
                     await session.execute(
                         text(
@@ -178,7 +178,7 @@ class PaperTradingWorker:
                             "portfolio_id": portfolio_id,
                         }
                     )
-                    
+
                     # Log order
                     await session.execute(
                         text(
@@ -204,7 +204,7 @@ class PaperTradingWorker:
                             "reason": trade.exit_reason,
                         }
                     )
-                
+
                 await session.commit()
                 logger.info("Persisted %d closed trades to DB", len(closed_trades))
         except Exception as e:

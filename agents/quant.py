@@ -18,8 +18,6 @@ import logging
 import re
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from pydantic import BaseModel, Field
 
 from agents.base import AgentContext, BaseAgent
@@ -28,6 +26,8 @@ from agents.router import ModelRouter, RouterResult
 from agents.state import QuantOutput
 from backend.data.ingestor import MarketDataIngestor
 from backend.data.models import MarketDataRequest, OHLCVData
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Input schema
@@ -517,7 +517,7 @@ def _parse_quant_response(
                 logger.warning("Recovered JSON via regex extraction")
             except json.JSONDecodeError:
                 pass
-                
+
     if data is None:
         logger.error("Falling back to rule-based analysis due to JSON parse failure.")
         fallback_result["used_fallback"] = True

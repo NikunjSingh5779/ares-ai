@@ -14,13 +14,14 @@ Per CLAUDE.md:
 from __future__ import annotations
 
 import logging
-logger = logging.getLogger(__name__)
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from agents.base import AgentContext, BaseAgent
 from agents.state import VisionOutput
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Input schema

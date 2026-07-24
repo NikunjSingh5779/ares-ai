@@ -17,8 +17,8 @@ from agents.journal import JournalAgent
 from agents.log import AgentLogger
 from agents.market_analyst import MarketAnalystAgent
 from agents.memory import MemoryAgent
-from agents.news import NewsAgent
 from agents.models import load_model_roster
+from agents.news import NewsAgent
 from agents.quant import QuantAgent
 from agents.queue import QueueRegistry
 from agents.reflection import ReflectionAgent
@@ -69,12 +69,12 @@ async def persist_closed_trade(session: AsyncSession, trade, account_id: str, po
         text("""
         INSERT INTO trade_history
         (
-            account_id, symbol, side, quantity, entry_price, exit_price, 
+            account_id, symbol, side, quantity, entry_price, exit_price,
             entry_at, exit_at, pnl, pnl_pct, is_closed, strategy_name
         )
         VALUES
         (
-            :account_id, :symbol, :side, :quantity, :entry_price, :exit_price, 
+            :account_id, :symbol, :side, :quantity, :entry_price, :exit_price,
             :entry_at, :exit_at, :pnl, :pnl_pct, true, :strategy_name
         )
     """),

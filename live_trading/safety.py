@@ -18,6 +18,7 @@ from enum import StrEnum
 from typing import Any
 
 import redis
+
 from configs.settings import settings
 
 

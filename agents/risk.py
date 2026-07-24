@@ -9,9 +9,8 @@ with LLM analysis + rule-based fallback.
 
 from __future__ import annotations
 
-import logging
-logger = logging.getLogger(__name__)
 import json
+import logging
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -22,6 +21,8 @@ from agents.router import ModelRouter, RouterResult
 from agents.state import RiskOutput
 from backend.data.ingestor import MarketDataIngestor
 from backend.data.models import MarketDataRequest, OHLCVData
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants

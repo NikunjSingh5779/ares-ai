@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from agents.indicators import compute_all_indicators
-from agents.quant import _rule_based_quant, VALID_STRATEGIES
+from agents.quant import VALID_STRATEGIES, _rule_based_quant
 from backend.data.ingestor import MarketDataIngestor
 from backtesting.engine import BacktestEngine, BacktestInput, Signal
 
@@ -67,26 +67,26 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
 
     # 2. Generate signals iteratively (simulating a live feed)
     signals: list[Signal] = []
-    
+
     # Start simulating from the point where we have enough history for SMA200
     for i in range(MIN_CANDLES_REQUIRED, len(candles)):
         # Provide history up to the current candle
         window = candles[: i + 1]
         current_candle = window[-1]
-        
+
         # Calculate indicators
         inds = compute_all_indicators(window)
-        
+
         # Run the rule-based quant logic (no LLM, fast)
         try:
             quant_out = _rule_based_quant(request.symbol, inds, strategy_hint=request.strategy)
         except Exception as e:
             logger.warning(f"Strategy evaluation failed at index {i}: {e}")
             continue
-            
+
         direction = quant_out.get("direction", "neutral")
         confidence = quant_out.get("confidence", 0.0)
-        
+
         # Only take signals above a basic confidence threshold (e.g. 60%)
         if direction != "neutral" and confidence > 60.0:
             signals.append({
@@ -111,7 +111,7 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
         commission_pct=0.001, # 0.1% typical exchange fee
         slippage_pct=0.001,   # 0.1% slippage
     )
-    
+
     try:
         engine = BacktestEngine()
         result = engine.run(engine_input)
