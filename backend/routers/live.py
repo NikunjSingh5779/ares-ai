@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -263,37 +263,60 @@ async def audit_log(limit: int = 50) -> list[dict[str, Any]]:
 
 
 @router.get("/paper_record")
-async def paper_record() -> dict[str, Any]:
-    """Return paper trading stats for promotion check."""
+async def paper_record(
+    account_id: str | None = Query(None, description="Filter by account UUID"),
+    strategy_name: str | None = Query(None, description="Filter by strategy name"),
+) -> dict[str, Any]:
+    """Return paper trading stats for promotion check.
+
+    By default aggregates across all paper accounts. Pass ``account_id``
+    and/or ``strategy_name`` to scope the query to a specific account or
+    strategy.
+    """
     engine = _get_engine()
     if engine is None:
-        return _NOT_CONFIGURED_STATUS["paper_record"]
+        return _NOT_CONFIGURED_STATUS["paper_record"]  # type: ignore[no-any-return]
 
     try:
         async with async_session_factory() as session:
+            # Build dynamic filters
+            params: dict[str, Any] = {}
+            account_filter = ""
+            strategy_filter = ""
+
+            if account_id:
+                account_filter = "AND th.account_id = :account_id"
+                params["account_id"] = account_id
+            if strategy_name:
+                strategy_filter = "AND th.strategy_name = :strategy_name"
+                params["strategy_name"] = strategy_name
+
             # Query number of closed paper trades
             trades_count = (
                 await session.execute(
-                    text("""
+                    text(f"""
                 SELECT COUNT(*) FROM trade_history th
                 JOIN accounts a ON th.account_id = a.id
                 WHERE a.exchange = 'paper' AND th.is_closed = true
-            """)
+                {account_filter} {strategy_filter}
+            """),
+                    params,
                 )
             ).scalar() or 0
 
             # Query number of unique trading days
             days_count = (
                 await session.execute(
-                    text("""
+                    text(f"""
                 SELECT COUNT(DISTINCT DATE(entry_at)) FROM trade_history th
                 JOIN accounts a ON th.account_id = a.id
                 WHERE a.exchange = 'paper'
-            """)
+                {account_filter} {strategy_filter}
+            """),
+                    params,
                 )
             ).scalar() or 0
 
-            # Pass these database metrics into the promotion gate
             return {
                 "trades": trades_count,
                 "days": days_count,
@@ -301,4 +324,4 @@ async def paper_record() -> dict[str, Any]:
             }
     except Exception as e:
         logger.error(f"Failed to query paper_record from DB: {e}")
-        return engine.paper_record
+        raise HTTPException(status_code=500, detail="Failed to query paper trading record from database")

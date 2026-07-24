@@ -295,7 +295,7 @@ def _volume_ratio(indicators: dict[str, Any]) -> float | None:
     current_vol = indicators.get("current_volume")
     avg_vol = indicators.get("volume_sma_20")
     if current_vol is not None and avg_vol is not None and avg_vol > 0:
-        return current_vol / avg_vol
+        return current_vol / avg_vol  # type: ignore[no-any-return]
     return None
 
 

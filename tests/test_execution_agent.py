@@ -21,6 +21,7 @@ from agents.execution import ExecutionAgent, ExecutionInput
 from backend.data.models import OHLCVData
 from live_trading.safety import TradingMode
 from paper_trading.engine import PaperTradingEngine
+from typing import Any
 
 
 @pytest.fixture
@@ -66,7 +67,7 @@ def default_candles() -> list[OHLCVData]:
     ]
 
 
-def approved_risk_output() -> dict:
+def approved_risk_output() -> dict[str, Any]:
     """Return a risk output with trade approved."""
     return {
         "approved": True,
@@ -78,7 +79,7 @@ def approved_risk_output() -> dict:
     }
 
 
-def rejected_risk_output() -> dict:
+def rejected_risk_output() -> dict[str, Any]:
     """Return a risk output with trade rejected."""
     return {
         "approved": False,
@@ -90,7 +91,7 @@ def rejected_risk_output() -> dict:
     }
 
 
-def long_market_analyst() -> dict:
+def long_market_analyst() -> dict[str, Any]:
     """Return a market analyst output with long direction."""
     return {
         "confidence": 85.0,

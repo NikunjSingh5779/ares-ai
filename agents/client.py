@@ -190,7 +190,7 @@ class LLMClient:
                 raise ValueError(f"OpenRouter payload error: {error_msg}")
 
             self._record_success(model)
-            return response_json
+            return response_json  # type: ignore[no-any-return]
         except httpx.HTTPStatusError as e:
             if e.response.status_code in [429, 503, 529]:
                 logger.warning(
@@ -227,7 +227,7 @@ class LLMClient:
         except Exception as e:
             logger.error(f"Unhandled exception: {e}", exc_info=True)
             error_type = type(e).__name__
-            status_code = getattr(e, "response", None) and e.response.status_code  # type: ignore[union-attr]
+            status_code = getattr(e, "response", None) and e.response.status_code
             return {
                 "error": True,
                 "error_type": error_type,
@@ -240,13 +240,13 @@ class LLMClient:
     def parse_content(self, response: dict[str, Any]) -> str | None:
         """Extract text content from a chat completion response."""
         try:
-            return response["choices"][0]["message"]["content"]
+            return response["choices"][0]["message"]["content"]  # type: ignore[no-any-return]
         except (KeyError, IndexError, TypeError):
             return None
 
     def is_error_response(self, response: dict[str, Any]) -> bool:
         """Check if the response is an error envelope."""
-        return response.get("error", False)
+        return response.get("error", False)  # type: ignore[no-any-return]
 
     async def close(self) -> None:
         for client in self._clients.values():
@@ -300,7 +300,7 @@ class NoOpLLMClient:
 
     def parse_content(self, response: dict[str, Any]) -> str | None:
         try:
-            return response["choices"][0]["message"]["content"]
+            return response["choices"][0]["message"]["content"]  # type: ignore[no-any-return]
         except (KeyError, IndexError, TypeError):
             return None
 
@@ -329,9 +329,9 @@ def create_llm_client() -> LLMClient | NoOpLLMClient:
         providers["open_router"] = {
             "api_key": settings.openrouter_api_key.strip(),
             "base_url": settings.openrouter_base_url,
-        }  # type: ignore[union-attr]
+        }
     if _is_valid_key(settings.opencode_api_key):
-        providers["opencode"] = {"api_key": settings.opencode_api_key.strip(), "base_url": settings.opencode_base_url}  # type: ignore[union-attr]
+        providers["opencode"] = {"api_key": settings.opencode_api_key.strip(), "base_url": settings.opencode_base_url}
     if _is_valid_key(getattr(settings, "gemini_api_key", "")):
         providers["google"] = {
             "api_key": getattr(settings, "gemini_api_key").strip(),

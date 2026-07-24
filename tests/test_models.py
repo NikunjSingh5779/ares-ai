@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from agents.models import AgentModelConfig, ModelRoster, load_model_roster
+from typing import Any
 
 # Sample model roster for testing
 SAMPLE_ROSTER = {
@@ -38,7 +39,7 @@ SAMPLE_ROSTER = {
 
 
 @pytest.fixture
-def sample_config() -> dict:
+def sample_config() -> dict[str, Any]:
     return SAMPLE_ROSTER["agents"]
 
 

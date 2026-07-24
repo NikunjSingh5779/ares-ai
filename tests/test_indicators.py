@@ -85,7 +85,7 @@ class TestSMA:
         assert compute_sma([], 10) is None
 
     def test_sma_ignores_none_and_nan(self) -> None:
-        prices = [10.0, None, 12.0, 13.0, 14.0]  # type: ignore[list-item]
+        prices = [10.0, None, 12.0, 13.0, 14.0]
         result = compute_sma(prices, 3)  # type: ignore[arg-type]
         # 12+13+14 / 3 = 13, None skipped
         assert result == 13.0

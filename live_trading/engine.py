@@ -231,7 +231,7 @@ class LiveTradingEngine:
         try:
             order = await self.exchange.create_order(
                 symbol=order_intent["symbol"],
-                side=order_intent["side"],  # type: ignore[arg-type]
+                side=order_intent["side"],
                 quantity=order_intent["quantity"],
                 order_type=order_intent["order_type"],
                 price=order_intent.get("price"),

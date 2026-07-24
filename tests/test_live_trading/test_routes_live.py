@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from typing import Any
 
 
 @pytest.fixture
@@ -38,7 +39,7 @@ def _make_mock_engine():
         auditor = OrderAuditor()
 
         is_running = False
-        _paper_record: dict = {}
+        _paper_record: dict[str, Any] = {}
 
         @property
         def is_connected(self):

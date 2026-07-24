@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db.base import Base
+from typing import Any
 
 
 def _utcnow() -> datetime:
@@ -136,7 +137,7 @@ class Order(Base):
     filled_quantity: Mapped[float] = mapped_column(Numeric(20, 8), default=0, nullable=False)
     avg_fill_price: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(String, nullable=True)
-    agent_rationale: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    agent_rationale: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
@@ -169,7 +170,7 @@ class TradeHistory(Base):
     roi_pct: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     strategy_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    agent_rationale: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    agent_rationale: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False

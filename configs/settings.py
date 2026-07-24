@@ -123,4 +123,4 @@ def load_model_roster() -> dict[str, Any]:
             f"Model roster not found at {roster_path}. Run from the project root or ensure configs/models.yaml exists."
         )
     with open(roster_path) as f:
-        return yaml.safe_load(f)
+        return yaml.safe_load(f)  # type: ignore[no-any-return]

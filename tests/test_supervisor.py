@@ -22,6 +22,7 @@ from agents.state import (
     RiskOutput,
 )
 from agents.supervisor import Supervisor
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -226,7 +227,7 @@ class TestSupervisorWithMockedRouter:
     def mock_router(self) -> ModelRouter:
         router = AsyncMock(spec=ModelRouter)
 
-        async def mock_execute(**kwargs: dict) -> object:  # type: ignore[misc]
+        async def mock_execute(**kwargs: dict[str, Any]) -> object:
             from agents.router import RouterResult
 
             r = RouterResult()

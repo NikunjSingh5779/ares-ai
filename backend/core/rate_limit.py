@@ -44,7 +44,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     GET endpoints get 2x the limit.
     """
 
-    def __init__(self, app, default_limit: int = 100) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, app, default_limit: int = 100) -> None:
         super().__init__(app)
         self._buckets: dict[str, TokenBucket] = {}
         self._default_limit = default_limit
@@ -54,11 +54,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return self._default_limit * 2
         return self._default_limit
 
-    async def dispatch(self, request: Request, call_next: callable) -> Response:  # type: ignore[type-arg]
+    async def dispatch(self, request: Request, call_next: callable) -> Response:
         # Skip rate limiting for health, metrics, docs
         path = request.url.path
         if path in ("/health", "/", "/metrics", "/docs", "/redoc", "/openapi.json"):
-            return await call_next(request)
+            return await call_next(request)  # type: ignore[no-any-return]
 
         key = f"{request.method}:{path}"
         limit = self._get_limit(request.method)
@@ -75,4 +75,4 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": "60"},
             )
 
-        return await call_next(request)
+        return await call_next(request)  # type: ignore[no-any-return]

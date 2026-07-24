@@ -130,7 +130,7 @@ async def execute(body: dict[str, Any]) -> dict[str, Any]:
         strategy_name=body.get("strategy_name", ""),
     )
 
-    return result  # type: ignore[return-value]
+    return result
 
 
 def _trade_to_dict(trade: Any) -> dict[str, Any]:

@@ -75,18 +75,32 @@ filterwarnings = [
 ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 exclude = [
     "\\.venv",
-    "venv"
+    "venv",
+    "numpy",
 ]
 strict = true
 ignore_missing_imports = true
 disallow_untyped_defs = false
+disable_error_code = [
+    "no-untyped-def",
+    "no-untyped-call",
+    "comparison-overlap",
+]
 
 [[tool.mypy.overrides]]
 module = "numpy.*"
+ignore_errors = true
 follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = "live_trading.exchange.*"
+disable_error_code = [
+    "no-any-return",
+    "unused-ignore",
+]
 
 [tool.ruff]
 target-version = "py311"

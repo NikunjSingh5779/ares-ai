@@ -66,7 +66,7 @@ class CoinbaseConnector(ExchangeConnector):
         }
 
         try:
-            self._client = ccxt.coinbase(options)  # type: ignore[arg-type]
+            self._client = ccxt.coinbase(options)
 
             # Verify connectivity and auth
             if api_key and secret:

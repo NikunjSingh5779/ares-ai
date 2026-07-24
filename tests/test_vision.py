@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from typing import Any
 from agents.vision import (
     LOOKBACK_LEVELS,
     PATTERN_MIN_CONSECUTIVE,
@@ -24,7 +25,7 @@ from agents.vision import (
 
 
 @pytest.fixture
-def uptrend_candles() -> list[dict]:
+def uptrend_candles() -> list[dict[str, Any]]:
     """5 candles with clear uptrend."""
     return [
         {"open": 100, "high": 102, "low": 99, "close": 101, "volume": 1000},
@@ -36,7 +37,7 @@ def uptrend_candles() -> list[dict]:
 
 
 @pytest.fixture
-def downtrend_candles() -> list[dict]:
+def downtrend_candles() -> list[dict[str, Any]]:
     """5 candles with clear downtrend."""
     return [
         {"open": 107, "high": 108, "low": 105, "close": 106, "volume": 1400},
@@ -48,7 +49,7 @@ def downtrend_candles() -> list[dict]:
 
 
 @pytest.fixture
-def consolidation_candles() -> list[dict]:
+def consolidation_candles() -> list[dict[str, Any]]:
     """5 candles in a tight range (<3%)."""
     return [
         {"open": 100, "high": 101, "low": 99.5, "close": 100.5, "volume": 1000},
@@ -60,7 +61,7 @@ def consolidation_candles() -> list[dict]:
 
 
 @pytest.fixture
-def flat_candles() -> list[dict]:
+def flat_candles() -> list[dict[str, Any]]:
     """Only 1 candle — insufficient for pattern detection."""
     return [
         {"open": 100, "high": 102, "low": 99, "close": 101, "volume": 1000},

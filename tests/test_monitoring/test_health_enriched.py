@@ -46,7 +46,7 @@ def _fake_all_ok() -> bool:
 
 
 @pytest.mark.asyncio
-async def test_health_database_unreachable(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+async def test_health_database_unreachable(monkeypatch) -> None:
     """Verify health reports degraded when DB is down."""
     monkeypatch.setattr(
         "database.connection.check_connection",
@@ -62,7 +62,7 @@ async def test_health_database_unreachable(monkeypatch) -> None:  # type: ignore
 
 
 @pytest.mark.asyncio
-async def test_health_redis_unreachable(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+async def test_health_redis_unreachable(monkeypatch) -> None:
     """Verify health reports degraded when Redis is down."""
     monkeypatch.setattr(
         "backend.main._check_redis",
@@ -78,7 +78,7 @@ async def test_health_redis_unreachable(monkeypatch) -> None:  # type: ignore[no
 
 
 @pytest.mark.asyncio
-async def test_health_chromadb_unreachable(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+async def test_health_chromadb_unreachable(monkeypatch) -> None:
     """Verify health reports degraded when ChromaDB is down."""
     monkeypatch.setattr(
         "backend.main._check_chromadb",
@@ -94,7 +94,7 @@ async def test_health_chromadb_unreachable(monkeypatch) -> None:  # type: ignore
 
 
 @pytest.mark.asyncio
-async def test_health_all_down(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+async def test_health_all_down(monkeypatch) -> None:
     """Verify health reports degraded when all services are down."""
     monkeypatch.setattr("database.connection.check_connection", AsyncMock(return_value=False))
     monkeypatch.setattr("backend.main._check_redis", AsyncMock(return_value=False))

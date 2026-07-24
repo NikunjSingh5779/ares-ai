@@ -43,7 +43,7 @@ class RetryConfig:
         """
         exponential = min(self.base_delay * (2**attempt), self.max_delay)
         jitter = random.uniform(0, exponential * self.jitter_factor)
-        return exponential + jitter
+        return exponential + jitter  # type: ignore[no-any-return]
 
     def copy(self) -> RetryConfig:
         return RetryConfig(

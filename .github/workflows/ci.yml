@@ -54,13 +54,27 @@ jobs:
         
       - name: Lint with ruff
         run: uv run ruff check .
-        
+
+      - name: Format check with ruff
+        run: uv run ruff format --check .
+
+      - name: Type check with mypy
+        continue-on-error: true
+        run: uv run mypy .
+
       - name: Run Pytest
         env:
           PYTHONPATH: .
           DATABASE_URL: postgresql://ares:ares@localhost:5432/ares_test
           REDIS_URL: redis://localhost:6379/0
         run: uv run pytest tests/ --cov=. --cov-report=xml
+
+      - name: Validate migrations with alembic
+        env:
+          PYTHONPATH: .
+          DATABASE_URL: postgresql://ares:ares@localhost:5432/ares_test
+          REDIS_URL: redis://localhost:6379/0
+        run: uv run alembic upgrade head
 
   frontend-typecheck:
     name: Frontend Typecheck

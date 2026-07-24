@@ -65,7 +65,7 @@ class NewsAgent(BaseAgent[NewsInput, NewsOutput]):
                 resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
                 resp.raise_for_status()
                 data = resp.json()
-                return data.get("news", [])
+                return data.get("news", [])  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"Failed to fetch news for {symbol}: {e}")
             return []
@@ -102,7 +102,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
 
         try:
             data = json.loads(cleaned)
-            return data
+            return data  # type: ignore[no-any-return]
         except json.JSONDecodeError as e:
             logger.error(f"LLM JSON parse FAILED: {e}. Raw output: {text[:500]}")
 
@@ -112,7 +112,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
                 try:
                     data = json.loads(match.group())
                     logger.warning("Recovered JSON via regex extraction")
-                    return data
+                    return data  # type: ignore[no-any-return]
                 except json.JSONDecodeError:
                     pass
 

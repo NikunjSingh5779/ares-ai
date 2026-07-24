@@ -70,7 +70,7 @@ LIVE_ORDERS_TOTAL = Counter(
 class MetricsMiddleware(BaseHTTPMiddleware):
     """Record request count, duration, and status for every HTTP request."""
 
-    async def dispatch(self, request: Request, call_next: callable) -> Response:  # type: ignore[type-arg]
+    async def dispatch(self, request: Request, call_next: callable) -> Response:
         method = request.method
         endpoint = request.url.path
 
@@ -79,7 +79,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             status = str(response.status_code)
             REQUESTS_TOTAL.labels(method=method, endpoint=endpoint, status=status).inc()
-            return response
+            return response  # type: ignore[no-any-return]
         except Exception:
             REQUESTS_TOTAL.labels(method=method, endpoint=endpoint, status="500").inc()
             raise

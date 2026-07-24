@@ -7,6 +7,7 @@ slippage, and edge cases.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -63,9 +64,9 @@ def _make_signal(
     day: int,
     strategy: str = "test_strategy",
     **kwargs: float | str | None,
-) -> dict:
+) -> dict[str, Any]:
     """Create a signal dict for the given day offset."""
-    sig: dict = {
+    sig: dict[str, Any] = {
         "direction": direction,
         "timestamp": datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=day),
         "strategy_name": strategy,
@@ -115,7 +116,7 @@ class TestMapSignalsToIndices:
 
     def test_signal_without_timestamp_skipped(self):
         candles = _make_candles(5)
-        sig: dict = {"direction": "long"}
+        sig: dict[str, Any] = {"direction": "long"}
         mapped = _map_signals_to_indices([sig], candles)
         assert len(mapped) == 0
 

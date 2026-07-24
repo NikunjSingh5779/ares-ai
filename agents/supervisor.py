@@ -598,7 +598,7 @@ async def _execute_agent_impl(
 # ---------------------------------------------------------------------------
 
 
-def _build_pipeline_nodes(graph: StateGraph) -> None:
+def _build_pipeline_nodes(graph: StateGraph[AgentState]) -> None:
     """Add all pipeline nodes and edges to the graph."""
 
     # Add supervisor node

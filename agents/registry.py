@@ -106,7 +106,7 @@ class AgentRegistry:
                     "name": name,
                     "has_implementation": reg.has_implementation,
                     "description": reg.description,
-                    "model_chain": reg.model_config.model_chain if reg.model_config else [],  # type: ignore[union-attr]
+                    "model_chain": reg.model_config.model_chain if reg.model_config else [],
                 }
             )
         return result

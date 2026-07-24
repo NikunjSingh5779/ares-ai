@@ -11,6 +11,7 @@ from agents.client import NoOpLLMClient
 from agents.queue import QueueRegistry
 from agents.retry import RetryConfig
 from agents.router import ModelRouter, RouterResult
+from typing import Any
 
 
 @pytest.fixture
@@ -202,7 +203,7 @@ class TestModelRouterMocked:
         # Track which model was called
         called_models = []
 
-        async def mock_chat(**kwargs: dict) -> dict:  # type: ignore[misc]
+        async def mock_chat(**kwargs: dict[str, Any]) -> dict[str, Any]:
             model = kwargs.get("model", "")
             called_models.append(model)
             if model == "model-a":

@@ -101,7 +101,7 @@ def test_rate_limit_get_gets_double_limit() -> None:
         assert resp.status_code == 429
 
 
-def test_rate_limit_resets_after_period(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_rate_limit_resets_after_period(monkeypatch) -> None:
     """Verify the token bucket refills over time."""
     from fastapi import FastAPI
 

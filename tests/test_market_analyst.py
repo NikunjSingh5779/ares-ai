@@ -17,6 +17,7 @@ from agents.market_analyst import (
 )
 from agents.router import RouterResult
 from backend.data.models import OHLCVData
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Shared test data
@@ -46,7 +47,7 @@ def sample_candles() -> list[OHLCVData]:
 
 
 @pytest.fixture
-def sample_indicators(sample_candles: list[OHLCVData]) -> dict:
+def sample_indicators(sample_candles: list[OHLCVData]) -> dict[str, Any]:
     return compute_all_indicators(sample_candles)
 
 
@@ -56,14 +57,14 @@ def sample_indicators(sample_candles: list[OHLCVData]) -> dict:
 
 
 class TestBuildAnalysisPrompt:
-    def test_returns_message_list(self, sample_candles: list[OHLCVData], sample_indicators: dict) -> None:
+    def test_returns_message_list(self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]) -> None:
         messages = build_analysis_prompt("BTC-USD", sample_indicators, sample_candles)
         assert len(messages) >= 2
         assert messages[0]["role"] == "system"
         assert messages[1]["role"] == "user"
 
     def test_system_prompt_contains_critical_instructions(
-        self, sample_candles: list[OHLCVData], sample_indicators: dict
+        self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]
     ) -> None:
         messages = build_analysis_prompt("BTC-USD", sample_indicators, sample_candles)
         system = messages[0]["content"]
@@ -72,11 +73,11 @@ class TestBuildAnalysisPrompt:
         assert "direction" in system
         assert "rationale" in system
 
-    def test_user_prompt_contains_symbol(self, sample_candles: list[OHLCVData], sample_indicators: dict) -> None:
+    def test_user_prompt_contains_symbol(self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]) -> None:
         messages = build_analysis_prompt("BTC-USD", sample_indicators, sample_candles)
         assert "BTC-USD" in messages[1]["content"]
 
-    def test_user_prompt_contains_indicators(self, sample_candles: list[OHLCVData], sample_indicators: dict) -> None:
+    def test_user_prompt_contains_indicators(self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]) -> None:
         messages = build_analysis_prompt("ETH-USD", sample_indicators, sample_candles)
         content = messages[1]["content"]
         assert "RSI" in content
@@ -84,7 +85,7 @@ class TestBuildAnalysisPrompt:
         assert "ETH-USD" in content
 
     def test_user_prompt_contains_candlestick_patterns(
-        self, sample_candles: list[OHLCVData], sample_indicators: dict
+        self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]
     ) -> None:
         sample_indicators["candlestick_patterns"] = ["Doji", "Bullish Engulfing"]
         messages = build_analysis_prompt("BTC-USD", sample_indicators, sample_candles)

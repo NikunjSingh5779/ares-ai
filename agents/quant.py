@@ -268,7 +268,7 @@ def _detect_momentum(indicators: dict[str, Any]) -> bool:
         return False
     # Require meaningful SMA separation and non-extreme RSI
     spread = abs(sma_20 - sma_50) / max(sma_50, 1)
-    return spread > 0.005 and 30 <= rsi <= 70
+    return spread > 0.005 and 30 <= rsi <= 70  # type: ignore[no-any-return]
 
 
 def _detect_mean_reversion(indicators: dict[str, Any]) -> bool:
@@ -276,7 +276,7 @@ def _detect_mean_reversion(indicators: dict[str, Any]) -> bool:
     rsi = indicators.get("rsi_14")
     if rsi is None:
         return False
-    return rsi < 30 or rsi > 70
+    return rsi < 30 or rsi > 70  # type: ignore[no-any-return]
 
 
 def _detect_trend_following(indicators: dict[str, Any]) -> bool:
@@ -289,8 +289,8 @@ def _detect_trend_following(indicators: dict[str, Any]) -> bool:
     if histogram is None:
         return False
     if trend == "bullish":
-        return histogram > 0
-    return histogram < 0
+        return histogram > 0  # type: ignore[no-any-return]
+    return histogram < 0  # type: ignore[no-any-return]
 
 
 def _detect_breakout(indicators: dict[str, Any]) -> bool:
@@ -319,7 +319,7 @@ def _atr_ratio(indicators: dict[str, Any]) -> float | None:
     atr = indicators.get("atr_14")
     price = indicators.get("current_price", 0)
     if atr is not None and price > 0:
-        return atr / price * 100
+        return atr / price * 100  # type: ignore[no-any-return]
     return None
 
 
@@ -328,7 +328,7 @@ def _volume_ratio(indicators: dict[str, Any]) -> float | None:
     current_vol = indicators.get("current_volume")
     avg_vol = indicators.get("volume_sma_20")
     if current_vol is not None and avg_vol is not None and avg_vol > 0:
-        return current_vol / avg_vol
+        return current_vol / avg_vol  # type: ignore[no-any-return]
     return None
 
 

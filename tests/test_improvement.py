@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from agents.improvement import (
@@ -29,7 +31,7 @@ def _make_reflection(
     executed: bool = True,
     has_errors: bool = False,
     extra_suggestions: list[str] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Helper: create a reflection output dict."""
     suggestions = []
     if has_errors:

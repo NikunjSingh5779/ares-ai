@@ -27,12 +27,12 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def hash_password(password: str) -> str:
     """Hash a plaintext password using bcrypt."""
-    return pwd_context.hash(password)
+    return pwd_context.hash(password)  # type: ignore[no-any-return]
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plaintext password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    return pwd_context.verify(plain_password, hashed_password)  # type: ignore[no-any-return]
 
 
 def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
@@ -45,7 +45,7 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
 
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
-    return encoded_jwt
+    return encoded_jwt  # type: ignore[no-any-return]
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -72,8 +72,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     }
 
-    async def dispatch(self, request: Request, call_next: callable) -> Response:  # type: ignore[type-arg]
+    async def dispatch(self, request: Request, call_next: callable) -> Response:
         response = await call_next(request)
         for header, value in self.HEADERS.items():
             response.headers[header] = value
-        return response
+        return response  # type: ignore[no-any-return]

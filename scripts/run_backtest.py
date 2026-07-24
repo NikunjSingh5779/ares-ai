@@ -120,7 +120,7 @@ async def main():
 
     print(f"\n[3] Running true walk-forward simulation on last {total_to_test} candles...")
     signals = []
-    confidence_distribution = {"ma": [], "quant": []}
+    confidence_distribution: dict[str, list[float]] = {"ma": [], "quant": []}
     dual_consensus_count = 0
 
     for i in range(lookback, len(test_candles)):
