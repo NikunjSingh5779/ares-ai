@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.core.metrics import record_live_order
 from live_trading.audit import AuditEntry, OrderAuditor
 from live_trading.exceptions import (
     ExchangeConnectionError,
@@ -237,6 +238,7 @@ class LiveTradingEngine:
                 price=order_intent.get("price"),
             )
         except Exception as exc:
+            record_live_order("error")
             error_entry = AuditEntry(
                 order_intent=order_intent,
                 agent_chain=agent_chain or [],
@@ -258,6 +260,8 @@ class LiveTradingEngine:
             "remaining": order.remaining,
             "status": order.status,
         }
+
+        record_live_order(order_dict["status"])
 
         entry = AuditEntry(
             order_intent=order_intent,

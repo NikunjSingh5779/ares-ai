@@ -23,6 +23,7 @@ from agents.base import AgentContext, BaseAgent
 from agents.indicators import compute_all_indicators
 from agents.router import ModelRouter, RouterResult
 from agents.state import MarketAnalystOutput
+from backend.core.metrics import record_agent_fallback
 from backend.data.ingestor import MarketDataIngestor
 from backend.data.models import MarketDataRequest, OHLCVData
 
@@ -435,6 +436,9 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
             max_tokens=max_tokens,
             rpm=rpm,
         )
+        if router_result.fallback_used:
+            primary_model = model_chain[0] if model_chain else "unknown"
+            record_agent_fallback(self.agent_name, primary_model, router_result.model_used)
         if not router_result.success or router_result.degraded:
             return None
         # Parse the response

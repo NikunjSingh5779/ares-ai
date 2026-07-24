@@ -19,6 +19,7 @@ from pydantic import ValidationError
 from agents.base import AgentContext, BaseAgent
 from agents.router import ModelRouter, RouterResult
 from agents.state import NewsInput, NewsOutput
+from backend.core.metrics import record_agent_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,10 @@ and return your sentiment analysis as valid JSON matching the specified schema."
                 temperature=0.1,
                 max_tokens=500
             )
+
+            if result.fallback_used:
+                news_chain = self.context.model_preferences.get("model_chain", [])
+                record_agent_fallback(self.agent_name, news_chain[0] if news_chain else "unknown", result.model_used)
 
             if not result.success:
                 logger.error(f"Router failed to get successful response. Errors: {result.errors}")

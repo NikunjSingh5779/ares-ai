@@ -19,6 +19,8 @@ from typing import Any
 
 import redis
 
+from backend.core.metrics import set_kill_switch_active
+
 
 class TradingMode(StrEnum):
     """Live trading mode."""
@@ -127,6 +129,7 @@ class KillSwitch:
         if self._set("ares:kill_switch:active", "1", nx=True):
             self._set("ares:kill_switch:reason", reason)
             self._set("ares:kill_switch:timestamp", datetime.datetime.now(datetime.UTC).isoformat())
+            set_kill_switch_active(True)
 
     def auto_trigger(self, drawdown_pct: float) -> bool:
         """Automatically trigger if *drawdown_pct* exceeds the threshold.
@@ -139,12 +142,14 @@ class KillSwitch:
             if self._set("ares:kill_switch:active", "1", nx=True):
                 self._set("ares:kill_switch:reason", reason)
                 self._set("ares:kill_switch:timestamp", datetime.datetime.now(datetime.UTC).isoformat())
+                set_kill_switch_active(True)
                 return True
         return False
 
     def arm(self) -> None:
         """Re-arm the kill switch (human confirmation required)."""
         self._delete("ares:kill_switch:active", "ares:kill_switch:reason", "ares:kill_switch:timestamp")
+        set_kill_switch_active(False)
 
     # ── Pre-trade check ────────────────────────────────────────────
 

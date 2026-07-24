@@ -23,6 +23,8 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
+from backend.core.metrics import record_agent_run
+
 
 class FlexibleSchema(BaseModel):
     """Fallback schema that accepts any fields.
@@ -140,6 +142,7 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
                     "latency_ms": elapsed_ms,
                 }
             )
+            record_agent_run(self.agent_name, "success")
             return outputs
 
         except Exception as e:
@@ -152,6 +155,7 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
                     "latency_ms": elapsed_ms,
                 }
             )
+            record_agent_run(self.agent_name, "error")
             raise
 
 

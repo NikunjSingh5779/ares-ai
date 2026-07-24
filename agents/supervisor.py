@@ -40,6 +40,7 @@ from agents.state import (
     RiskOutput,
     VisionOutput,
 )
+from backend.core.metrics import record_agent_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +206,11 @@ async def _execute_agent_node(
         max_tokens=model_config.max_tokens,
         rpm=model_config.rpm,
     )
+
+    # Record model fallback metric
+    if router_result.fallback_used:
+        model_chain = model_config.model_chain
+        record_agent_fallback(agent_name, model_chain[0] if model_chain else "unknown", router_result.model_used)
 
     # Record model chain used
     update["model_chain_used"] = {

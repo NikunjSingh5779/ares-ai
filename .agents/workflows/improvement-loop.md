@@ -63,27 +63,40 @@ Read the full `SKILL.md` before applying code.
 - **Item 3 — Exchange connector test cluster → RESOLVED.** Live_trading tests no longer hang (148/148 pass in 8.75s). Root cause was threefold: (1) `conftest.py` `autouse=True` fixture connecting to Redis on every test, (2) `KillSwitch.__init__` creating a Redis connection immediately, (3) exchange connector files omitted from coverage.
 - **Item 8 — Frontend completion → RESOLVED.** 8/8 missing pages built (Analytics, Risk, Strategy Builder, Paper Trading, Logs, Settings, Chat, Memory Viewer). Sidebar updated with all 16 nav links. Agent Monitor polished (degradation banner, model chain display, error details). Backtest Dashboard polished (consistent card-glass styling, all metrics displayed, 3 KPI rows). Verified: 0 TS errors.
 
-**🔴 P0 — open**
-- **CI Run #53: two failures — fix pushed, awaiting CI confirmation.**
-  1. Backend Tests: `ModuleNotFoundError: No module named 'psycopg2'` — CI set `DATABASE_URL=postgresql://...` (bare, defaults to psycopg2) but the project uses asyncpg (`postgresql+asyncpg://`). Fixed: added `+asyncpg` dialect to ci.yml env var.
-  2. Docker Compose Validation: `.env file not found` — `docker-compose.yml` has `env_file: .env` but CI has no `.env`. Fixed: added `cp .env.example .env` step before `docker compose config`.
-  Note: Cannot verify remotely — `gh` CLI auth token expired (needs re-auth).
+**✅ Resolved — confirmed by execution**
+- **CI Run #53 → RESOLVED.** Confirmed via `gh run list`: both follow-up runs pass:
+  - `c96234e` (fix commit): success — Backend Tests, Frontend Typecheck, Docker Compose Validation all green.
+  - `c213b56` (frontend build): success — all 3 jobs pass.
 
-**🔴 P0 — NEW: Dead metrics hooks** (Rule 3 violation)
-  - 4 metrics functions defined in `backend/core/metrics.py` but NEVER called from production code:
-    1. `record_agent_run(agent, status)` — should be called after each agent run
-    2. `record_agent_fallback(agent, from_model, to_model)` — should be called when fallback chain is used
-    3. `set_kill_switch_active(active)` — should be called in `live_trading/safety.py` on kill switch toggle
-    4. `record_live_order(status)` — should be called when live order is placed/executed
-  - Only tests call these functions. The Prometheus metrics they feed (`AGENTS_RUNS_TOTAL`, `AGENTS_FALLBACK_TOTAL`, `LIVE_KILL_SWITCH_ACTIVE`, `LIVE_ORDERS_TOTAL`) are registered but never receive data.
-  - HTTP-level MetricsMiddleware IS wired in `backend/main.py` — only the custom agent/trading metrics are dead.
+**✅ Resolved this session (pushed, execution-confirmed by CI)**
+- **P0 — Dead metrics hooks → RESOLVED.** All 4 functions wired to production code:
+  1. `record_agent_run(agent, status)` called from `agents/base.py` `BaseAgent.run()` (success/error)
+  2. `record_agent_fallback(agent, from_model, to_model)` called after every `router.execute()` in `market_analyst.py`, `quant.py`, `risk.py`, `news.py`, `supervisor.py` when `fallback_used` is True
+  3. `set_kill_switch_active(active)` called from `live_trading/safety.py` (`activate`: True, `auto_trigger`: True, `arm`: False)
+  4. `record_live_order(status)` called from `live_trading/engine.py` `execute_signal()` (status from order, or "error")
+  - 12 new integration tests patch the 4 functions and assert they fire during real agent/kill-switch/order-execution flows. 20/20 metric tests pass.
+  - Verified: `backend/core/metrics.py` coverage 92%.
+
+**🔴 P1 — Silent `except Exception:` blocks** (Rule 2 violation)
+  - 8 verified instances where `except Exception:` swallows errors with no logging, ranked by impact:
+  - **HIGH priority — cache errors indistinguishable from success** (these return a falsy/default value that looks like "no data" or "nothing to do," silently hiding Redis failures):
+    1. `backend/data/cache.py:123` — `get_candles`: `except Exception: return None` — cache miss and Redis crash return the same value, caller can't tell.
+    2. `backend/data/cache.py:146` — `set_candles`: `except Exception: return 0` — write failures hidden.
+    3. `backend/data/cache.py:165` — `invalidate`: `except Exception: return False` — invalidation silently fails.
+    4. `backend/data/cache.py:179` — `clear_all`: `except Exception: return False` — clear silently fails.
+    5. `backend/data/sources/registry.py:39` — `close_all`: **bare `except Exception: pass`** — worst offender; a resource close failing is completely invisible.
+  - **LOWER priority — health-check bool returns** (these are designed to return True/False; still worth a debug-level log):
+    6. `database/connection.py:47` — `check_connection`: `except Exception: return False`
+    7. `backend/main.py:184` — `_check_redis`: `except Exception: return False`
+    8. `backend/main.py:199` — `_check_chromadb`: `except Exception: return False`
+  - **Fix:** add `logger.exception(...)` or `logger.debug(...)` to every `except` block before returning the fallback value.
 
 **✅ P1 — verified this session**
 - **Item 4 — Model roster drift → RESOLVED.** Both `AGENTS.md` and `CLAUDE.md` correctly state: `configs/models.yaml` is the SINGLE SOURCE OF TRUTH. No model names hardcoded in doc bodies.
 - **Item 6 — Documentation drift → RESOLVED.** README says "default 15%" for kill-switch max drawdown; `KillSwitch.__init__` default = 15.0; `settings.live_max_drawdown_pct` = 15.0. The separate `settings.max_drawdown_pct` = 20.0 is a different, broader risk threshold. No actual drift.
 
 **🟡 Discovery pass findings (2026-07-24)**
-- ✅ No bare `except:` or `except Exception:` without logging found anywhere
+- ❌ 8 `except Exception:` blocks silently swallow errors with no logging (Rule 2 violation) — see P1 backlog entry below.
 - ✅ No stale root-level files (cleanup from `658f558` holding)
 - ✅ No duplicate workflow files found
 - ✅ AGENTS.md ↔ models.yaml model roster in sync
