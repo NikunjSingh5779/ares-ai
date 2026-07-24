@@ -49,7 +49,7 @@ Read the full `SKILL.md` before applying code.
 
 ## 3. Standing Backlog
 
-*Last verified: 91.24% coverage, 787/787 tests pass — live_trading no longer hangs, KillSwitch testable without Redis, exchange connectors omitted from coverage*
+*Last verified: 2026-07-24 — Discovery pass complete; 8 new frontend pages built; dead metrics hooks found*
 
 **✅ Resolved — confirmed by execution, not just file content**
 - **Item 9 — CI branch mismatch → RESOLVED.** Trigger fixed in commit `f0b9c2f` (`main` → `master` + `feat/**` + `fix/**`). Confirmed via CI Run #50 which fired on push to `fix/workflow-consolidation`.
@@ -61,18 +61,34 @@ Read the full `SKILL.md` before applying code.
 - **CI services gap.** ✅ Postgres (15) + Redis (7) service containers verified present in ci.yml. Python version is 3.12. No service-level gap.
 - **CI Run #50: Pytest fails → RESOLVED.** Root cause: `pyproject.toml` `--cov-fail-under=80` combined with untested live_trading exchange connectors (CCXT wrappers needing API keys) and KillSwitch hanging on Redis connection. Fix: omitted exchange connectors from coverage via `[tool.coverage.run]`, made `KillSwitch.__init__` use in-memory state when no Redis client is provided, removed `autouse=True` from Redis-clearing conftest fixture. Verified: 91.24% coverage, 787/787 pass.
 - **Item 3 — Exchange connector test cluster → RESOLVED.** Live_trading tests no longer hang (148/148 pass in 8.75s). Root cause was threefold: (1) `conftest.py` `autouse=True` fixture connecting to Redis on every test, (2) `KillSwitch.__init__` creating a Redis connection immediately, (3) exchange connector files omitted from coverage.
+- **Item 8 — Frontend completion → RESOLVED.** 8/8 missing pages built (Analytics, Risk, Strategy Builder, Paper Trading, Logs, Settings, Chat, Memory Viewer). Sidebar updated with all 16 nav links. Agent Monitor polished (degradation banner, model chain display, error details). Backtest Dashboard polished (consistent card-glass styling, all metrics displayed, 3 KPI rows). Verified: 0 TS errors.
 
 **🔴 P0 — open**
 - **CI Run #53: two failures — fix pushed, awaiting CI confirmation.**
   1. Backend Tests: `ModuleNotFoundError: No module named 'psycopg2'` — CI set `DATABASE_URL=postgresql://...` (bare, defaults to psycopg2) but the project uses asyncpg (`postgresql+asyncpg://`). Fixed: added `+asyncpg` dialect to ci.yml env var.
   2. Docker Compose Validation: `.env file not found` — `docker-compose.yml` has `env_file: .env` but CI has no `.env`. Fixed: added `cp .env.example .env` step before `docker compose config`.
+  Note: Cannot verify remotely — `gh` CLI auth token expired (needs re-auth).
+
+**🔴 P0 — NEW: Dead metrics hooks** (Rule 3 violation)
+  - 4 metrics functions defined in `backend/core/metrics.py` but NEVER called from production code:
+    1. `record_agent_run(agent, status)` — should be called after each agent run
+    2. `record_agent_fallback(agent, from_model, to_model)` — should be called when fallback chain is used
+    3. `set_kill_switch_active(active)` — should be called in `live_trading/safety.py` on kill switch toggle
+    4. `record_live_order(status)` — should be called when live order is placed/executed
+  - Only tests call these functions. The Prometheus metrics they feed (`AGENTS_RUNS_TOTAL`, `AGENTS_FALLBACK_TOTAL`, `LIVE_KILL_SWITCH_ACTIVE`, `LIVE_ORDERS_TOTAL`) are registered but never receive data.
+  - HTTP-level MetricsMiddleware IS wired in `backend/main.py` — only the custom agent/trading metrics are dead.
 
 **✅ P1 — verified this session**
-- **Item 4 — Model roster drift → RESOLVED.** Both `AGENTS.md` and `CLAUDE.md` correctly state: `configs/models.yaml` is the SINGLE SOURCE OF TRUTH. No model names hardcoded in doc bodies (only the Vision Agent open-issue note about `nemotron-nano-12b-v2-vl` which is an intentional standing discussion item, not a hardcoded roster).
-- **Item 6 — Documentation drift → RESOLVED.** README says "default 15%" for kill-switch max drawdown; `KillSwitch.__init__` default = 15.0; `settings.live_max_drawdown_pct` = 15.0. The separate `settings.max_drawdown_pct` = 20.0 is a different, broader risk threshold (confirmed by `AGENTS.md` "max drawdown limits"). No actual drift.
+- **Item 4 — Model roster drift → RESOLVED.** Both `AGENTS.md` and `CLAUDE.md` correctly state: `configs/models.yaml` is the SINGLE SOURCE OF TRUTH. No model names hardcoded in doc bodies.
+- **Item 6 — Documentation drift → RESOLVED.** README says "default 15%" for kill-switch max drawdown; `KillSwitch.__init__` default = 15.0; `settings.live_max_drawdown_pct` = 15.0. The separate `settings.max_drawdown_pct` = 20.0 is a different, broader risk threshold. No actual drift.
 
-**🟢 P3**
-- **Item 8 — Frontend completion.** Agent Monitor, Backtest Dashboard — untouched.
+**🟡 Discovery pass findings (2026-07-24)**
+- ✅ No bare `except:` or `except Exception:` without logging found anywhere
+- ✅ No stale root-level files (cleanup from `658f558` holding)
+- ✅ No duplicate workflow files found
+- ✅ AGENTS.md ↔ models.yaml model roster in sync
+- ✅ Frontend builds cleanly (0 TS errors)
+- ⚠️ GitHub CLI auth token expired — can't verify CI runs remotely, needs `gh auth login -h github.com`
 
 **Standing checks, every relevant iteration**
 - Before trusting any backtest/promotion-gate pass: run `backtesting`'s red-flag checklist.

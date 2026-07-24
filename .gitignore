@@ -50,7 +50,7 @@ chromadb/
 
 # Logs
 *.log
-logs/
+/logs/
 
 # Database
 migrations/versions/
