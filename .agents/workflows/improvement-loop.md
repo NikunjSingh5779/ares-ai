@@ -92,7 +92,24 @@ Read the full `SKILL.md` before applying code.
   - **LOWER priority (3 health-checks):** `connection.py:check_connection`, `_check_redis`, `_check_chromadb` each log `"<component> health check failed"` at debug level.
   - Added missing `import logging` + `logger = logging.getLogger(__name__)` to cache.py, registry.py, connection.py.
   - **Ruff bumps:** Initial push triggered 5 E402 import-ordering errors (logger statement between import groups). Fixed in follow-up commit `f00341d`.
-  - **Verification:** 800 tests pass, 82.43% coverage. Ruff: all checks passed. CI Run #30098178824 (`fix/silent-except-logging` @ `f00341d`): Backend Tests ✓, Frontend Typecheck ✓, Docker Compose Validation ✓.
+  - **Test coverage (8 tests added, 2 follow-up commits):** All 8 exception sites now have dedicated tests forcing the failure path and asserting the log fires. Coverage details by site:
+    - `backend/data/cache.py` — `TestMarketDataCacheExceptions` in `tests/test_cache.py`:
+      - `test_get_candles_exception_logs` — Redis scan/mget raises → logs "get_candles failed", returns None
+      - `test_set_candles_exception_logs` — Redis pipeline raises → logs "set_candles failed", returns 0
+      - `test_invalidate_exception_logs` — Redis scan/delete raises → logs "invalidate failed", returns False
+      - `test_clear_all_exception_logs` — Redis scan/delete raises → logs "clear_all failed", returns False
+    - `backend/data/sources/registry.py` — `test_close_all_logs_on_failure` in `tests/test_data_sources.py`:
+      - `AsyncMock(spec=["close"])` source whose `close()` raises `RuntimeError` → logs "Failed to close data source: bad_source"
+    - `backend/main.py` — 2 tests in `tests/test_monitoring/test_health_enriched.py`:
+      - `test_check_redis_exception_logs` — patched `redis.asyncio.Redis` returns a mock that raises `ConnectionError` on `ping()` → "Redis health check failed" logged, returns False
+      - `test_check_chromadb_exception_logs` — patched `chromadb.HttpClient` raises `ConnectionError` → "ChromaDB health check failed" logged, returns False
+    - `database/connection.py` — `test_check_connection_exception_logs` in `tests/test_monitoring/test_health_enriched.py`:
+      - Custom `_FailingEngine` class whose `connect().__aenter__` raises `ConnectionError` → "Database connection check failed" logged, returns False
+      - Uses `patch("database.connection.engine", _FailingEngine())` instead of `patch.object()` because `AsyncEngine.connect` is read-only
+    - **Testing challenges encountered:**
+      - `backend/main` calls `setup_logging()` at module import time, which clears all root logger handlers (including caplog's `_CapLogHandler`). Redis/ChromaDB tests use a dedicated `StreamHandler(io.StringIO())` on the `ares` logger instead of `caplog` or `capsys`.
+      - `AsyncEngine.connect` is a read-only descriptor — cannot be monkeypatched with `patch.object()`. The connection test uses a synchronous `_FailingEngine` class that raises on `__aenter__`.
+  - **Verification:** 800+ tests pass, coverage maintained. Ruff: all checks passed. CI Run #30098178824 (`fix/silent-except-logging` @ `f00341d`): Backend Tests ✓, Frontend Typecheck ✓, Docker Compose Validation ✓.
 
 **✅ P1 — verified this session**
 - **Item 4 — Model roster drift → RESOLVED.** Both `AGENTS.md` and `CLAUDE.md` correctly state: `configs/models.yaml` is the SINGLE SOURCE OF TRUTH. No model names hardcoded in doc bodies.

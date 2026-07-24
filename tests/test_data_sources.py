@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 import pytest
 from pytest_httpx import HTTPXMock
@@ -246,3 +248,23 @@ class TestSourceRegistry:
         source = BinanceSource()
         registry.register(source)
         assert registry.get("binance").source_name == "binance"
+
+    async def test_close_all_logs_on_failure(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """When a source's close() raises, close_all logs the error."""
+        from unittest.mock import AsyncMock
+
+        registry = SourceRegistry()
+        bad_source = AsyncMock(spec=["close"])
+        bad_source.source_name = "bad_source"
+        bad_source.close.side_effect = RuntimeError("Close failed")
+        registry.register(bad_source)
+
+        with caplog.at_level(logging.ERROR):
+            await registry.close_all()
+
+        assert any(
+            "Failed to close data source: bad_source" in rec.message
+            for rec in caplog.records
+        )

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -121,3 +123,65 @@ class TestNullCache:
     async def test_invalidate_returns_false(self) -> None:
         cache = NullCache()
         assert await cache.invalidate("yahoo", "BTC-USD", "1d") is False
+
+
+class TestMarketDataCacheExceptions:
+    """Force every except-Exception path in cache.py and assert the log fires."""
+
+    async def test_get_candles_exception_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """When Redis scan/mget raises, get_candles logs and returns None."""
+        mock_redis = AsyncMock(spec=["scan", "mget"])
+        mock_redis.scan.side_effect = ConnectionError("Redis connection lost")
+        cache = MarketDataCache(redis_client=mock_redis)
+
+        with caplog.at_level(logging.ERROR):
+            result = await cache.get_candles("yahoo", "BTC-USD", "1d")
+
+        assert result is None
+        assert any("get_candles failed" in rec.message for rec in caplog.records)
+
+    async def test_set_candles_exception_logs(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        sample_candles: list[OHLCVData],
+    ) -> None:
+        """When Redis pipeline raises, set_candles logs and returns 0."""
+        mock_redis = AsyncMock(spec=["pipeline"])
+        mock_redis.pipeline.side_effect = ConnectionError("Redis connection lost")
+        cache = MarketDataCache(redis_client=mock_redis)
+
+        with caplog.at_level(logging.ERROR):
+            result = await cache.set_candles(sample_candles)
+
+        assert result == 0
+        assert any("set_candles failed" in rec.message for rec in caplog.records)
+
+    async def test_invalidate_exception_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """When Redis scan/delete raises, invalidate logs and returns False."""
+        mock_redis = AsyncMock(spec=["scan", "delete"])
+        mock_redis.scan.side_effect = ConnectionError("Redis connection lost")
+        cache = MarketDataCache(redis_client=mock_redis)
+
+        with caplog.at_level(logging.ERROR):
+            result = await cache.invalidate("yahoo", "BTC-USD", "1d")
+
+        assert result is False
+        assert any("invalidate failed" in rec.message for rec in caplog.records)
+
+    async def test_clear_all_exception_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """When Redis scan/delete raises, clear_all logs and returns False."""
+        mock_redis = AsyncMock(spec=["scan", "delete"])
+        mock_redis.scan.side_effect = ConnectionError("Redis connection lost")
+        cache = MarketDataCache(redis_client=mock_redis)
+
+        with caplog.at_level(logging.ERROR):
+            result = await cache.clear_all()
+
+        assert result is False
+        assert any("clear_all failed" in rec.message for rec in caplog.records)
