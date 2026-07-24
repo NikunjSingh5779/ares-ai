@@ -11,6 +11,6 @@ def clear_kill_switch_redis():
         port=settings.redis_port,
         password=settings.redis_password or None,
         db=settings.redis_db,
-        decode_responses=True
+        decode_responses=True,
     )
-    r.delete('ares:kill_switch:active', 'ares:kill_switch:reason', 'ares:kill_switch:timestamp', 'ares:mode')
+    r.delete("ares:kill_switch:active", "ares:kill_switch:reason", "ares:kill_switch:timestamp", "ares:mode")

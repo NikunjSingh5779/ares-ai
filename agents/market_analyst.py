@@ -273,8 +273,8 @@ def _rule_based_analysis(
         rationale_parts.append(f"Trend={trend}")
     rationale = " | ".join(rationale_parts)
 
-    stop_loss_val = round(current_price * (0.95 if direction == 'long' else 1.05), 2)
-    target_val = round(current_price * (1.1 if direction == 'long' else 0.9), 2)
+    stop_loss_val = round(current_price * (0.95 if direction == "long" else 1.05), 2)
+    target_val = round(current_price * (1.1 if direction == "long" else 0.9), 2)
     return {
         "confidence": round(confidence, 1),
         "direction": direction,
@@ -319,7 +319,7 @@ def _parse_llm_response(
 
     text = response_text.strip()
     # Strip markdown code fences
-    cleaned = re.sub(r'^```(?:json)?\s*|\s*```$', '', text, flags=re.MULTILINE)
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE)
 
     data = None
     try:
@@ -327,7 +327,7 @@ def _parse_llm_response(
     except json.JSONDecodeError as e:
         logger.error(f"LLM JSON parse FAILED: {e}. Raw output: {text[:500]}")
         # Try regex extraction
-        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
         if match:
             try:
                 data = json.loads(match.group())

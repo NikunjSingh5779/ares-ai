@@ -30,6 +30,7 @@ def _make_candles(prices: list[float], highs: list[float] = None, lows: list[flo
         )
     return candles
 
+
 class TestStochastic:
     def test_stochastic_insufficient_data(self):
         prices = [100.0] * 10
@@ -49,6 +50,7 @@ class TestStochastic:
         assert result["d"] is not None
         assert 49.0 <= result["k"] <= 51.0
 
+
 class TestADX:
     def test_adx_insufficient_data(self):
         prices = [100.0] * 25
@@ -64,6 +66,7 @@ class TestADX:
         result = compute_adx(candles, period=14)
         assert result is not None
         assert result > 0
+
 
 class TestTimeSeriesMetrics:
     def test_time_series_insufficient_data(self):

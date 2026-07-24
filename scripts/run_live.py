@@ -167,7 +167,7 @@ async def main():
                 summary = engine.get_summary()
                 await live_engine.evaluate_drawdown(summary.max_drawdown_pct, symbol)
 
-            closed_trades = engine.check_sl_tp(high=high_price, low=low_price)
+            closed_trades = engine.check_sl_tp(symbol=symbol, high=high_price, low=low_price)
             if closed_trades:
                 async with async_session_factory() as session:
                     ids = await _get_default_ids(session)

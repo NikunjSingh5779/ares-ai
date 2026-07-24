@@ -12,12 +12,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.base import Base
 
 
-# Helper for column defaults
-_utcnow = lambda: datetime.now(UTC)
-
-
-# Helper for column defaults
-_utcnow = lambda: datetime.now(UTC)
+def _utcnow() -> datetime:
+    """Return the current UTC datetime."""
+    return datetime.now(UTC)
 
 
 class User(Base):
@@ -30,10 +27,12 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
-        onupdate=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
 
     accounts: Mapped[list[Account]] = relationship("Account", back_populates="user", cascade="all, delete-orphan")
+
 
 class Account(Base):
     __tablename__ = "accounts"
@@ -50,14 +49,14 @@ class Account(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     trading_mode: Mapped[str] = mapped_column(String(20), default="human_approval", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
-        onupdate=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
 
     user: Mapped[User] = relationship("User", back_populates="accounts")
-    last_rebalanced_at: Mapped[datetime | None] = (
-        mapped_column(DateTime(timezone=True), nullable=True)
-    )
+    last_rebalanced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     orders: Mapped[list[Order]] = relationship("Order", back_populates="account", cascade="all, delete-orphan")
+
 
 class Portfolio(Base):
     __tablename__ = "portfolio"
@@ -74,13 +73,13 @@ class Portfolio(Base):
     currency: Mapped[str] = mapped_column(String(10), default="USD", nullable=False)
     last_rebalanced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
-        onupdate=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
 
     account: Mapped[Account] = relationship("Account", back_populates="portfolios")
-    unrealized_pnl_pct: Mapped[float] = (
-        mapped_column(Numeric(10, 4), default=0, nullable=False)
-    )
+    unrealized_pnl_pct: Mapped[float] = mapped_column(Numeric(10, 4), default=0, nullable=False)
+
 
 class Position(Base):
     __tablename__ = "positions"
@@ -107,11 +106,13 @@ class Position(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_open: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
-        onupdate=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
 
     portfolio: Mapped[Portfolio] = relationship("Portfolio", back_populates="positions")
     orders: Mapped[list[Order]] = relationship("Order", back_populates="position")
+
 
 class Order(Base):
     __tablename__ = "orders"
@@ -137,11 +138,13 @@ class Order(Base):
     failure_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     agent_rationale: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
-        onupdate=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
 
     account: Mapped[Account] = relationship("Account", back_populates="orders")
     position: Mapped[Position | None] = relationship("Position", back_populates="orders")
+
 
 class TradeHistory(Base):
     __tablename__ = "trade_history"
@@ -168,6 +171,6 @@ class TradeHistory(Base):
     strategy_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     agent_rationale: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow,
-        onupdate=_utcnow, nullable=False)
-
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )

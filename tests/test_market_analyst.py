@@ -264,7 +264,12 @@ class TestParseLLMResponse:
 
     def test_clamps_confidence_bounds(self) -> None:
         """Confidence is clamped to [0, 100]."""
-        response = '{"confidence": 999, "direction": "long", "bias": "bullish", "setup": "test", "entry_zone": "test", "stop_loss": "test", "targets": [], "invalidation": "test", "confluence": "test", "indicators": {}, "rationale": "test"}'
+        response = (
+            '{"confidence": 999, "direction": "long", "bias": "bullish", '
+            '"setup": "test", "entry_zone": "test", "stop_loss": "test", '
+            '"targets": [], "invalidation": "test", "confluence": "test", '
+            '"indicators": {}, "rationale": "test"}'
+        )
         fallback = {"confidence": 0, "direction": "flat", "indicators": {}, "rationale": "fb"}
         result = _parse_llm_response(response, fallback)
         assert result["confidence"] == 100.0
@@ -332,7 +337,9 @@ class TestMarketAnalystAgentProcess:
                 {
                     "message": {
                         "content": (
-                            '{"confidence": 82.5, "direction": "long", "bias": "bullish", "setup": "test", "entry_zone": "test", "stop_loss": "test", "targets": [], "invalidation": "test", "confluence": "test", '
+                            '{"confidence": 82.5, "direction": "long", "bias": "bullish", '
+                            '"setup": "test", "entry_zone": "test", "stop_loss": "test", '
+                            '"targets": [], "invalidation": "test", "confluence": "test", '
                             '"indicators": {"rsi": 58.2}, '
                             '"rationale": "Bullish trend with momentum"}'
                         ),

@@ -98,7 +98,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
 
     def _parse_llm_response(self, text: str) -> dict[str, Any]:
         """Parse LLM JSON response safely, falling back on error."""
-        cleaned = re.sub(r'^```(?:json)?\s*|\s*```$', '', text, flags=re.MULTILINE).strip()
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
 
         try:
             data = json.loads(cleaned)
@@ -107,7 +107,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
             logger.error(f"LLM JSON parse FAILED: {e}. Raw output: {text[:500]}")
 
             # Try to salvage with regex if possible
-            match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+            match = re.search(r"\{.*\}", cleaned, re.DOTALL)
             if match:
                 try:
                     data = json.loads(match.group())
@@ -122,7 +122,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
                 "key_events": ["Error: Could not parse LLM analysis"],
                 "impact_scores": {},
                 "sources": [],
-                "rationale": "LLM failed to return valid JSON."
+                "rationale": "LLM failed to return valid JSON.",
             }
 
     async def process(self, inputs: NewsInput) -> NewsOutput:
@@ -139,7 +139,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
                 key_events=["No recent news found"],
                 impact_scores={},
                 sources=[],
-                rationale="No news was returned by the provider."
+                rationale="No news was returned by the provider.",
             )
 
         # 2. Build prompt
@@ -149,10 +149,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
         try:
             # We want temperature 0.1 for consistent sentiment scoring (as per sentiment-analysis skill)
             result: RouterResult = await self.router.route(
-                agent_name="news",
-                messages=messages,
-                temperature=0.1,
-                max_tokens=500
+                agent_name="news", messages=messages, temperature=0.1, max_tokens=500
             )
 
             if not result.success:
@@ -162,7 +159,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
                     key_events=["Error: Router failed"],
                     impact_scores={},
                     sources=[],
-                    rationale="LLM router failed."
+                    rationale="LLM router failed.",
                 )
 
             # Extract content from OpenAI-style response
@@ -177,7 +174,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
                     key_events=["Error: Empty response"],
                     impact_scores={},
                     sources=[],
-                    rationale="Empty response from LLM."
+                    rationale="Empty response from LLM.",
                 )
 
             # 4. Parse & Validate
@@ -193,18 +190,10 @@ and return your sentiment analysis as valid JSON matching the specified schema."
         except ValidationError as ve:
             logger.error(f"NewsOutput validation failed: {ve}")
             return NewsOutput(
-                sentiment=0.0,
-                key_events=[],
-                impact_scores={},
-                sources=[],
-                rationale=f"Validation error: {ve}"
+                sentiment=0.0, key_events=[], impact_scores={}, sources=[], rationale=f"Validation error: {ve}"
             )
         except Exception as e:
             logger.error(f"NewsAgent execution failed: {e}")
             return NewsOutput(
-                sentiment=0.0,
-                key_events=[],
-                impact_scores={},
-                sources=[],
-                rationale=f"Execution error: {e}"
+                sentiment=0.0, key_events=[], impact_scores={}, sources=[], rationale=f"Execution error: {e}"
             )

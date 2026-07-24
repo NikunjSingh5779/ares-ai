@@ -30,7 +30,7 @@ async def test_news_agent_success(news_agent, mock_router):
     # Mock news fetching
     news_items = [
         {"title": "Fed cuts rates", "publisher": "Reuters"},
-        {"title": "Tech stocks rally", "publisher": "Bloomberg"}
+        {"title": "Tech stocks rally", "publisher": "Bloomberg"},
     ]
     news_agent.fetch_news = AsyncMock(return_value=news_items)
 
@@ -40,13 +40,11 @@ async def test_news_agent_success(news_agent, mock_router):
         "key_events": ["Fed cut rates by 50 bps", "Tech stocks rallied strongly"],
         "impact_scores": {"macro": 0.8, "tech_sector": 0.9},
         "sources": ["Reuters", "Bloomberg"],
-        "rationale": "Very positive macro event."
+        "rationale": "Very positive macro event.",
     }
     router_result = RouterResult()
     router_result.success = True
-    router_result.response = {
-        "choices": [{"message": {"content": json.dumps(expected_json)}}]
-    }
+    router_result.response = {"choices": [{"message": {"content": json.dumps(expected_json)}}]}
     mock_router.route.return_value = router_result
 
     result = await news_agent.process(NewsInput(symbol="BTC-USD"))

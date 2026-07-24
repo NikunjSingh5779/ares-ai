@@ -92,8 +92,7 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
             return None
         try:
             return self.chroma_client.get_or_create_collection(
-                name=f"ares_memory_{strategy_id}",
-                metadata={"hnsw:space": "cosine"}
+                name=f"ares_memory_{strategy_id}", metadata={"hnsw:space": "cosine"}
             )
         except Exception as e:
             logger.error(f"Unhandled exception: {e}", exc_info=True)
@@ -205,11 +204,9 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                     doc_id = f"{symbol}_{datetime.now(UTC).timestamp()}_{i}"
                     ids.append(doc_id)
                     docs.append(mem["content"])
-                    metadatas.append({
-                        "type": mem["type"],
-                        "importance": mem["importance"],
-                        "timestamp": mem["timestamp"]
-                    })
+                    metadatas.append(
+                        {"type": mem["type"], "importance": mem["importance"], "timestamp": mem["timestamp"]}
+                    )
                 try:
                     collection.add(ids=ids, documents=docs, metadatas=metadatas)
                 except Exception as e:

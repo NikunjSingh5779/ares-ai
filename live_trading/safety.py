@@ -66,7 +66,7 @@ class KillSwitch:
                 port=settings.redis_port,
                 password=settings.redis_password or None,
                 db=settings.redis_db,
-                decode_responses=True
+                decode_responses=True,
             )
         else:
             self._redis = redis_client
@@ -120,11 +120,7 @@ class KillSwitch:
 
     def arm(self) -> None:
         """Re-arm the kill switch (human confirmation required)."""
-        self._redis.delete(
-            "ares:kill_switch:active",
-            "ares:kill_switch:reason",
-            "ares:kill_switch:timestamp"
-        )
+        self._redis.delete("ares:kill_switch:active", "ares:kill_switch:reason", "ares:kill_switch:timestamp")
 
     # ── Pre-trade check ────────────────────────────────────────────
 

@@ -19,6 +19,7 @@ def engine():
     eng.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=48000.0, take_profit=55000.0)
     return eng
 
+
 @pytest.fixture
 def ingestor():
     mock_ingestor = AsyncMock(spec=MarketDataIngestor)
@@ -40,6 +41,7 @@ def ingestor():
     ]
     return mock_ingestor
 
+
 @pytest.fixture
 def session_factory():
     mock_session = AsyncMock()
@@ -50,6 +52,7 @@ def session_factory():
     mock_factory = MagicMock()
     mock_factory.return_value.__aenter__.return_value = mock_session
     return mock_factory
+
 
 @pytest.mark.asyncio
 async def test_worker_tick_closes_trade_and_persists(engine, ingestor, session_factory):
@@ -64,14 +67,13 @@ async def test_worker_tick_closes_trade_and_persists(engine, ingestor, session_f
     assert len(engine._closed_trades) == 1
     assert engine._closed_trades[0].exit_reason == "take_profit"
 
-    ingestor.ingest_batch.assert_called_once_with(
-        symbols=["BTC-USD"], source="yahoo", interval="1m", limit=1
-    )
+    ingestor.ingest_batch.assert_called_once_with(symbols=["BTC-USD"], source="yahoo", interval="1m", limit=1)
 
     # Check DB was updated
     session = session_factory.return_value.__aenter__.return_value
     assert session.execute.call_count >= 5  # get acc, get port, update pos, update port, insert order
     session.commit.assert_called_once()
+
 
 @pytest.mark.asyncio
 async def test_worker_start_stop(engine, ingestor, session_factory):

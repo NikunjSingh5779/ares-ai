@@ -246,6 +246,7 @@ def compute_atr(candles: list[OHLCVData], period: int = 14) -> float | None:
     recent_tr = true_ranges[-period:]
     return round(sum(recent_tr) / period, 4)
 
+
 # ---------------------------------------------------------------------------
 # Stochastic Oscillator
 # ---------------------------------------------------------------------------
@@ -267,8 +268,8 @@ def compute_stochastic(
 
     raw_k = []
     for i in range(period, len(candles) + 1):
-        highest_high = max(highs[i - period:i])
-        lowest_low = min(lows[i - period:i])
+        highest_high = max(highs[i - period : i])
+        lowest_low = min(lows[i - period : i])
         current_close = closes[i - 1]
 
         if highest_high == lowest_low:
@@ -282,7 +283,7 @@ def compute_stochastic(
 
     smoothed_k = []
     for i in range(smooth_k, len(raw_k) + 1):
-        smoothed_k.append(sum(raw_k[i-smooth_k:i]) / smooth_k)
+        smoothed_k.append(sum(raw_k[i - smooth_k : i]) / smooth_k)
 
     if len(smoothed_k) < smooth_d:
         return {"k": round(smoothed_k[-1], 2) if smoothed_k else None, "d": None}
@@ -291,9 +292,11 @@ def compute_stochastic(
 
     return {"k": round(smoothed_k[-1], 2), "d": round(smoothed_d, 2)}
 
+
 # ---------------------------------------------------------------------------
 # ADX (Average Directional Index) - simplified
 # ---------------------------------------------------------------------------
+
 
 def compute_adx(candles: list[OHLCVData], period: int = 14) -> float | None:
     """Simplified ADX calculation for trend strength."""
@@ -315,7 +318,7 @@ def compute_adx(candles: list[OHLCVData], period: int = 14) -> float | None:
         tr2 = pd.DataFrame(abs(high - close.shift(1)))
         tr3 = pd.DataFrame(abs(low - close.shift(1)))
         frames = [tr1, tr2, tr3]
-        tr = pd.concat(frames, axis=1, join='inner').max(axis=1)
+        tr = pd.concat(frames, axis=1, join="inner").max(axis=1)
 
         atr = tr.rolling(period).mean()
         plus_di = 100 * (plus_dm.rolling(period).mean() / atr)
@@ -331,9 +334,11 @@ def compute_adx(candles: list[OHLCVData], period: int = 14) -> float | None:
         logger.error(f"Unhandled exception: {e}", exc_info=True)
         return None
 
+
 # ---------------------------------------------------------------------------
 # Time Series Metrics (Stationarity & STL)
 # ---------------------------------------------------------------------------
+
 
 def compute_time_series_metrics(candles: list[OHLCVData]) -> dict[str, Any]:
     """Compute ADF stationarity and STL decomposition metrics using statsmodels."""

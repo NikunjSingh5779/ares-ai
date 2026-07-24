@@ -199,6 +199,7 @@ class LLMClient:
                 )
                 self._record_failure(model)
                 import asyncio
+
                 await asyncio.sleep(5)
             else:
                 logger.error(f"HTTP error from provider '{provider}': {e.response.text}")

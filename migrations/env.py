@@ -39,6 +39,7 @@ def run_migrations_offline() -> None:
 
     """
     url = config.get_main_option("sqlalchemy.url")
+
     def include_object(object, name, type_, reflected, compare_to):
         if type_ == "table" and reflected and name not in target_metadata.tables:
             return False

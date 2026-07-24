@@ -19,6 +19,7 @@ async def ares_error_handler(request: Request, exc: AresError) -> JSONResponse:
         content={"detail": str(exc), "error_type": exc.__class__.__name__},
     )
 
+
 def setup_exception_handlers(app) -> None:
     """Register custom exception handlers with the FastAPI app."""
     app.add_exception_handler(AresError, ares_error_handler)

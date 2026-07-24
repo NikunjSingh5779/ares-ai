@@ -503,14 +503,14 @@ def _parse_quant_response(
         return fallback_result
 
     text = response_text.strip()
-    cleaned = re.sub(r'^```(?:json)?\s*|\s*```$', '', text, flags=re.MULTILINE)
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE)
 
     data = None
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError as e:
         logger.error(f"LLM JSON parse FAILED: {e}. Raw output: {text[:500]}")
-        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
         if match:
             try:
                 data = json.loads(match.group())
