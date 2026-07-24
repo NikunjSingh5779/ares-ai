@@ -109,7 +109,7 @@ Read the full `SKILL.md` before applying code.
     - **Testing challenges encountered:**
       - `backend/main` calls `setup_logging()` at module import time, which clears all root logger handlers (including caplog's `_CapLogHandler`). Redis/ChromaDB tests use a dedicated `StreamHandler(io.StringIO())` on the `ares` logger instead of `caplog` or `capsys`.
       - `AsyncEngine.connect` is a read-only descriptor — cannot be monkeypatched with `patch.object()`. The connection test uses a synchronous `_FailingEngine` class that raises on `__aenter__`.
-  - **Verification:** 800+ tests pass, coverage maintained. Ruff: all checks passed. CI Run #30098178824 (`fix/silent-except-logging` @ `f00341d`): Backend Tests ✓, Frontend Typecheck ✓, Docker Compose Validation ✓.
+  - **Verification:** 800+ tests pass, coverage maintained. Ruff: all checks passed. CI Run #30098178824 (`fix/silent-except-logging` @ `f00341d`): Backend Tests ✓, Frontend Typecheck ✓, Docker Compose Validation ✓. Follow-up coverage test commits (`5b0b4a4`, `1046952`) confirmed via CI Run #65: all 3 jobs green.
 
 **✅ P1 — verified this session**
 - **Item 4 — Model roster drift → RESOLVED.** Both `AGENTS.md` and `CLAUDE.md` correctly state: `configs/models.yaml` is the SINGLE SOURCE OF TRUTH. No model names hardcoded in doc bodies.
