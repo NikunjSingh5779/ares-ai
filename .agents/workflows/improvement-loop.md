@@ -86,26 +86,19 @@ Read the full `SKILL.md` before applying code.
   - **Regression guard:** `test_record_agent_fallback_on_router_fallback` goes through `NewsAgent.process()` end-to-end with a fallback router result and asserts `record_agent_fallback` fires with the correct args. A revert-test confirmed: undoing the `.route()`→`.execute()` change alone causes 3/5 news tests to fail — `spec=ModelRouter` catches the first error.
   - **Verification:** 200 tests pass. CI Run #30096811151 (`fix/news-agent-router-call` @ `43ec469`): Backend Tests ✓, Frontend Typecheck ✓, Docker Compose Validation ✓.
 
-**🔴 P1 — Silent `except Exception:` blocks** (Rule 2 violation)
-  - 8 verified instances where `except Exception:` swallows errors with no logging, ranked by impact:
-  - **HIGH priority — cache errors indistinguishable from success** (these return a falsy/default value that looks like "no data" or "nothing to do," silently hiding Redis failures):
-    1. `backend/data/cache.py:123` — `get_candles`: `except Exception: return None` — cache miss and Redis crash return the same value, caller can't tell.
-    2. `backend/data/cache.py:146` — `set_candles`: `except Exception: return 0` — write failures hidden.
-    3. `backend/data/cache.py:165` — `invalidate`: `except Exception: return False` — invalidation silently fails.
-    4. `backend/data/cache.py:179` — `clear_all`: `except Exception: return False` — clear silently fails.
-    5. `backend/data/sources/registry.py:39` — `close_all`: **bare `except Exception: pass`** — worst offender; a resource close failing is completely invisible.
-  - **LOWER priority — health-check bool returns** (these are designed to return True/False; still worth a debug-level log):
-    6. `database/connection.py:47` — `check_connection`: `except Exception: return False`
-    7. `backend/main.py:184` — `_check_redis`: `except Exception: return False`
-    8. `backend/main.py:199` — `_check_chromadb`: `except Exception: return False`
-  - **Fix:** add `logger.exception(...)` or `logger.debug(...)` to every `except` block before returning the fallback value.
+**✅ P1 — resolved this session, pushed to `fix/silent-except-logging` @ `98fcde5`**
+- **8 silent `except Exception:` blocks → RESOLVED.** All 8 instances listed below now log the exception before returning the fallback value. `logger.exception()` (includes full traceback) for the 5 HIGH-priority cache/registry sites; `logger.debug(exc_info=True)` for the 3 health-check sites.
+  - **HIGH priority (4x cache.py + 1x registry.py):** `get_candles`, `set_candles`, `invalidate`, `clear_all` each log `"<method> failed — Redis may be unavailable"` before returning None/0/False. `registry.py:close_all` logs per-source `"Failed to close data source: {name}"` instead of bare `pass`.
+  - **LOWER priority (3 health-checks):** `connection.py:check_connection`, `_check_redis`, `_check_chromadb` each log `"<component> health check failed"` at debug level.
+  - Added missing `import logging` + `logger = logging.getLogger(__name__)` to cache.py, registry.py, connection.py.
+  - **Verification:** 800 tests pass, 82.43% coverage. Pushed to `fix/silent-except-logging` @ `98fcde5`. No CI confirmation yet (push just completed).
 
 **✅ P1 — verified this session**
 - **Item 4 — Model roster drift → RESOLVED.** Both `AGENTS.md` and `CLAUDE.md` correctly state: `configs/models.yaml` is the SINGLE SOURCE OF TRUTH. No model names hardcoded in doc bodies.
 - **Item 6 — Documentation drift → RESOLVED.** README says "default 15%" for kill-switch max drawdown; `KillSwitch.__init__` default = 15.0; `settings.live_max_drawdown_pct` = 15.0. The separate `settings.max_drawdown_pct` = 20.0 is a different, broader risk threshold. No actual drift.
 
 **🟡 Discovery pass findings (2026-07-24)**
-- ❌ 8 `except Exception:` blocks silently swallow errors with no logging (Rule 2 violation) — see P1 backlog entry below.
+- ✅ 8 `except Exception:` blocks now log errors (Rule 2 violation resolved in commit `98fcde5`).
 - ✅ No stale root-level files (cleanup from `658f558` holding)
 - ✅ No duplicate workflow files found
 - ✅ AGENTS.md ↔ models.yaml model roster in sync
