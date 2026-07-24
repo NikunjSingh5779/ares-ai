@@ -86,12 +86,13 @@ Read the full `SKILL.md` before applying code.
   - **Regression guard:** `test_record_agent_fallback_on_router_fallback` goes through `NewsAgent.process()` end-to-end with a fallback router result and asserts `record_agent_fallback` fires with the correct args. A revert-test confirmed: undoing the `.route()`→`.execute()` change alone causes 3/5 news tests to fail — `spec=ModelRouter` catches the first error.
   - **Verification:** 200 tests pass. CI Run #30096811151 (`fix/news-agent-router-call` @ `43ec469`): Backend Tests ✓, Frontend Typecheck ✓, Docker Compose Validation ✓.
 
-**✅ P1 — resolved this session, pushed to `fix/silent-except-logging` @ `98fcde5`**
+**✅ P1 — resolved this session, pushed + CI-confirmed to `fix/silent-except-logging` @ `f00341d`**
 - **8 silent `except Exception:` blocks → RESOLVED.** All 8 instances listed below now log the exception before returning the fallback value. `logger.exception()` (includes full traceback) for the 5 HIGH-priority cache/registry sites; `logger.debug(exc_info=True)` for the 3 health-check sites.
   - **HIGH priority (4x cache.py + 1x registry.py):** `get_candles`, `set_candles`, `invalidate`, `clear_all` each log `"<method> failed — Redis may be unavailable"` before returning None/0/False. `registry.py:close_all` logs per-source `"Failed to close data source: {name}"` instead of bare `pass`.
   - **LOWER priority (3 health-checks):** `connection.py:check_connection`, `_check_redis`, `_check_chromadb` each log `"<component> health check failed"` at debug level.
   - Added missing `import logging` + `logger = logging.getLogger(__name__)` to cache.py, registry.py, connection.py.
-  - **Verification:** 800 tests pass, 82.43% coverage. Pushed to `fix/silent-except-logging` @ `98fcde5`. No CI confirmation yet (push just completed).
+  - **Ruff bumps:** Initial push triggered 5 E402 import-ordering errors (logger statement between import groups). Fixed in follow-up commit `f00341d`.
+  - **Verification:** 800 tests pass, 82.43% coverage. Ruff: all checks passed. CI Run #30098178824 (`fix/silent-except-logging` @ `f00341d`): Backend Tests ✓, Frontend Typecheck ✓, Docker Compose Validation ✓.
 
 **✅ P1 — verified this session**
 - **Item 4 — Model roster drift → RESOLVED.** Both `AGENTS.md` and `CLAUDE.md` correctly state: `configs/models.yaml` is the SINGLE SOURCE OF TRUTH. No model names hardcoded in doc bodies.
