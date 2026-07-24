@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 
 from backend.data.sources.base import BaseDataSource
-
-logger = logging.getLogger(__name__)
 from backend.data.sources.binance import BinanceSource
 from backend.data.sources.coingecko import CoinGeckoSource
 from backend.data.sources.yahoo import YahooFinanceSource
+
+logger = logging.getLogger(__name__)
 
 
 class SourceRegistry:

@@ -7,9 +7,9 @@ import logging
 from datetime import datetime
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from backend.data.models import OHLCVData
+
+logger = logging.getLogger(__name__)
 
 # Cache key pattern components
 KEY_PREFIX = "ares:market_data"
