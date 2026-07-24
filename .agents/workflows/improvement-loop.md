@@ -71,11 +71,20 @@ Read the full `SKILL.md` before applying code.
 **✅ Resolved this session (pushed, execution-confirmed by CI)**
 - **P0 — Dead metrics hooks → RESOLVED.** All 4 functions wired to production code:
   1. `record_agent_run(agent, status)` called from `agents/base.py` `BaseAgent.run()` (success/error)
-  2. `record_agent_fallback(agent, from_model, to_model)` called after every `router.execute()` in `market_analyst.py`, `quant.py`, `risk.py`, `news.py`, `supervisor.py` when `fallback_used` is True
+  2. `record_agent_fallback(agent, from_model, to_model)` called after every `router.execute()` in `market_analyst.py`, `quant.py`, `risk.py`, `supervisor.py` (and in `news.py` — see NewsAgent fix entry below; the call was originally unreachable dead code until `.route()`→`.execute()` was fixed in `43ec469`)
   3. `set_kill_switch_active(active)` called from `live_trading/safety.py` (`activate`: True, `auto_trigger`: True, `arm`: False)
   4. `record_live_order(status)` called from `live_trading/engine.py` `execute_signal()` (status from order, or "error")
   - 12 new integration tests patch the 4 functions and assert they fire during real agent/kill-switch/order-execution flows. 20/20 metric tests pass.
   - Verified: `backend/core/metrics.py` coverage 92%.
+
+**✅ Resolved this session (pushed, execution-confirmed by CI — Run #30096811151, all 3 jobs green)**
+- **P0 — NewsAgent calls nonexistent router method; sentiment had been fake since M4 → RESOLVED.**
+  - **Bug:** `agents/news.py` called `self.router.route(agent_name="news", ...)` but `ModelRouter` (agents/router.py) only defines `.execute()` — no `.route()` method exists anywhere in the codebase. Every real pipeline run since News Agent was built raised `AttributeError`, silently caught by `except Exception` and converted to `NewsOutput(sentiment=0.0, rationale="Execution error: ...")`. The `record_agent_fallback` call wired into news.py in `58670cb` was unreachable dead code.
+  - **Root cause (CI evasion):** `tests/test_agents/test_news.py` mocked the router as bare `AsyncMock()` with no `spec=ModelRouter`, so `mock_router.route.return_value` passed despite the real class having no `.route`. Same unspecced pattern in `test_market_analyst.py`, `test_quant.py`, `test_risk.py`.
+  - **Fix:** `agents/news.py:152` now derives `model_chain`/`rpm` from `self.context.model_preferences` and calls `self.router.execute(model_chain=, messages=, temperature=, max_tokens=, rpm=)` — matching the exact pattern used by `market_analyst.py`, `quant.py`, and `risk.py`. Empty `model_chain` returns a neutral output early. `record_agent_fallback` is now genuinely reachable.
+  - **Defensive hardening (all 4 agent test files):** All `router = AsyncMock()` throughout `test_news.py`, `test_market_analyst.py`, `test_quant.py`, `test_risk.py` changed to `AsyncMock(spec=ModelRouter)`. Any future interface drift (a nonexistent method call) now raises `AttributeError` at test time instead of passing silently.
+  - **Regression guard:** `test_record_agent_fallback_on_router_fallback` goes through `NewsAgent.process()` end-to-end with a fallback router result and asserts `record_agent_fallback` fires with the correct args. A revert-test confirmed: undoing the `.route()`→`.execute()` change alone causes 3/5 news tests to fail — `spec=ModelRouter` catches the first error.
+  - **Verification:** 200 tests pass. CI Run #30096811151 (`fix/news-agent-router-call` @ `43ec469`): Backend Tests ✓, Frontend Typecheck ✓, Docker Compose Validation ✓.
 
 **🔴 P1 — Silent `except Exception:` blocks** (Rule 2 violation)
   - 8 verified instances where `except Exception:` swallows errors with no logging, ranked by impact:
