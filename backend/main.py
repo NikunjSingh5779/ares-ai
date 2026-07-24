@@ -10,10 +10,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 
+from backend.core.error_handlers import setup_exception_handlers
 from backend.core.logging import setup_logging
 from backend.core.metrics import MetricsMiddleware
 from backend.core.rate_limit import RateLimitMiddleware
 from backend.core.security import SecurityHeadersMiddleware
+from backend.data.ingestor import MarketDataIngestor
 from backend.routers import (
     agents_router,
     analysis_router,
@@ -24,16 +26,14 @@ from backend.routers import (
 )
 from backend.routers.auth import router as auth_router
 from backend.routers.backtest import router as backtest_router
+from backend.routers.trading import _get_engine as get_paper_trading_engine
 from backend.routers.users import router as users_router
 from configs.settings import settings
+from database.connection import async_session_factory
+from paper_trading.worker import PaperTradingWorker
 
 logger = logging.getLogger("ares")
 
-
-from backend.data.ingestor import MarketDataIngestor
-from backend.routers.trading import _get_engine as get_paper_trading_engine
-from database.connection import async_session_factory
-from paper_trading.worker import PaperTradingWorker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
             "debug": settings.api_debug,
         },
     )
-    
+
     # Start Paper Trading background worker
     engine = get_paper_trading_engine()
     ingestor = MarketDataIngestor()
@@ -78,8 +78,6 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
-
-from backend.core.error_handlers import setup_exception_handlers
 
 # ── Logging configuration ──────────────────────────────────────────────
 
@@ -184,6 +182,7 @@ async def _check_redis() -> bool:
         await r.aclose()
         return result
     except Exception:
+        logger.debug("Redis health check failed", exc_info=True)
         return False
 
 
@@ -199,4 +198,5 @@ async def _check_chromadb() -> bool:
         await asyncio.wait_for(asyncio.to_thread(client.heartbeat), timeout=3)
         return True
     except Exception:
+        logger.debug("ChromaDB health check failed", exc_info=True)
         return False

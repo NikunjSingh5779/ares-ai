@@ -1,6 +1,7 @@
 """Users router."""
 
 from __future__ import annotations
+
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -34,7 +35,7 @@ async def get_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
         )
-    
+
     user = await user_service.get_by_id(db, user_id)
     if not user:
         raise HTTPException(

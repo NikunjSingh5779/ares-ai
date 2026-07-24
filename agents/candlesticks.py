@@ -5,8 +5,6 @@ Pure functions to evaluate OHLCV data for common candlestick patterns.
 
 from __future__ import annotations
 
-from typing import Any
-
 from backend.data.models import OHLCVData
 
 
@@ -19,17 +17,17 @@ def detect_candlestick_patterns(candles: list[OHLCVData]) -> list[str]:
         return []
 
     patterns = []
-    
+
     # Calculate some basics about the current and previous candles
     current = candles[-1]
     prev = candles[-2]
-    
+
     # Current candle components
     body_size = abs(current.close - current.open)
     upper_wick = current.high - max(current.open, current.close)
     lower_wick = min(current.open, current.close) - current.low
     total_range = current.high - current.low
-    
+
     if total_range == 0:
         return patterns
 
@@ -37,7 +35,7 @@ def detect_candlestick_patterns(candles: list[OHLCVData]) -> list[str]:
     prev_body_size = abs(prev.close - prev.open)
     prev_is_bullish = prev.close > prev.open
     prev_is_bearish = prev.close < prev.open
-    
+
     is_bullish = current.close > current.open
     is_bearish = current.close < current.open
 

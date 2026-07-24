@@ -7,12 +7,13 @@ Handles edge cases: insufficient data, zero division, NaN propagation.
 from __future__ import annotations
 
 import logging
-logger = logging.getLogger(__name__)
 import math
 from typing import Any
 
-from backend.data.models import OHLCVData
 from agents.candlesticks import detect_candlestick_patterns
+from backend.data.models import OHLCVData
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -250,7 +251,9 @@ def compute_atr(candles: list[OHLCVData], period: int = 14) -> float | None:
 # ---------------------------------------------------------------------------
 
 
-def compute_stochastic(candles: list[OHLCVData], period: int = 14, smooth_k: int = 3, smooth_d: int = 3) -> dict[str, float | None]:
+def compute_stochastic(
+    candles: list[OHLCVData], period: int = 14, smooth_k: int = 3, smooth_d: int = 3,
+) -> dict[str, float | None]:
     """Stochastic Oscillator (%K and %D)."""
     if len(candles) < period + smooth_k + smooth_d:
         return {"k": None, "d": None}
@@ -264,25 +267,25 @@ def compute_stochastic(candles: list[OHLCVData], period: int = 14, smooth_k: int
         highest_high = max(highs[i - period:i])
         lowest_low = min(lows[i - period:i])
         current_close = closes[i - 1]
-        
+
         if highest_high == lowest_low:
             k = 50.0
         else:
             k = ((current_close - lowest_low) / (highest_high - lowest_low)) * 100
         raw_k.append(k)
-        
+
     if len(raw_k) < smooth_k:
         return {"k": None, "d": None}
-    
+
     smoothed_k = []
     for i in range(smooth_k, len(raw_k) + 1):
         smoothed_k.append(sum(raw_k[i-smooth_k:i]) / smooth_k)
-        
+
     if len(smoothed_k) < smooth_d:
         return {"k": round(smoothed_k[-1], 2) if smoothed_k else None, "d": None}
-        
+
     smoothed_d = sum(smoothed_k[-smooth_d:]) / smooth_d
-    
+
     return {"k": round(smoothed_k[-1], 2), "d": round(smoothed_d, 2)}
 
 # ---------------------------------------------------------------------------
@@ -295,27 +298,26 @@ def compute_adx(candles: list[OHLCVData], period: int = 14) -> float | None:
         return None
     try:
         import pandas as pd
-        import numpy as np
-        
+
         high = pd.Series([c.high for c in candles])
         low = pd.Series([c.low for c in candles])
         close = pd.Series([c.close for c in candles])
-        
+
         plus_dm = high.diff()
         minus_dm = low.diff()
         plus_dm[plus_dm < 0] = 0
         minus_dm[minus_dm > 0] = 0
-        
+
         tr1 = pd.DataFrame(high - low)
         tr2 = pd.DataFrame(abs(high - close.shift(1)))
         tr3 = pd.DataFrame(abs(low - close.shift(1)))
         frames = [tr1, tr2, tr3]
         tr = pd.concat(frames, axis=1, join='inner').max(axis=1)
-        
+
         atr = tr.rolling(period).mean()
         plus_di = 100 * (plus_dm.rolling(period).mean() / atr)
         minus_di = abs(100 * (minus_dm.rolling(period).mean() / atr))
-        
+
         dx = (abs(plus_di - minus_di) / abs(plus_di + minus_di)) * 100
         adx = dx.rolling(period).mean()
         val = adx.iloc[-1]
@@ -334,8 +336,8 @@ def compute_time_series_metrics(candles: list[OHLCVData]) -> dict[str, Any]:
     """Compute ADF stationarity and STL decomposition metrics using statsmodels."""
     try:
         import pandas as pd
-        from statsmodels.tsa.stattools import adfuller
         from statsmodels.tsa.seasonal import STL
+        from statsmodels.tsa.stattools import adfuller
     except ImportError:
         return {"stationarity": "unknown", "trend_strength": None, "seasonal_strength": None}
 
@@ -414,7 +416,7 @@ def compute_all_indicators(
     # Advanced Momentum / Trend
     stoch = compute_stochastic(candles)
     adx_14 = compute_adx(candles, 14)
-    
+
     # Time Series Stats
     ts_metrics = compute_time_series_metrics(candles)
 

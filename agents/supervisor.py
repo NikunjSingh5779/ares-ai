@@ -13,9 +13,8 @@ Per RELIABILITY section:
 
 from __future__ import annotations
 
-import logging
-logger = logging.getLogger(__name__)
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -41,6 +40,9 @@ from agents.state import (
     RiskOutput,
     VisionOutput,
 )
+from backend.core.metrics import record_agent_fallback
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Agent output schema registry — maps agent names to their Pydantic models
@@ -204,6 +206,11 @@ async def _execute_agent_node(
         max_tokens=model_config.max_tokens,
         rpm=model_config.rpm,
     )
+
+    # Record model fallback metric
+    if router_result.fallback_used:
+        model_chain = model_config.model_chain
+        record_agent_fallback(agent_name, model_chain[0] if model_chain else "unknown", router_result.model_used)
 
     # Record model chain used
     update["model_chain_used"] = {

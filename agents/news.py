@@ -19,12 +19,13 @@ from pydantic import ValidationError
 from agents.base import AgentContext, BaseAgent
 from agents.router import ModelRouter, RouterResult
 from agents.state import NewsInput, NewsOutput
+from backend.core.metrics import record_agent_fallback
 
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are the News & Sentiment Analyst Agent in the ARES AI trading system.
 
-Your role: Analyze the provided news headlines and market context, aggregate them, 
+Your role: Analyze the provided news headlines and market context, aggregate them,
 and produce a structured sentiment analysis matching the schema below.
 
 Rules:
@@ -38,7 +39,8 @@ Rules:
      "rationale": "<string explaining your synthesis and how you derived the sentiment>"
    }
 3. Deduplicate stories: if multiple headlines cover the same event, synthesize them into one key_event.
-4. Separate signal from noise: ignore routine market recap headlines and focus on actual catalysts (earnings, macro data, policy changes, major corporate events).
+4. Separate signal from noise: ignore routine market recap headlines
+   and focus on actual catalysts (earnings, macro data, policy changes, major corporate events).
 5. If the headlines lack clear directional catalysts, default your sentiment closer to 0.0."""
 
 
@@ -58,7 +60,7 @@ class NewsAgent(BaseAgent[NewsInput, NewsOutput]):
         """Fetch recent news for a symbol using Yahoo Finance."""
         base_symbol = symbol.split("-")[0] if "-" in symbol else symbol
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={base_symbol}&newsCount={count}"
-        
+
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -71,7 +73,7 @@ class NewsAgent(BaseAgent[NewsInput, NewsOutput]):
 
     def build_prompt(self, symbol: str, news_items: list[dict[str, Any]]) -> list[dict[str, str]]:
         """Build the messages for the LLM analysis call."""
-        
+
         if not news_items:
             news_text = "No recent news found for this symbol."
         else:
@@ -87,7 +89,7 @@ class NewsAgent(BaseAgent[NewsInput, NewsOutput]):
 Recent Headlines:
 {news_text}
 
-Analyze the above news items, synthesize the core events (deduplicating where needed), 
+Analyze the above news items, synthesize the core events (deduplicating where needed),
 and return your sentiment analysis as valid JSON matching the specified schema."""
 
         return [
@@ -98,13 +100,13 @@ and return your sentiment analysis as valid JSON matching the specified schema."
     def _parse_llm_response(self, text: str) -> dict[str, Any]:
         """Parse LLM JSON response safely, falling back on error."""
         cleaned = re.sub(r'^```(?:json)?\s*|\s*```$', '', text, flags=re.MULTILINE).strip()
-        
+
         try:
             data = json.loads(cleaned)
             return data
         except json.JSONDecodeError as e:
             logger.error(f"LLM JSON parse FAILED: {e}. Raw output: {text[:500]}")
-            
+
             # Try to salvage with regex if possible
             match = re.search(r'\{.*\}', cleaned, re.DOTALL)
             if match:
@@ -114,7 +116,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
                     return data
                 except json.JSONDecodeError:
                     pass
-                    
+
             logger.error("Falling back to neutral news sentiment due to JSON parse failure.")
             return {
                 "sentiment": 0.0,
@@ -127,10 +129,10 @@ and return your sentiment analysis as valid JSON matching the specified schema."
     async def process(self, inputs: NewsInput) -> NewsOutput:
         """Execute the news agent logic."""
         logger.info(f"Running NewsAgent for {inputs.symbol}")
-        
+
         # 1. Fetch News
         news_items = await self.fetch_news(inputs.symbol, count=15)
-        
+
         if not news_items:
             # Fast-path fallback if no news is available
             return NewsOutput(
@@ -140,20 +142,37 @@ and return your sentiment analysis as valid JSON matching the specified schema."
                 sources=[],
                 rationale="No news was returned by the provider."
             )
-            
+
         # 2. Build prompt
         messages = self.build_prompt(inputs.symbol, news_items)
-        
+
         # 3. Call LLM via router
         try:
+            # Derive model preferences from context (same pattern as market_analyst/quant/risk)
+            model_chain = self.context.model_preferences.get("model_chain", [])
+            rpm = self.context.model_preferences.get("rpm", 10)
+
+            if not model_chain:
+                return NewsOutput(
+                    sentiment=0.0,
+                    key_events=["Error: No model chain configured"],
+                    impact_scores={},
+                    sources=[],
+                    rationale="No model chain available for news analysis."
+                )
+
             # We want temperature 0.1 for consistent sentiment scoring (as per sentiment-analysis skill)
-            result: RouterResult = await self.router.route(
-                agent_name="news",
+            result: RouterResult = await self.router.execute(
+                model_chain=model_chain,
                 messages=messages,
                 temperature=0.1,
-                max_tokens=500
+                max_tokens=500,
+                rpm=rpm,
             )
-            
+
+            if result.fallback_used:
+                record_agent_fallback(self.agent_name, model_chain[0], result.model_used)
+
             if not result.success:
                 logger.error(f"Router failed to get successful response. Errors: {result.errors}")
                 return NewsOutput(
@@ -163,13 +182,13 @@ and return your sentiment analysis as valid JSON matching the specified schema."
                     sources=[],
                     rationale="LLM router failed."
                 )
-                
+
             # Extract content from OpenAI-style response
             try:
                 response_text = result.response["choices"][0]["message"]["content"]
             except (KeyError, IndexError, TypeError):
                 response_text = ""
-                
+
             if not response_text:
                 return NewsOutput(
                     sentiment=0.0,
@@ -178,17 +197,17 @@ and return your sentiment analysis as valid JSON matching the specified schema."
                     sources=[],
                     rationale="Empty response from LLM."
                 )
-                
+
             # 4. Parse & Validate
             parsed_data = self._parse_llm_response(response_text)
-            
+
             # Ensure safe defaults for sources if LLM hallucinations happen
             if "sources" not in parsed_data or not isinstance(parsed_data["sources"], list):
                 # Auto-fill from actual data
                 parsed_data["sources"] = list(set([item.get("publisher", "Unknown") for item in news_items]))
-            
+
             return NewsOutput(**parsed_data)
-            
+
         except ValidationError as ve:
             logger.error(f"NewsOutput validation failed: {ve}")
             return NewsOutput(

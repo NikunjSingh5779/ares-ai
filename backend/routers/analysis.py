@@ -76,10 +76,10 @@ def _get_supervisor() -> Supervisor:
     from agents.journal import JournalAgent
     from agents.market_analyst import MarketAnalystAgent
     from agents.memory import MemoryAgent
+    from agents.news import NewsAgent
     from agents.quant import QuantAgent
     from agents.reflection import ReflectionAgent
     from agents.risk import RiskAgent
-    from agents.news import NewsAgent
     from backend.data.ingestor import MarketDataIngestor
     from backend.data.repository import MarketDataRepository
     from backend.routers.live import _get_engine as get_live_engine

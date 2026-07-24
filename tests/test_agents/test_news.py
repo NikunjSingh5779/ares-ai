@@ -1,20 +1,26 @@
 import json
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock
 
-from agents.news import NewsAgent
-from agents.state import NewsInput, NewsOutput
+import pytest
+
 from agents.base import AgentContext
-from agents.router import RouterResult
+from agents.news import NewsAgent
+from agents.router import ModelRouter, RouterResult
+from agents.state import NewsInput, NewsOutput
+
 
 @pytest.fixture
 def mock_context():
-    return AgentContext(task_id="test", session_id="test")
+    return AgentContext(
+        task_id="test",
+        session_id="test",
+        model_preferences={"model_chain": ["test-model"], "rpm": 10},
+    )
 
 
 @pytest.fixture
 def mock_router():
-    router = AsyncMock()
+    router = AsyncMock(spec=ModelRouter)
     return router
 
 
@@ -45,7 +51,7 @@ async def test_news_agent_success(news_agent, mock_router):
     router_result.response = {
         "choices": [{"message": {"content": json.dumps(expected_json)}}]
     }
-    mock_router.route.return_value = router_result
+    mock_router.execute.return_value = router_result
 
     result = await news_agent.process(NewsInput(symbol="BTC-USD"))
 
@@ -65,7 +71,7 @@ async def test_news_agent_json_fallback(news_agent, mock_router):
     router_result.response = {
         "choices": [{"message": {"content": "I think the sentiment is positive but here's some text instead of JSON."}}]
     }
-    mock_router.route.return_value = router_result
+    mock_router.execute.return_value = router_result
 
     result = await news_agent.process(NewsInput(symbol="BTC-USD"))
 
@@ -81,7 +87,7 @@ async def test_news_agent_no_news_fallback(news_agent, mock_router):
     result = await news_agent.process(NewsInput(symbol="BTC-USD"))
 
     # Should short-circuit without calling router
-    mock_router.route.assert_not_called()
+    mock_router.execute.assert_not_called()
     assert isinstance(result, NewsOutput)
     assert result.sentiment == 0.0
     assert "No news" in result.rationale
@@ -89,8 +95,45 @@ async def test_news_agent_no_news_fallback(news_agent, mock_router):
 
 def test_parse_llm_response_with_regex(news_agent):
     # Tests the regex fallback inside _parse_llm_response
-    content = "Here is my JSON:\n```json\n{\"sentiment\": 0.5, \"key_events\": [], \"impact_scores\": {}, \"sources\": [], \"rationale\": \"Ok\"}\n```\nSome other text."
-    
+    content = "Here is my JSON:\n```json\n{\"sentiment\": 0.5, \"key_events\": [], " \
+        "\"impact_scores\": {}, \"sources\": [], \"rationale\": \"Ok\"}\n```\nSome other text."
+
     parsed = news_agent._parse_llm_response(content)
     assert parsed["sentiment"] == 0.5
     assert parsed["rationale"] == "Ok"
+
+
+@pytest.mark.asyncio
+async def test_record_agent_fallback_on_router_fallback(mock_context, mock_router):
+    """record_agent_fallback fires when router uses a fallback model in process()."""
+    from unittest.mock import patch
+
+    mock_context.model_preferences = {"model_chain": ["primary-model", "fallback-model"]}
+    news_agent = NewsAgent(context=mock_context, router=mock_router)
+    news_agent.fetch_news = AsyncMock(return_value=[{"title": "Test", "publisher": "Test"}])
+
+    router_result = RouterResult()
+    router_result.success = True
+    router_result.fallback_used = True
+    router_result.model_used = "fallback-model"
+    router_result.response = {
+        "choices": [
+            {
+                "message": {
+                    "content": (
+                        '{"sentiment": 0.0, "key_events": [], '
+                        '"impact_scores": {}, "sources": [], '
+                        '"rationale": "test"}'
+                    ),
+                }
+            }
+        ],
+    }
+    mock_router.execute.return_value = router_result
+
+    with patch("agents.news.record_agent_fallback") as mock_metric:
+        result = await news_agent.process(NewsInput(symbol="BTC-USD"))
+
+    mock_metric.assert_called_once_with("news", "primary-model", "fallback-model")
+    assert isinstance(result, NewsOutput)
+    assert result.sentiment == 0.0

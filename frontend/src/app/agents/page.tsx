@@ -92,6 +92,15 @@ export default function AgentsPage() {
         </div>
       )}
 
+      {/* Degradation Banner */}
+      {status?.degraded && (
+        <div className="rounded-xl border border-[rgba(245,158,11,0.2)] bg-[rgba(245,158,11,0.08)] px-4 py-3">
+          <p className="font-mono text-xs text-[#f59e0b]">
+            ⚠ System running in degraded mode — one or more models unavailable
+          </p>
+        </div>
+      )}
+
       {/* Pipeline Flow */}
       <PipelineFlow status={pipelineStatus} />
 
@@ -174,6 +183,57 @@ export default function AgentsPage() {
           </div>
         )}
       </div>
+
+      {/* Model Chain */}
+      {status?.model_chain_used && Object.keys(status.model_chain_used).length > 0 && (
+        <div className="card-glass">
+          <p className="text-label mb-3">Model Fallback Chains</p>
+          <div className="space-y-2">
+            {Object.entries(status.model_chain_used).map(([agent, models]) => (
+              <div key={agent} className="flex items-center gap-3 rounded-lg bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                <span className="font-mono text-xs text-white min-w-[100px]">
+                  {agentLabels[agent] || agent}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {models.map((model, mi) => (
+                    <span
+                      key={mi}
+                      className={`rounded-md px-2 py-0.5 font-mono text-[10px] ${
+                        mi === 0
+                          ? "bg-[rgba(99,102,241,0.12)] text-[#6366f1]"
+                          : "bg-[rgba(245,158,11,0.08)] text-[#f59e0b]"
+                      }`}
+                    >
+                      {model.split("/").pop()}
+                      {mi > 0 && <span className="ml-1 text-[10px]">(fallback)</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Errors */}
+      {status?.errors && status.errors.length > 0 && (
+        <div className="card-glass">
+          <p className="text-label mb-3 text-[#ef4444]">Pipeline Errors</p>
+          <div className="space-y-2">
+            {status.errors.map((err, i) => (
+              <div key={i} className="rounded-lg border border-[rgba(239,68,68,0.12)] bg-[rgba(239,68,68,0.04)] px-3 py-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-mono text-xs font-semibold text-[#ef4444]">{err.agent}</span>
+                  <span className="rounded bg-[rgba(239,68,68,0.1)] px-1.5 py-0.5 font-mono text-[10px] text-[#ef4444]">
+                    {err.error_type}
+                  </span>
+                </div>
+                <p className="font-mono text-[10px] text-[#a1a1aa]">{err.error}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,6 +11,12 @@ import {
   Cpu,
   Radio,
   Activity,
+  Shield,
+  FlaskConical,
+  FileText,
+  Settings,
+  MessageSquare,
+  Brain,
   type LucideIcon,
 } from "lucide-react";
 
@@ -24,11 +30,19 @@ const navItems: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Markets", href: "/markets", icon: TrendingUp },
   { label: "Signals", href: "/signals", icon: BarChart3 },
+  { label: "Analytics", href: "/analytics", icon: Activity },
   { label: "Portfolio", href: "/portfolio", icon: Wallet },
+  { label: "Risk", href: "/risk", icon: Shield },
   { label: "Journal", href: "/journal", icon: BookOpen },
   { label: "Agents", href: "/agents", icon: Cpu },
+  { label: "Strategy Builder", href: "/strategy-builder", icon: FlaskConical },
   { label: "Backtests", href: "/backtests", icon: Activity },
+  { label: "Paper Trading", href: "/paper-trading", icon: Wallet },
   { label: "Live Trading", href: "/live", icon: Radio },
+  { label: "Chat", href: "/chat", icon: MessageSquare },
+  { label: "Memory", href: "/memory", icon: Brain },
+  { label: "Logs", href: "/logs", icon: FileText },
+  { label: "Settings", href: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
