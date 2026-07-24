@@ -182,6 +182,7 @@ async def _check_redis() -> bool:
         await r.aclose()
         return result
     except Exception:
+        logger.debug("Redis health check failed", exc_info=True)
         return False
 
 
@@ -197,4 +198,5 @@ async def _check_chromadb() -> bool:
         await asyncio.wait_for(asyncio.to_thread(client.heartbeat), timeout=3)
         return True
     except Exception:
+        logger.debug("ChromaDB health check failed", exc_info=True)
         return False

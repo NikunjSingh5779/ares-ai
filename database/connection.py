@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import text
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from configs.settings import settings
@@ -45,4 +49,5 @@ async def check_connection() -> bool:
             await conn.execute(text("SELECT 1"))
         return True
     except Exception:
+        logger.debug("Database connection check failed", exc_info=True)
         return False
