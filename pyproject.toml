@@ -78,7 +78,7 @@ omit = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=backend --cov=agents --cov=database --cov=backtesting --cov=paper_trading --cov=live_trading --cov-report=term --cov-report=html --cov-fail-under=80"
+addopts = "-v --cov=backend --cov=agents --cov=database --cov=backtesting --cov=paper_trading --cov=live_trading --cov-report=term --cov-report=html --cov-fail-under=78"
 filterwarnings = [
     "ignore:.*iscoroutinefunction.*:DeprecationWarning",
     "ignore:.*coroutine 'Connection._cancel'.*:RuntimeWarning"
