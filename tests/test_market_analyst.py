@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -17,7 +18,6 @@ from agents.market_analyst import (
 )
 from agents.router import RouterResult
 from backend.data.models import OHLCVData
-from typing import Any
 
 # ---------------------------------------------------------------------------
 # Shared test data
@@ -73,11 +73,15 @@ class TestBuildAnalysisPrompt:
         assert "direction" in system
         assert "rationale" in system
 
-    def test_user_prompt_contains_symbol(self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]) -> None:
+    def test_user_prompt_contains_symbol(
+        self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]
+    ) -> None:
         messages = build_analysis_prompt("BTC-USD", sample_indicators, sample_candles)
         assert "BTC-USD" in messages[1]["content"]
 
-    def test_user_prompt_contains_indicators(self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]) -> None:
+    def test_user_prompt_contains_indicators(
+        self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]
+    ) -> None:
         messages = build_analysis_prompt("ETH-USD", sample_indicators, sample_candles)
         content = messages[1]["content"]
         assert "RSI" in content

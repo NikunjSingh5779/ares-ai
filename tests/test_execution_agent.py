@@ -13,7 +13,8 @@ Tests cover:
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import MagicMock
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -21,13 +22,13 @@ from agents.execution import ExecutionAgent, ExecutionInput
 from backend.data.models import OHLCVData
 from live_trading.safety import TradingMode
 from paper_trading.engine import PaperTradingEngine
-from typing import Any
 
 
 @pytest.fixture
 def mock_live_engine():
     engine = MagicMock()
     engine.mode = TradingMode.HUMAN_APPROVAL
+    engine.paper_record = AsyncMock(return_value={"promotion": {"passed": False}})
     return engine
 
 

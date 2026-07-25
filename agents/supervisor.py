@@ -19,7 +19,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from langgraph.graph import END, START, CompiledStateGraph, StateGraph
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from agents.base import BaseAgent
 from agents.log import AgentLogger
@@ -561,7 +562,8 @@ async def _execute_agent_impl(
             )
         elif agent_name == "execution":
             agent_instance = agent_class(  # type: ignore[call-arg]
-                engine=getattr(base_agent, "engine", None), context=agent_ctx)
+                engine=getattr(base_agent, "engine", None), context=agent_ctx
+            )
         elif agent_name in ("journal", "reflection", "memory"):
             agent_instance = agent_class(context=agent_ctx)
         else:
@@ -753,7 +755,7 @@ class Supervisor:
         if not state.session_id:
             state.session_id = str(uuid.uuid4())
 
-        result = await self.graph.ainvoke(state)
+        result = await self.graph.ainvoke(state)  # type: ignore[union-attr]
         final_state = AgentState.model_validate(result)
         await self.log_execution(final_state)
         return final_state
@@ -782,7 +784,7 @@ class Supervisor:
         )
 
         final_state = None
-        async for event in self.graph.astream(state, stream_mode="values"):
+        async for event in self.graph.astream(state, stream_mode="values"):  # type: ignore[union-attr]
             final_state = AgentState.model_validate(event)
             yield final_state
 
@@ -818,8 +820,8 @@ class Supervisor:
         # Explicitly log the supervisor summary row with consensus_score for the daily report
         supervisor_data = {}
         if getattr(state, "consensus", None) is not None:
-            supervisor_data["consensus_score"] = state.consensus.composite_confidence
-            supervisor_data["approved"] = state.consensus.approved
+            supervisor_data["consensus_score"] = state.consensus.composite_confidence  # type: ignore[union-attr]
+            supervisor_data["approved"] = state.consensus.approved  # type: ignore[union-attr]
 
         total_ms = 0
         if state.pipeline_status.start_time:

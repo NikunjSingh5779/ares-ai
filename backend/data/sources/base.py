@@ -57,6 +57,10 @@ class BaseDataSource(ABC):
         """
         ...
 
+    async def close(self) -> None:
+        """Close any open connections. No-op in the base class."""
+        pass
+
     def validate_response(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Validate and clean raw API response data.
 

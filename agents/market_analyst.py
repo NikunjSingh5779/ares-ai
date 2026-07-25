@@ -415,7 +415,7 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
         self.router = router
         self.ingestor = ingestor
 
-    async def process(self, inputs: MarketAnalystInput) -> dict[str, Any]:
+    async def process(self, inputs: MarketAnalystInput) -> dict[str, Any]:  # type: ignore[override]
         """Execute market analysis.
 
         1. Fetch/validate OHLCV data

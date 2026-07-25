@@ -5,13 +5,13 @@ Uses FastAPI TestClient with mocked engine dependencies.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
-from typing import Any
 
 
 @pytest.fixture
@@ -56,8 +56,7 @@ def _make_mock_engine():
                 "promotion": self.promotion_gate.progress(trades, days),
             }
 
-        @property
-        def paper_record(self):
+        async def paper_record(self, account_id=None):
             if self._paper_record:
                 return self._paper_record
             return {

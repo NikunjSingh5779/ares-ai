@@ -6,6 +6,9 @@ from backend.routers.live import _get_engine
 async def main():
     e = _get_engine()
     print("Engine:", e)
+    if e is None:
+        print("Engine not available")
+        return
     res = await e.start()
     print("Result:", res)
 

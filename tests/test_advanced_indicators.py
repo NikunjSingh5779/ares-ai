@@ -12,7 +12,9 @@ from agents.indicators import (
 from backend.data.models import OHLCVData
 
 
-def _make_candles(prices: list[float], highs: list[float] | None = None, lows: list[float] | None = None) -> list[OHLCVData]:
+def _make_candles(
+    prices: list[float], highs: list[float] | None = None, lows: list[float] | None = None
+) -> list[OHLCVData]:
     candles = []
     for i, p in enumerate(prices):
         h = highs[i] if highs else p * 1.05

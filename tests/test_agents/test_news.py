@@ -11,7 +11,7 @@ from agents.state import NewsInput, NewsOutput
 
 @pytest.fixture
 def mock_context():
-    return AgentContext(task_id="test", session_id="test")
+    return AgentContext(session_id="test")
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ async def test_news_agent_success(news_agent, mock_router):
     router_result = RouterResult()
     router_result.success = True
     router_result.response = {"choices": [{"message": {"content": json.dumps(expected_json)}}]}
-    mock_router.route.return_value = router_result
+    mock_router.execute.return_value = router_result
 
     result = await news_agent.process(NewsInput(symbol="BTC-USD"))
 
@@ -65,7 +65,7 @@ async def test_news_agent_json_fallback(news_agent, mock_router):
     router_result.response = {
         "choices": [{"message": {"content": "I think the sentiment is positive but here's some text instead of JSON."}}]
     }
-    mock_router.route.return_value = router_result
+    mock_router.execute.return_value = router_result
 
     result = await news_agent.process(NewsInput(symbol="BTC-USD"))
 

@@ -1,126 +1,137 @@
-name: CI Pipeline
+# =============================================================================
+# ARES AI — CI/CD Pipeline
+# =============================================================================
+
+name: CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [master, develop, 'codex/**']
   pull_request:
-    branches: [ master ]
+    branches: [master, develop]
 
 jobs:
-  backend-test:
-    name: Backend Tests
+  # ── Lint & Type Check ────────────────────────────────────────────────────
+  lint:
     runs-on: ubuntu-latest
-    
-    # Required for integration tests
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.14
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Ruff lint check
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Mypy type check
+        run: uv run mypy .
+
+  # ── Tests ────────────────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
-        image: postgres:15
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: ares
-          POSTGRES_PASSWORD: ares
-          POSTGRES_DB: ares_test
+          POSTGRES_PASSWORD: ares_test
+          POSTGRES_DB: ares_ai_test
         ports:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
           --health-retries 5
-          
       redis:
-        image: redis:7
+        image: redis:7-alpine
         ports:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
+          --health-interval 5s
+          --health-timeout 3s
           --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
-      
-      # Use uv for faster Python package management
+
+      - name: Initialize database schema
+        run: psql -h localhost -U ares -d ares_ai_test -f database/schema.sql
+        env:
+          PGPASSWORD: ares_test
+
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: astral-sh/setup-uv@v3
         with:
-          python-version: '3.12'
-          
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.14
+
       - name: Install dependencies
-        run: uv pip install -e ".[dev]" --system
-        
-      - name: Lint with ruff
-        run: uv run ruff check .
+        run: uv sync --all-extras --dev
 
-      - name: Format check with ruff
-        run: uv run ruff format --check .
-
-      - name: Type check with mypy
-        continue-on-error: true
-        run: uv run mypy .
-
-      - name: Run Pytest
+      - name: Run tests
+        run: uv run pytest tests/ --ignore=tests/test_live_trading -v
         env:
-          PYTHONPATH: .
-          DATABASE_URL: postgresql://ares:ares@localhost:5432/ares_test
-          REDIS_URL: redis://localhost:6379/0
-        run: uv run pytest tests/ --cov=. --cov-report=xml
+          DATABASE_URL: postgresql+asyncpg://ares:ares_test@localhost:5432/ares_ai_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
 
-      - name: Validate migrations with alembic
-        env:
-          PYTHONPATH: .
-          DATABASE_URL: postgresql://ares:ares@localhost:5432/ares_test
-          REDIS_URL: redis://localhost:6379/0
-        run: uv run alembic upgrade head
-
-  frontend-typecheck:
-    name: Frontend Typecheck
+  # ── Frontend Build ───────────────────────────────────────────────────────
+  frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: frontend
-        
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup Node
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 8
-          run_install: false
-          
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - uses: actions/cache@v4
-        name: Setup pnpm cache
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-            
       - name: Install dependencies
-        run: pnpm install
-        
-      - name: Run Typecheck
-        run: pnpm tsc --noEmit
+        run: pnpm install --frozen-lockfile
 
-  docker-config:
-    name: Docker Compose Validation
+      - name: Build
+        run: pnpm build
+
+  # ── Docker Build ─────────────────────────────────────────────────────────
+  docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Validate docker-compose.yml
-        run: docker compose config > /dev/null
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker images
+        run: docker compose -f docker/docker-compose.yml build

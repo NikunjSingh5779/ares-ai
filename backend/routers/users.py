@@ -18,7 +18,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.get("/me", response_model=UserResponse)
 async def read_own_profile(current_user: User = Depends(get_current_user)) -> UserResponse:
     """Get the current authenticated user's profile."""
-    return current_user
+    return current_user  # type: ignore[return-value]
 
 
 @router.get("/{user_id}", response_model=UserResponse)
@@ -32,4 +32,4 @@ async def get_user(
     user = await user_service.get_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return user
+    return user  # type: ignore[return-value]

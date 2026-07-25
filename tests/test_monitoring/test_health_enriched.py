@@ -42,7 +42,7 @@ async def test_root_endpoint() -> None:
 
 def _fake_all_ok() -> bool:
     """Synchronous stand-in — not an async function, so it will fail under await."""
-    pass
+    return True
 
 
 @pytest.mark.asyncio

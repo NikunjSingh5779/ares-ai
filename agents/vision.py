@@ -96,7 +96,7 @@ class VisionAgent(BaseAgent[VisionInput, VisionOutput]):
         super().__init__(context=context)
         self.model_available = model_available
 
-    async def process(self, inputs: VisionInput) -> dict[str, Any]:
+    async def process(self, inputs: VisionInput) -> dict[str, Any]:  # type: ignore[override]
         """Execute chart pattern analysis.
 
         Always runs rule-based detection. If chart images are provided and

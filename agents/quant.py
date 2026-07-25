@@ -613,7 +613,7 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
         self.router = router
         self.ingestor = ingestor
 
-    async def process(self, inputs: QuantInput) -> dict[str, Any]:
+    async def process(self, inputs: QuantInput) -> dict[str, Any]:  # type: ignore[override]
         """Execute quantitative analysis.
 
         1. Fetch/validate OHLCV data

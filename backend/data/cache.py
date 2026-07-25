@@ -92,12 +92,12 @@ class MarketDataCache:
 
         try:
             pattern = self._range_key(source, symbol, interval) + KEY_SEPARATOR + "*"
-            cursor, keys = await self._redis.scan(match=pattern, count=500)
+            cursor, keys = await self._redis.scan(match=pattern, count=500)  # type: ignore[union-attr]  # type: ignore[union-attr]
 
             if not keys:
                 return None
 
-            raw_values = await self._redis.mget(*keys)
+            raw_values = await self._redis.mget(*keys)  # type: ignore[union-attr]
             candles: list[OHLCVData] = []
 
             for raw in raw_values:
@@ -137,7 +137,7 @@ class MarketDataCache:
         ttl = self._ttl_for(candles[0].interval)
 
         try:
-            async with self._redis.pipeline(transaction=False) as pipe:
+            async with self._redis.pipeline(transaction=False) as pipe:  # type: ignore[union-attr]
                 for candle in candles:
                     key = self._make_key(candle.source, candle.symbol, candle.interval, candle.timestamp)
                     pipe.setex(key, ttl, candle.model_dump_json())
@@ -158,9 +158,9 @@ class MarketDataCache:
 
         try:
             pattern = self._range_key(source, symbol, interval) + KEY_SEPARATOR + "*"
-            cursor, keys = await self._redis.scan(match=pattern, count=500)
+            cursor, keys = await self._redis.scan(match=pattern, count=500)  # type: ignore[union-attr]
             if keys:
-                await self._redis.delete(*keys)
+                await self._redis.delete(*keys)  # type: ignore[union-attr]
             return True
         except Exception:
             return False
@@ -172,9 +172,9 @@ class MarketDataCache:
 
         try:
             pattern = f"{KEY_PREFIX}{KEY_SEPARATOR}*"
-            cursor, keys = await self._redis.scan(match=pattern, count=1000)
+            cursor, keys = await self._redis.scan(match=pattern, count=1000)  # type: ignore[union-attr]
             if keys:
-                await self._redis.delete(*keys)
+                await self._redis.delete(*keys)  # type: ignore[union-attr]
             return True
         except Exception:
             return False

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -28,7 +29,6 @@ from agents.quant import (
 )
 from agents.router import RouterResult
 from backend.data.models import OHLCVData
-from typing import Any
 
 # ---------------------------------------------------------------------------
 # Shared test data
@@ -74,7 +74,9 @@ class TestBuildQuantPrompt:
         assert messages[0]["role"] == "system"
         assert messages[1]["role"] == "user"
 
-    def test_system_prompt_contains_strategies(self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]) -> None:
+    def test_system_prompt_contains_strategies(
+        self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]
+    ) -> None:
         messages = build_quant_prompt("BTC-USD", sample_indicators, sample_candles)
         system = messages[0]["content"]
         for strategy in ("momentum", "mean_reversion", "trend_following", "breakout", "neutral"):
@@ -89,11 +91,15 @@ class TestBuildQuantPrompt:
         assert "strategy_name" in system
         assert "params" in system
 
-    def test_user_prompt_contains_symbol(self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]) -> None:
+    def test_user_prompt_contains_symbol(
+        self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]
+    ) -> None:
         messages = build_quant_prompt("BTC-USD", sample_indicators, sample_candles)
         assert "BTC-USD" in messages[1]["content"]
 
-    def test_user_prompt_contains_indicators(self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]) -> None:
+    def test_user_prompt_contains_indicators(
+        self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]
+    ) -> None:
         messages = build_quant_prompt("ETH-USD", sample_indicators, sample_candles)
         content = messages[1]["content"]
         assert "RSI" in content
@@ -104,7 +110,9 @@ class TestBuildQuantPrompt:
         messages = build_quant_prompt("BTC-USD", sample_indicators, sample_candles, strategy_hint="momentum")
         assert "momentum" in messages[1]["content"]
 
-    def test_includes_market_analyst_context(self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]) -> None:
+    def test_includes_market_analyst_context(
+        self, sample_candles: list[OHLCVData], sample_indicators: dict[str, Any]
+    ) -> None:
         ma_result = {"direction": "long", "confidence": 80.0, "rationale": "Bullish trend"}
         messages = build_quant_prompt(
             "BTC-USD",

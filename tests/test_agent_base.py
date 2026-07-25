@@ -86,7 +86,7 @@ class TestBaseAgent:
         assert agent.execution_log["agent"] == "test_agent"
 
     async def test_run_logs_failure(self, agent: _TestAgent) -> None:
-        agent.process = lambda x: (_ for _ in ()).throw(  # type: ignore[method-assign]
+        agent.process = lambda x: (_ for _ in ()).throw(  # type: ignore[assignment,method-assign]
             ValueError("something broke")
         )
 

@@ -34,7 +34,7 @@ class TestKillSwitch:
         tripped = ks.auto_trigger(20.0)
         assert tripped
         assert ks.is_active
-        assert "drawdown" in ks.triggered_by
+        assert ks.triggered_by is not None and "drawdown" in ks.triggered_by
 
     def test_auto_trigger_below_threshold(self) -> None:
         ks = KillSwitch(max_drawdown_pct=15.0)

@@ -81,7 +81,14 @@ def _get_engine() -> LiveTradingEngine | None:
         return None
 
     auditor = OrderAuditor()
-    engine = LiveTradingEngine(exchange, kill_switch, mode_manager, promotion_gate, auditor)
+    engine = LiveTradingEngine(
+        exchange,
+        kill_switch,
+        mode_manager,
+        promotion_gate,
+        auditor=auditor,
+        session_factory=async_session_factory,
+    )
     _engine = engine
     logger.info("Live trading engine created (lazy singleton)")
     return engine
@@ -127,6 +134,7 @@ async def live_status() -> dict[str, Any]:
     if engine is None:
         return _NOT_CONFIGURED_STATUS
     ks = engine.kill_switch
+    pr = await engine.paper_record()
     return {
         "running": engine.is_running,
         "connected": engine.is_connected,
@@ -138,7 +146,7 @@ async def live_status() -> dict[str, Any]:
             "max_drawdown_pct": ks.max_drawdown_pct,
         },
         "exchange": engine.exchange.exchange_name,
-        "paper_record": engine.paper_record,
+        "paper_record": pr,
     }
 
 
@@ -173,7 +181,8 @@ async def set_mode(body: SetModeRequest) -> dict[str, Any]:
 
     # Block AUTO and SEMI modes if promotion gate not passed
     if new_mode in (TradingMode.AUTO, TradingMode.SEMI):
-        promo = engine.paper_record["promotion"]
+        pr = await engine.paper_record()
+        promo = pr["promotion"]
         if not promo["passed"]:
             raise HTTPException(
                 status_code=400,

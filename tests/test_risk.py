@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,7 +22,6 @@ from agents.risk import (
 )
 from agents.router import RouterResult
 from backend.data.models import OHLCVData
-from typing import Any
 
 # ---------------------------------------------------------------------------
 # Shared test data
@@ -481,9 +481,9 @@ class TestRiskInput:
             quant_output={"direction": "long", "confidence": 90.0},
             consensus_output={"approved": True, "composite_confidence": 87.5},
         )
-        assert inp.market_analyst_output["direction"] == "long"
-        assert inp.quant_output["confidence"] == 90.0
-        assert inp.consensus_output["approved"] is True
+        assert inp.market_analyst_output is not None and inp.market_analyst_output["direction"] == "long"
+        assert inp.quant_output is not None and inp.quant_output["confidence"] == 90.0
+        assert inp.consensus_output is not None and inp.consensus_output["approved"] is True
 
     def test_custom_portfolio_value(self) -> None:
         inp = RiskInput(symbol="BTC-USD", portfolio_value=50000.0)

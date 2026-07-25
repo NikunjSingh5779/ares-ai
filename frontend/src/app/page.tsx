@@ -226,31 +226,31 @@ export default function DashboardPage() {
               <div className="flex justify-between border-b border-[rgba(255,255,255,0.04)] pb-2 font-mono text-xs">
                 <span className="text-[#a1a1aa]">Confidence</span>
                 <span className="text-[#6366f1] font-bold">
-                  {(agentStatus as any)?.consensus?.composite_confidence || "—"}%
+                  {agentStatus?.consensus?.composite_confidence ?? "—"}%
                 </span>
               </div>
               <div className="flex justify-between border-b border-[rgba(255,255,255,0.04)] pb-2 font-mono text-xs">
                 <span className="text-[#a1a1aa]">Direction</span>
                 <span className="text-white font-medium capitalize">
-                  {(agentStatus as any)?.market_analyst?.direction || "—"}
+                  {agentStatus?.market_analyst?.direction ?? "—"}
                 </span>
               </div>
               <div className="flex justify-between border-b border-[rgba(255,255,255,0.04)] pb-2 font-mono text-xs">
                 <span className="text-[#a1a1aa]">Approved</span>
-                <StatusBadge 
-                  status={(agentStatus as any)?.consensus?.approved ? "approved" : "rejected"} 
+                <StatusBadge
+                  status={agentStatus?.consensus?.approved ? "approved" : "rejected"}
                 />
               </div>
               <div className="flex justify-between border-b border-[rgba(255,255,255,0.04)] pb-2 font-mono text-xs">
                 <span className="text-[#a1a1aa]">Executed</span>
                 <span className="text-white font-bold">
-                  {(agentStatus as any)?.execution?.executed ? "Yes" : "No"}
+                  {agentStatus?.execution?.executed ? "Yes" : "No"}
                 </span>
               </div>
               <div className="flex justify-between pt-1 font-mono text-xs">
                 <span className="text-[#a1a1aa]">Rationale</span>
-                <span className="text-[#52525b] text-right max-w-[200px] truncate" title={(agentStatus as any)?.execution?.rationale || "No trade"}>
-                  {(agentStatus as any)?.execution?.rationale || "No trade"}
+                <span className="text-[#52525b] text-right max-w-[200px] truncate" title={agentStatus?.execution?.rationale ?? "No trade"}>
+                  {agentStatus?.execution?.rationale ?? "No trade"}
                 </span>
               </div>
             </div>

@@ -406,7 +406,7 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
         self.router = router
         self.ingestor = ingestor
 
-    async def process(self, inputs: RiskInput) -> dict[str, Any]:
+    async def process(self, inputs: RiskInput) -> dict[str, Any]:  # type: ignore[override]
         """Execute risk assessment.
 
         1. Get OHLCV data for volatility context

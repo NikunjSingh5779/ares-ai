@@ -175,9 +175,8 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         parts = []
         is_live_auto = False
         if self.live_engine and getattr(self.live_engine, "is_connected", False):
-            if self.live_engine.mode == TradingMode.AUTO and self.live_engine.paper_record.get("promotion", {}).get(
-                "passed", False
-            ):
+            paper_rec = await self.live_engine.paper_record()
+            if self.live_engine.mode == TradingMode.AUTO and paper_rec.get("promotion", {}).get("passed", False):
                 is_live_auto = True
 
         if is_live_auto and self.live_engine is not None:

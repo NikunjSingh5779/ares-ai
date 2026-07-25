@@ -80,7 +80,7 @@ async def test_worker_start_stop(engine, ingestor, session_factory):
     worker = PaperTradingWorker(engine, ingestor, session_factory, poll_interval_seconds=1)
 
     # Mock _tick so it just returns immediately
-    worker._tick = AsyncMock()
+    worker._tick = AsyncMock()  # type: ignore[method-assign]
 
     worker.start()
     assert worker._running is True

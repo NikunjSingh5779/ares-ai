@@ -8,7 +8,7 @@ Uses mock/test data, no real API calls.
 import asyncio
 import os
 import sys
-from typing import Any
+from typing import Any, Literal
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -54,9 +54,9 @@ class MockExchangeConnector(ExchangeConnector):
     async def create_order(
         self,
         symbol: str,
-        side: str,
+        side: Literal["buy", "sell"],
         quantity: float,
-        order_type: str,
+        order_type: str = "market",
         price: float | None = None,
         params: dict[str, Any] | None = None,
     ) -> ExchangeOrder:
@@ -64,7 +64,7 @@ class MockExchangeConnector(ExchangeConnector):
         return ExchangeOrder(
             id=order_id,
             symbol=symbol,
-            side=side,  # type: ignore[arg-type]
+            side=side,
             type=order_type,
             quantity=quantity,
             price=price or 50000.0,
@@ -74,6 +74,9 @@ class MockExchangeConnector(ExchangeConnector):
         )
 
     async def cancel_order(self, order_id: str, symbol: str) -> bool:
+        return True
+
+    async def cancel_all_orders(self, symbol: str) -> bool:
         return True
 
     async def fetch_ohlcv(
@@ -281,10 +284,10 @@ async def main():
     print(f"    Engine started: {started}")
     print(f"    Connected: {engine.is_connected}")
     print(f"    Mode: {engine.mode.value}")
-    print(f"    Paper record: {engine.paper_record}")
+    print(f"    Paper record: {await engine.paper_record()}")
 
     # Run safety checks
-    safety_results = engine.check_pre_trade()
+    safety_results = await engine.check_pre_trade()
     print(f"    Safety checks: {len(safety_results)} checks")
     for r in safety_results:
         print(f"      - Passed: {r.passed}, Reason: {r.reason}")

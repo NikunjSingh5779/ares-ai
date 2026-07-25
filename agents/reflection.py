@@ -94,7 +94,7 @@ class ReflectionAgent(BaseAgent[ReflectionInput, ReflectionOutput]):
     def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
         super().__init__(context=context)
 
-    async def process(self, inputs: ReflectionInput) -> dict[str, Any]:
+    async def process(self, inputs: ReflectionInput) -> dict[str, Any]:  # type: ignore[override]
         """Execute post-trade reflection.
 
         Examines all available pipeline outputs and generates

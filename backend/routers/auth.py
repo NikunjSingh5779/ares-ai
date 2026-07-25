@@ -20,7 +20,7 @@ async def register_user(payload: UserCreate, db: AsyncSession = Depends(get_db))
     existing_user = await user_service.get_by_email(db, payload.email)
     if existing_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
-    return await user_service.create_user(db, payload)
+    return await user_service.create_user(db, payload)  # type: ignore[return-value]
 
 
 @router.post("/login")

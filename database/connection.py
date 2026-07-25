@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import text
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from configs.settings import settings

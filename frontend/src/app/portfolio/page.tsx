@@ -108,7 +108,7 @@ export default function PortfolioPage() {
         
         sorted.forEach((o) => {
           data.push({
-            time: new Date(o.exit_at).getTime() / 1000 as any,
+            time: new Date(o.exit_at).toISOString().split("T")[0] as string,
             value: pnl,
           });
           pnl += o.pnl;

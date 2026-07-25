@@ -13,9 +13,6 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from collections.abc import Sequence
-from typing import Any
-
 import chromadb
 from chromadb.api import ClientAPI
 from pydantic import BaseModel, ConfigDict, Field
@@ -81,7 +78,7 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
 
     def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
         super().__init__(context=context)
-        self.chroma_client: chromadb.ClientAPI | None = None
+        self.chroma_client: ClientAPI | None = None
         try:
             self.chroma_client = chromadb.HttpClient(
                 host=settings.chroma_host,
@@ -103,7 +100,7 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
             logger.error(f"Unhandled exception: {e}", exc_info=True)
             return None
 
-    async def process(self, inputs: MemoryInput) -> dict[str, Any]:
+    async def process(self, inputs: MemoryInput) -> dict[str, Any]:  # type: ignore[override]
         """Consolidate the pipeline run into memory records.
 
         1. Extract outputs from all pipeline agents

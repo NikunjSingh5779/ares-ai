@@ -39,7 +39,7 @@ class LLMClient:
             if "open_router" not in self.providers:
                 self.providers["open_router"] = {
                     "api_key": api_key or "",
-                    "base_url": base_url or os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1"),
+                    "base_url": base_url or os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1"),  # type: ignore[dict-item]
                 }
             if "default" not in self.providers:
                 self.providers["default"] = self.providers["open_router"]

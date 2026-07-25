@@ -311,7 +311,8 @@ def _model_to_dict(obj: Any) -> dict[str, Any] | list[Any] | None:
     if hasattr(obj, "model_dump"):
         return obj.model_dump()  # type: ignore[no-any-return]
     if hasattr(obj, "_asdict"):
-        return obj._asdict()  # noqa: SLF001  # type: ignore[no-any-return]
+        # noqa: SLF001
+        return obj._asdict()  # type: ignore[no-any-return]
     if isinstance(obj, dict):
         return {k: _model_to_dict(v) for k, v in obj.items()}
     if isinstance(obj, list):

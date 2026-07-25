@@ -88,14 +88,15 @@ class TestEngineProperties:
         assert engine.mode == TradingMode.SEMI
 
     async def test_paper_record(self, engine) -> None:
-        record = engine.paper_record
+        record = await engine.paper_record()
         assert record["trades"] == 10
         assert record["days"] == 5
         assert record["promotion"]["passed"] is True
 
     async def test_paper_record_not_promoted(self, engine) -> None:
         engine.set_paper_record(1, 1)
-        assert not engine.paper_record["promotion"]["passed"]
+        record = await engine.paper_record()
+        assert not record["promotion"]["passed"]
 
 
 class TestPreTradeChecks:
@@ -104,20 +105,20 @@ class TestPreTradeChecks:
     async def test_kill_switch_blocks(self, engine) -> None:
         engine.kill_switch.activate(reason="test")
         with pytest.raises(KillSwitchTrippedError):
-            engine._raise_if_blocked(engine.check_pre_trade())
+            engine._raise_if_blocked(await engine.check_pre_trade())
 
     async def test_promotion_gate_blocks(self, engine) -> None:
         engine.set_paper_record(1, 1)
         with pytest.raises(PromotionGateError):
-            engine._raise_if_blocked(engine.check_pre_trade())
+            engine._raise_if_blocked(await engine.check_pre_trade())
 
     async def test_exchange_disconnect_blocks(self, engine, mock_exchange) -> None:
         mock_exchange.is_connected = False
         with pytest.raises(ExchangeConnectionError):
-            engine._raise_if_blocked(engine.check_pre_trade())
+            engine._raise_if_blocked(await engine.check_pre_trade())
 
     async def test_all_checks_pass(self, engine) -> None:
-        results = engine.check_pre_trade()
+        results = await engine.check_pre_trade()
         assert all(r.passed for r in results)
 
 

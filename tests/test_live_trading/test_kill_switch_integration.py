@@ -23,8 +23,10 @@ def engine(mock_exchange):
     # The default max_drawdown_pct in KillSwitch is 15.0 unless overridden
     # The requirement is to test the drawdown evaluation.
     engine.mode_manager.set_mode(TradingMode.AUTO)
-    # Mocking is_connected
-    engine._connected = True
+    # Mock is_connected via exchange
+    import unittest.mock as mock
+
+    mock.patch.object(type(engine.exchange), "is_connected", new_callable=mock.PropertyMock, return_value=True).start()
     return engine
 
 

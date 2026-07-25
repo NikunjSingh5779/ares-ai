@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 
 from agents.models import AgentModelConfig, ModelRoster, load_model_roster
-from typing import Any
 
 # Sample model roster for testing
 SAMPLE_ROSTER = {
