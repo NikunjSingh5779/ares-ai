@@ -1,7 +1,6 @@
 # ARES AI — Architecture Overview
 
-> **Milestone:** M1 — Infrastructure Foundation
-> **Status:** Initial scaffolding. Agent pipeline and API endpoints to be built in M3+.
+> **Status:** This describes the target architecture as designed at M1; the system has since been built out through M13. For current per-area status, see docs/milestone-roadmap.md — that file, not this one, is the source of truth for what's done.
 
 ## System Architecture
 
@@ -102,12 +101,3 @@ Every agent receives and returns strictly typed Pydantic models (see `agents/sta
 - **Kill switch:** Global manual + automatic on drawdown breach
 - **No silent trade approval:** Agent failure → trade rejected, logged as "no-trade: agent unavailable"
 
-## Deferred to Future Milestones
-
-| Component | Milestone | Reason |
-|-----------|-----------|--------|
-| Real agents (market analyst, quant, etc.) | M3-M8 | Need the LangGraph framework first |
-| Full API endpoints | M10 | M1 provides only stub routes |
-| Authentication | M3 | Dev-only stub in M1 |
-| Market data ingestion | M2 | Needs table plus data-layer code |
-| Frontend | M11 | Needs the API first |

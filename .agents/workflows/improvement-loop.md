@@ -49,84 +49,62 @@ Read the full `SKILL.md` before applying code.
 
 ## 3. Standing Backlog
 
-*Last verified: 2026-07-24 — Discovery pass complete; 8 new frontend pages built; dead metrics hooks found*
+*Last verified: 2026-07-25 — M8/M14 branch reconciliation complete; kill-switch
+test bug, CI live_trading exclusion, and paper_record DB-coupling all resolved
+and CI-confirmed. Docs (roadmap, architecture, README) audited and corrected —
+they had drifted in both directions (premature "done," and premature "not done").*
 
-**✅ Resolved — confirmed by execution, not just file content**
-- **Item 9 — CI branch mismatch → RESOLVED.** Trigger fixed in commit `f0b9c2f` (`main` → `master` + `feat/**` + `fix/**`). Confirmed via CI Run #50 which fired on push to `fix/workflow-consolidation`.
-- **Item 2 — CI pipeline: ruff lint.** 286 errors → 0 (174 auto-fixed by `ruff check --fix`, 112 manually: 76 E402 import-ordering in 11 files, 28 E501 line-length in 6 files, 5 W291/E741/F841 in 6 files). Confirmed via CI Run #50 — ruff step passes.
-- **Item 1 — Silent JSON-parse fallback.** Confirmed resolved: `used_fallback` + `fallback_reason` fields present and threaded through state in both `agents/market_analyst.py` and `agents/quant.py`.
-- **Item 5 — Missing News Agent.** Confirmed resolved: `agents/news.py` exists with `class NewsAgent(BaseAgent[NewsInput, NewsOutput])`.
-- **`.gitignore` corruption.** Fixed in commit `658f558` — UTF-16 null-byte garbage on L53-54 removed, new ignore entries added for stale artifact files.
-- **Repo root hygiene.** Fixed in commit `658f558` — `backlog_prompt.txt`, `phase5.txt`, `old_pytest_results.txt`, `pytest_v_output.txt` deleted; `test_start.py` → `scripts/test_start.py`.
-- **CI services gap.** ✅ Postgres (15) + Redis (7) service containers verified present in ci.yml. Python version is 3.12. No service-level gap.
-- **CI Run #50: Pytest fails → RESOLVED.** Root cause: `pyproject.toml` `--cov-fail-under=80` combined with untested live_trading exchange connectors (CCXT wrappers needing API keys) and KillSwitch hanging on Redis connection. Fix: omitted exchange connectors from coverage via `[tool.coverage.run]`, made `KillSwitch.__init__` use in-memory state when no Redis client is provided, removed `autouse=True` from Redis-clearing conftest fixture. Verified: 91.24% coverage, 787/787 pass.
-- **Item 3 — Exchange connector test cluster → RESOLVED.** Live_trading tests no longer hang (148/148 pass in 8.75s). Root cause was threefold: (1) `conftest.py` `autouse=True` fixture connecting to Redis on every test, (2) `KillSwitch.__init__` creating a Redis connection immediately, (3) exchange connector files omitted from coverage.
-- **Item 8 — Frontend completion → RESOLVED.** 8/8 missing pages built (Analytics, Risk, Strategy Builder, Paper Trading, Logs, Settings, Chat, Memory Viewer). Sidebar updated with all 16 nav links. Agent Monitor polished (degradation banner, model chain display, error details). Backtest Dashboard polished (consistent card-glass styling, all metrics displayed, 3 KPI rows). Verified: 0 TS errors.
+**✅ Resolved this session**
+- **Branch reconciliation (master ↔ codex/m14-safety-operability) → RESOLVED.**
+  Merged via PR #49 @ `1ccef9b`. Both sides' fixes preserved: master's in-memory
+  Redis fallback in `KillSwitch`, all 4 metrics-hook wirings, cache.py logging,
+  news.py `.execute()` call, and both ci.yml fixes — none were lost to the merge.
+- **Kill-switch test bug → RESOLVED.** `test_kill_switch_integration.py` used
+  `mock.patch.object(type(engine.exchange), ...)` on a bare, unspecced `MagicMock`
+  — raised `AttributeError` at fixture setup, silently, since the tests were
+  written (same commit that added them also excluded the whole directory from
+  CI — see next item). Fixed: `MagicMock(spec=ExchangeConnector)` +
+  `mock.patch.object(engine.exchange, "is_connected", new=True, create=True)`.
+  Both tests now pass and genuinely exercise the drawdown-trigger path.
+- **CI never ran `tests/test_live_trading/` → RESOLVED.** `--ignore=tests/test_live_trading`
+  was in the test job's pytest invocation since the day the kill-switch tests
+  were written — meaning the most safety-critical test coverage in the repo had
+  never once executed in CI. The stated reason (no Postgres/Redis for that job)
+  didn't hold — both services were already configured on that exact job. Removed
+  the ignore; all 148 tests in that directory now run and pass in CI.
+- **`/paper_record` bypassed the engine → RESOLVED.** Queried `async_session_factory()`
+  directly instead of delegating through `engine.paper_record()`, unlike every
+  other endpoint in that router. Refactored to delegate properly; engine now
+  falls back to in-memory values with `logger.exception()` if the DB query fails.
+- **Docs drift → RESOLVED (2026-07-25).** `docs/milestone-roadmap.md`,
+  `docs/architecture.md`, `README.md`, `CLAUDE.md`, and `landing/README.md` were
+  all found materially inaccurate and rewritten against verified code state.
+  Notably: `docs/milestone-roadmap.md` had marked things "COMPLETED" before they
+  were (frontend, live safety gates), while the most recent working session had
+  independently over-corrected the other way, treating already-built and
+  API-wired functionality (backtest engine, memory/reflection pipeline wiring,
+  live exchange connectors) as not-yet-built. Neither was checked against the
+  actual code before being written down.
 
-**✅ Resolved — confirmed by execution**
-- **CI Run #53 → RESOLVED.** Confirmed via `gh run list`: both follow-up runs pass:
-  - `c96234e` (fix commit): success — Backend Tests, Frontend Typecheck, Docker Compose Validation all green.
-  - `c213b56` (frontend build): success — all 3 jobs pass.
+**Full verified test/lint state as of this pass:**
+- 808 tests pass (660 outside `test_live_trading/`, 148 inside — both figures
+  confirmed via a clean install + full local run, not just a report).
+- `ruff check` and `ruff format --check` both clean.
 
-**✅ Resolved this session (pushed, execution-confirmed by CI)**
-- **P0 — Dead metrics hooks → RESOLVED.** All 4 functions wired to production code:
-  1. `record_agent_run(agent, status)` called from `agents/base.py` `BaseAgent.run()` (success/error)
-  2. `record_agent_fallback(agent, from_model, to_model)` called after every `router.execute()` in `market_analyst.py`, `quant.py`, `risk.py`, `supervisor.py` (and in `news.py` — see NewsAgent fix entry below; the call was originally unreachable dead code until `.route()`→`.execute()` was fixed in `43ec469`)
-  3. `set_kill_switch_active(active)` called from `live_trading/safety.py` (`activate`: True, `auto_trigger`: True, `arm`: False)
-  4. `record_live_order(status)` called from `live_trading/engine.py` `execute_signal()` (status from order, or "error")
-  - 12 new integration tests patch the 4 functions and assert they fire during real agent/kill-switch/order-execution flows. 20/20 metric tests pass.
-  - Verified: `backend/core/metrics.py` coverage 92%.
+**⚠️ Carried forward, unresolved**
+- GitHub CLI auth — status unconfirmed as of this pass; verify directly with
+  `gh auth status` rather than trusting this note either way.
+- Several `live_trading/` test files (the 4 exchange connectors, `test_safety.py`)
+  take 60-110s each — likely real connection attempts before mocks engage.
+  Not a correctness issue; worth investigating if CI time starts to matter.
+- Backtest engine is a custom pure-Python simulator, not VectorBT/Backtrader as
+  `AGENTS.md` specifies. Needs a decision: update the spec, or migrate the
+  implementation.
+- Security hardening depth (`backend/core/security.py`, `rate_limit.py`,
+  `auth.py`) has not been independently audited this session — files exist,
+  scope of what they actually enforce is unconfirmed.
 
-**✅ Resolved this session (pushed, execution-confirmed by CI — Run #30096811151, all 3 jobs green)**
-- **P0 — NewsAgent calls nonexistent router method; sentiment had been fake since M4 → RESOLVED.**
-  - **Bug:** `agents/news.py` called `self.router.route(agent_name="news", ...)` but `ModelRouter` (agents/router.py) only defines `.execute()` — no `.route()` method exists anywhere in the codebase. Every real pipeline run since News Agent was built raised `AttributeError`, silently caught by `except Exception` and converted to `NewsOutput(sentiment=0.0, rationale="Execution error: ...")`. The `record_agent_fallback` call wired into news.py in `58670cb` was unreachable dead code.
-  - **Root cause (CI evasion):** `tests/test_agents/test_news.py` mocked the router as bare `AsyncMock()` with no `spec=ModelRouter`, so `mock_router.route.return_value` passed despite the real class having no `.route`. Same unspecced pattern in `test_market_analyst.py`, `test_quant.py`, `test_risk.py`.
-  - **Fix:** `agents/news.py:152` now derives `model_chain`/`rpm` from `self.context.model_preferences` and calls `self.router.execute(model_chain=, messages=, temperature=, max_tokens=, rpm=)` — matching the exact pattern used by `market_analyst.py`, `quant.py`, and `risk.py`. Empty `model_chain` returns a neutral output early. `record_agent_fallback` is now genuinely reachable.
-  - **Defensive hardening (all 4 agent test files):** All `router = AsyncMock()` throughout `test_news.py`, `test_market_analyst.py`, `test_quant.py`, `test_risk.py` changed to `AsyncMock(spec=ModelRouter)`. Any future interface drift (a nonexistent method call) now raises `AttributeError` at test time instead of passing silently.
-  - **Regression guard:** `test_record_agent_fallback_on_router_fallback` goes through `NewsAgent.process()` end-to-end with a fallback router result and asserts `record_agent_fallback` fires with the correct args. A revert-test confirmed: undoing the `.route()`→`.execute()` change alone causes 3/5 news tests to fail — `spec=ModelRouter` catches the first error.
-  - **Verification:** 200 tests pass. CI Run #30096811151 (`fix/news-agent-router-call` @ `43ec469`): Backend Tests ✓, Frontend Typecheck ✓, Docker Compose Validation ✓.
-
-**✅ P1 — resolved this session, pushed + CI-confirmed to `fix/silent-except-logging` @ `f00341d`**
-- **8 silent `except Exception:` blocks → RESOLVED.** All 8 instances listed below now log the exception before returning the fallback value. `logger.exception()` (includes full traceback) for the 5 HIGH-priority cache/registry sites; `logger.debug(exc_info=True)` for the 3 health-check sites.
-  - **HIGH priority (4x cache.py + 1x registry.py):** `get_candles`, `set_candles`, `invalidate`, `clear_all` each log `"<method> failed — Redis may be unavailable"` before returning None/0/False. `registry.py:close_all` logs per-source `"Failed to close data source: {name}"` instead of bare `pass`.
-  - **LOWER priority (3 health-checks):** `connection.py:check_connection`, `_check_redis`, `_check_chromadb` each log `"<component> health check failed"` at debug level.
-  - Added missing `import logging` + `logger = logging.getLogger(__name__)` to cache.py, registry.py, connection.py.
-  - **Ruff bumps:** Initial push triggered 5 E402 import-ordering errors (logger statement between import groups). Fixed in follow-up commit `f00341d`.
-  - **Test coverage (8 tests added, 2 follow-up commits):** All 8 exception sites now have dedicated tests forcing the failure path and asserting the log fires. Coverage details by site:
-    - `backend/data/cache.py` — `TestMarketDataCacheExceptions` in `tests/test_cache.py`:
-      - `test_get_candles_exception_logs` — Redis scan/mget raises → logs "get_candles failed", returns None
-      - `test_set_candles_exception_logs` — Redis pipeline raises → logs "set_candles failed", returns 0
-      - `test_invalidate_exception_logs` — Redis scan/delete raises → logs "invalidate failed", returns False
-      - `test_clear_all_exception_logs` — Redis scan/delete raises → logs "clear_all failed", returns False
-    - `backend/data/sources/registry.py` — `test_close_all_logs_on_failure` in `tests/test_data_sources.py`:
-      - `AsyncMock(spec=["close"])` source whose `close()` raises `RuntimeError` → logs "Failed to close data source: bad_source"
-    - `backend/main.py` — 2 tests in `tests/test_monitoring/test_health_enriched.py`:
-      - `test_check_redis_exception_logs` — patched `redis.asyncio.Redis` returns a mock that raises `ConnectionError` on `ping()` → "Redis health check failed" logged, returns False
-      - `test_check_chromadb_exception_logs` — patched `chromadb.HttpClient` raises `ConnectionError` → "ChromaDB health check failed" logged, returns False
-    - `database/connection.py` — `test_check_connection_exception_logs` in `tests/test_monitoring/test_health_enriched.py`:
-      - Custom `_FailingEngine` class whose `connect().__aenter__` raises `ConnectionError` → "Database connection check failed" logged, returns False
-      - Uses `patch("database.connection.engine", _FailingEngine())` instead of `patch.object()` because `AsyncEngine.connect` is read-only
-    - **Testing challenges encountered:**
-      - `backend/main` calls `setup_logging()` at module import time, which clears all root logger handlers (including caplog's `_CapLogHandler`). Redis/ChromaDB tests use a dedicated `StreamHandler(io.StringIO())` on the `ares` logger instead of `caplog` or `capsys`.
-      - `AsyncEngine.connect` is a read-only descriptor — cannot be monkeypatched with `patch.object()`. The connection test uses a synchronous `_FailingEngine` class that raises on `__aenter__`.
-  - **Verification:** 800+ tests pass, coverage maintained. Ruff: all checks passed. CI Run #30098178824 (`fix/silent-except-logging` @ `f00341d`): Backend Tests ✓, Frontend Typecheck ✓, Docker Compose Validation ✓. Follow-up coverage test commits (`5b0b4a4`, `1046952`) confirmed via CI Run #65: all 3 jobs green.
-
-**✅ P1 — verified this session**
-- **Item 4 — Model roster drift → RESOLVED.** Both `AGENTS.md` and `CLAUDE.md` correctly state: `configs/models.yaml` is the SINGLE SOURCE OF TRUTH. No model names hardcoded in doc bodies.
-- **Item 6 — Documentation drift → RESOLVED.** README says "default 15%" for kill-switch max drawdown; `KillSwitch.__init__` default = 15.0; `settings.live_max_drawdown_pct` = 15.0. The separate `settings.max_drawdown_pct` = 20.0 is a different, broader risk threshold. No actual drift.
-
-**🟡 Discovery pass findings (2026-07-24)**
-- ✅ 8 `except Exception:` blocks now log errors (Rule 2 violation resolved in commit `98fcde5`).
-- ✅ No stale root-level files (cleanup from `658f558` holding)
-- ✅ No duplicate workflow files found
-- ✅ AGENTS.md ↔ models.yaml model roster in sync
-- ✅ Frontend builds cleanly (0 TS errors)
-- ⚠️ GitHub CLI auth token expired — can't verify CI runs remotely, needs `gh auth login -h github.com`
-
-**Standing checks, every relevant iteration**
-- Before trusting any backtest/promotion-gate pass: run `backtesting`'s red-flag checklist.
-- Any new/changed agent output schema: check against `task-decomposer`'s I/O-contract pattern.
-- Any config file governing automated execution (CI, cron, docker-compose healthchecks): confirm it actually runs, per Rule 12 — don't stop at "the YAML is valid."
+**Standing checks, every relevant iteration** — unchanged, see below.
 
 ---
 

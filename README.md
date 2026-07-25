@@ -87,10 +87,7 @@ Spin up the backing databases, cache, and vector store via Docker:
 ```powershell
 docker-compose up -d
 ```
-This runs:
-* PostgreSQL on port `5432`
-* Redis on port `6379`
-* ChromaDB on port `8000`
+This runs **7 services**: PostgreSQL, Redis, ChromaDB, the FastAPI backend, the Next.js frontend, Prometheus, and Grafana — see docker/docker-compose.yml for ports.
 
 ### 3. Run Pipeline Simulation
 Test that the entire Python agent graph is wired and executing successfully:
@@ -125,4 +122,4 @@ Run the full pytest suite to verify no regressions in the agent graph, endpoints
 ```powershell
 python -m pytest tests/ -v
 ```
-Currently, all **760+ tests** pass cleanly with over **86% coverage**.
+Currently, all **808 tests** pass cleanly with **82.79% coverage** (verified 2026-07-25 via a clean install + full local run, matching CI).
