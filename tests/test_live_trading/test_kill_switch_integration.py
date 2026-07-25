@@ -23,9 +23,12 @@ def engine(mock_exchange):
     )
 
     engine.mode_manager.set_mode(TradingMode.AUTO)
-    # Set is_connected directly on the instance — with spec=ExchangeConnector
-    # the mock is aware of the attribute and allows overriding it.
-    engine.exchange.is_connected = True
+    # Patch is_connected as an instance attribute via create=True so the
+    # mock.exchange exposes is_connected without triggering mypy's read-only
+    # property check (ExchangeConnector.is_connected is @property with no setter).
+    import unittest.mock as mock
+
+    mock.patch.object(engine.exchange, "is_connected", new=True, create=True).start()
     return engine
 
 
