@@ -19,7 +19,6 @@ def connector() -> ZerodhaStubConnector:
 
 
 class TestZerodhaStubConnector:
-
     # ── Lifecycle ────────────────────────────────────────────────────
 
     @pytest.mark.asyncio

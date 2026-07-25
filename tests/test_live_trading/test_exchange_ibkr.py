@@ -19,7 +19,6 @@ def connector() -> IbkrStubConnector:
 
 
 class TestIbkrStubConnector:
-
     # ── Lifecycle ────────────────────────────────────────────────────
 
     @pytest.mark.asyncio

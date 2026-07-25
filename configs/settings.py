@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     # ── Production-safety validator ──────────────────────────────────
 
     @model_validator(mode="after")
-    def _reject_default_secrets_in_production(self) -> "Settings":
+    def _reject_default_secrets_in_production(self) -> Settings:
         """Refuse to start if production mode is set but defaults remain.
 
         Checks ``api_secret_key``, ``jwt_secret_key``, and the embedded
