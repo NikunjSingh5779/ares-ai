@@ -56,7 +56,7 @@ def _make_mock_engine():
                 "promotion": self.promotion_gate.progress(trades, days),
             }
 
-        async def paper_record(self, account_id=None):
+        async def paper_record(self, account_id=None, strategy_name=None):
             if self._paper_record:
                 return self._paper_record
             return {
