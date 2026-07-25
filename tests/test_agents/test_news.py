@@ -34,7 +34,7 @@ async def test_news_agent_success(news_agent, mock_router):
     # Mock news fetching
     news_items = [
         {"title": "Fed cuts rates", "publisher": "Reuters"},
-        {"title": "Tech stocks rally", "publisher": "Bloomberg"}
+        {"title": "Tech stocks rally", "publisher": "Bloomberg"},
     ]
     news_agent.fetch_news = AsyncMock(return_value=news_items)
 
@@ -44,13 +44,11 @@ async def test_news_agent_success(news_agent, mock_router):
         "key_events": ["Fed cut rates by 50 bps", "Tech stocks rallied strongly"],
         "impact_scores": {"macro": 0.8, "tech_sector": 0.9},
         "sources": ["Reuters", "Bloomberg"],
-        "rationale": "Very positive macro event."
+        "rationale": "Very positive macro event.",
     }
     router_result = RouterResult()
     router_result.success = True
-    router_result.response = {
-        "choices": [{"message": {"content": json.dumps(expected_json)}}]
-    }
+    router_result.response = {"choices": [{"message": {"content": json.dumps(expected_json)}}]}
     mock_router.execute.return_value = router_result
 
     result = await news_agent.process(NewsInput(symbol="BTC-USD"))
@@ -95,8 +93,11 @@ async def test_news_agent_no_news_fallback(news_agent, mock_router):
 
 def test_parse_llm_response_with_regex(news_agent):
     # Tests the regex fallback inside _parse_llm_response
-    content = "Here is my JSON:\n```json\n{\"sentiment\": 0.5, \"key_events\": [], " \
-        "\"impact_scores\": {}, \"sources\": [], \"rationale\": \"Ok\"}\n```\nSome other text."
+    content = (
+        "Here is my JSON:\n```json\n"
+        '{"sentiment": 0.5, "key_events": [], "impact_scores": {}, '
+        '"sources": [], "rationale": "Ok"}\n```\nSome other text.'
+    )
 
     parsed = news_agent._parse_llm_response(content)
     assert parsed["sentiment"] == 0.5
@@ -110,7 +111,7 @@ async def test_record_agent_fallback_on_router_fallback(mock_context, mock_route
 
     mock_context.model_preferences = {"model_chain": ["primary-model", "fallback-model"]}
     news_agent = NewsAgent(context=mock_context, router=mock_router)
-    news_agent.fetch_news = AsyncMock(return_value=[{"title": "Test", "publisher": "Test"}])
+    news_agent.fetch_news = AsyncMock(return_value=[{"title": "Test", "publisher": "Test"}])  # type: ignore[method-assign]
 
     router_result = RouterResult()
     router_result.success = True
@@ -121,9 +122,7 @@ async def test_record_agent_fallback_on_router_fallback(mock_context, mock_route
             {
                 "message": {
                     "content": (
-                        '{"sentiment": 0.0, "key_events": [], '
-                        '"impact_scores": {}, "sources": [], '
-                        '"rationale": "test"}'
+                        '{"sentiment": 0.0, "key_events": [], "impact_scores": {}, "sources": [], "rationale": "test"}'
                     ),
                 }
             }

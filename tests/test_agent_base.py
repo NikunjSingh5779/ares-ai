@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from pydantic import BaseModel, Field
 
@@ -84,7 +86,7 @@ class TestBaseAgent:
         assert agent.execution_log["agent"] == "test_agent"
 
     async def test_run_logs_failure(self, agent: _TestAgent) -> None:
-        agent.process = lambda x: (_ for _ in ()).throw(  # type: ignore[method-assign]
+        agent.process = lambda x: (_ for _ in ()).throw(  # type: ignore[assignment,method-assign]
             ValueError("something broke")
         )
 
@@ -111,12 +113,12 @@ class TestBaseAgent:
 
 class TestStubAgent:
     async def test_stub_raises_not_implemented(self) -> None:
-        agent = StubAgent(target_agent="market_analyst")
+        agent: StubAgent[Any, Any] = StubAgent(target_agent="market_analyst")
         with pytest.raises(NotImplementedError) as exc_info:
             await agent.run({"value": "test"})
         assert "market_analyst" in str(exc_info.value)
         assert "not implemented" in str(exc_info.value)
 
     async def test_stub_agent_name(self) -> None:
-        agent = StubAgent(target_agent="quant")
+        agent: StubAgent[Any, Any] = StubAgent(target_agent="quant")
         assert agent.agent_name == "stub_quant"

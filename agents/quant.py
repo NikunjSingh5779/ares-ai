@@ -30,6 +30,7 @@ from backend.data.models import MarketDataRequest, OHLCVData
 
 logger = logging.getLogger(__name__)
 
+
 # ---------------------------------------------------------------------------
 # Input schema
 # ---------------------------------------------------------------------------
@@ -38,6 +39,7 @@ class QuantInput(BaseModel):
     Can receive either pre-fetched candles or enough info to fetch them.
     The optional strategy field hints which strategy to evaluate.
     """
+
     symbol: str = Field(..., description="Ticker symbol (e.g. BTC-USD, AAPL)")
     interval: str = Field(default="1d", description="Candle interval")
     lookback: int = Field(default=100, description="Number of candles to analyze")
@@ -53,6 +55,8 @@ class QuantInput(BaseModel):
         default=None,
         description="Output from MarketAnalystAgent for additional context",
     )
+
+
 # ---------------------------------------------------------------------------
 # Prompt templates
 # ---------------------------------------------------------------------------
@@ -90,6 +94,8 @@ Rules:
 6. If market analyst context is provided, weigh it but do not copy it — apply your own
    quantitative framework.
 7. Be conservative. It is better to miss a trade than to take a bad one."""
+
+
 def build_quant_prompt(
     symbol: str,
     indicators: dict[str, Any],
@@ -174,6 +180,8 @@ def build_quant_prompt(
         {"role": "system", "content": QUANT_SYSTEM_PROMPT},
         {"role": "user", "content": "\n".join(user_parts)},
     ]
+
+
 # ---------------------------------------------------------------------------
 # Rule-based quant analysis (degraded mode)
 # ---------------------------------------------------------------------------
@@ -186,6 +194,8 @@ VALID_STRATEGIES = frozenset(
         "neutral",
     }
 )
+
+
 def _rule_based_quant(
     symbol: str,
     indicators: dict[str, Any],
@@ -219,6 +229,8 @@ def _rule_based_quant(
         if match:
             return match
     return candidates[0]
+
+
 # ---------------------------------------------------------------------------
 # Strategy detectors
 # ---------------------------------------------------------------------------
@@ -231,13 +243,17 @@ def _detect_momentum(indicators: dict[str, Any]) -> bool:
         return False
     # Require meaningful SMA separation and non-extreme RSI
     spread = abs(sma_20 - sma_50) / max(sma_50, 1)
-    return spread > 0.005 and 30 <= rsi <= 70
+    return spread > 0.005 and 30 <= rsi <= 70  # type: ignore[no-any-return]
+
+
 def _detect_mean_reversion(indicators: dict[str, Any]) -> bool:
     """Mean reversion trigger: RSI at extremes."""
     rsi = indicators.get("rsi_14")
     if rsi is None:
         return False
-    return rsi < 30 or rsi > 70
+    return rsi < 30 or rsi > 70  # type: ignore[no-any-return]
+
+
 def _detect_trend_following(indicators: dict[str, Any]) -> bool:
     """Trend following trigger: clear trend + MACD confirmation."""
     trend = indicators.get("trend", "neutral")
@@ -248,8 +264,10 @@ def _detect_trend_following(indicators: dict[str, Any]) -> bool:
     if histogram is None:
         return False
     if trend == "bullish":
-        return histogram > 0
-    return histogram < 0
+        return histogram > 0  # type: ignore[no-any-return]
+    return histogram < 0  # type: ignore[no-any-return]
+
+
 def _detect_breakout(indicators: dict[str, Any]) -> bool:
     """Breakout trigger: high volume at Bollinger Band edge."""
     vol_ratio = _volume_ratio(indicators)
@@ -264,6 +282,8 @@ def _detect_breakout(indicators: dict[str, Any]) -> bool:
     if lower is not None and current_price <= lower:
         return True
     return False
+
+
 # ---------------------------------------------------------------------------
 # Signal builders
 # ---------------------------------------------------------------------------
@@ -272,15 +292,19 @@ def _atr_ratio(indicators: dict[str, Any]) -> float | None:
     atr = indicators.get("atr_14")
     price = indicators.get("current_price", 0)
     if atr is not None and price > 0:
-        return atr / price * 100
+        return atr / price * 100  # type: ignore[no-any-return]
     return None
+
+
 def _volume_ratio(indicators: dict[str, Any]) -> float | None:
     """Ratio of current volume to 20-period SMA of volume."""
     current_vol = indicators.get("current_volume")
     avg_vol = indicators.get("volume_sma_20")
     if current_vol is not None and avg_vol is not None and avg_vol > 0:
-        return current_vol / avg_vol
+        return current_vol / avg_vol  # type: ignore[no-any-return]
     return None
+
+
 def _build_momentum_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     """Build signal for momentum strategy."""
     sma_20 = indicators.get("sma_20", 0)
@@ -307,6 +331,8 @@ def _build_momentum_signal(indicators: dict[str, Any]) -> dict[str, Any]:
             f"signals {'bullish' if is_bullish else 'bearish'} momentum"
         ),
     }
+
+
 def _build_mean_reversion_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     """Build signal for mean reversion strategy."""
     rsi = indicators.get("rsi_14", 50)
@@ -343,6 +369,8 @@ def _build_mean_reversion_signal(indicators: dict[str, Any]) -> dict[str, Any]:
             f"{'oversold bounce' if is_oversold else 'overbought pullback'}"
         ),
     }
+
+
 def _build_trend_following_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     """Build signal for trend following strategy."""
     trend = indicators.get("trend", "neutral")
@@ -368,6 +396,8 @@ def _build_trend_following_signal(indicators: dict[str, Any]) -> dict[str, Any]:
             f"{'positive' if macd.get('histogram', 0) > 0 else 'negative'} histogram"
         ),
     }
+
+
 def _build_breakout_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     """Build signal for breakout strategy."""
     price = indicators.get("current_price", 0)
@@ -397,6 +427,8 @@ def _build_breakout_signal(indicators: dict[str, Any]) -> dict[str, Any]:
             f"Bollinger Band with elevated volume ({_volume_ratio(indicators):.1f}x)"
         ),
     }
+
+
 def _build_neutral_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     """Build neutral signal when no strategy triggers."""
     return {
@@ -413,6 +445,8 @@ def _build_neutral_signal(indicators: dict[str, Any]) -> dict[str, Any]:
         },
         "rationale": "No clear quantitative signal detected across any strategy",
     }
+
+
 # ---------------------------------------------------------------------------
 # Response parser
 # ---------------------------------------------------------------------------
@@ -428,19 +462,20 @@ def _parse_quant_response(
         fallback_result["fallback_reason"] = "Empty response from LLM"
         return fallback_result
     text = response_text.strip()
-    cleaned = re.sub(r'^```(?:json)?\s*|\s*```$', '', text, flags=re.MULTILINE)
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE)
     data = None
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError as e:
         logger.error(f"LLM JSON parse FAILED: {e}. Raw output: {text[:500]}")
-        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
         if match:
             try:
                 data = json.loads(match.group())
                 logger.warning("Recovered JSON via regex extraction")
             except json.JSONDecodeError:
                 pass
+
     if data is None:
         logger.error("Falling back to rule-based analysis due to JSON parse failure.")
         fallback_result["used_fallback"] = True
@@ -491,6 +526,8 @@ def _parse_quant_response(
         "used_fallback": False,
         "fallback_reason": None,
     }
+
+
 # ---------------------------------------------------------------------------
 # QuantAgent
 # ---------------------------------------------------------------------------
@@ -506,9 +543,11 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
         agent = QuantAgent(router=router, ingestor=ingestor)
         result = await agent.run(QuantInput(symbol="BTC-USD"))
     """
+
     agent_name: str = "quant"
     input_schema: type[BaseModel] = QuantInput
     output_schema: type[BaseModel] = QuantOutput
+
     def __init__(
         self,
         router: ModelRouter,
@@ -518,7 +557,8 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
         super().__init__(context=context)
         self.router = router
         self.ingestor = ingestor
-    async def process(self, inputs: QuantInput) -> dict[str, Any]:
+
+    async def process(self, inputs: QuantInput) -> dict[str, Any]:  # type: ignore[override]
         """Execute quantitative analysis.
         1. Fetch/validate OHLCV data
         2. Compute technical indicators
@@ -555,6 +595,7 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
                 strategy_hint=inputs.strategy,
             )
         return llm_result
+
     async def _get_candles(self, inputs: QuantInput) -> list[OHLCVData]:
         """Get OHLCV data — either pre-fetched or via ingestor."""
         if inputs.candles:
@@ -573,6 +614,7 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
                 logger.error(f"Unhandled exception: {e}", exc_info=True)
                 return []
         return []
+
     async def _llm_quant(
         self,
         symbol: str,

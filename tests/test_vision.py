@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from agents.vision import (
@@ -24,7 +26,7 @@ from agents.vision import (
 
 
 @pytest.fixture
-def uptrend_candles() -> list[dict]:
+def uptrend_candles() -> list[dict[str, Any]]:
     """5 candles with clear uptrend."""
     return [
         {"open": 100, "high": 102, "low": 99, "close": 101, "volume": 1000},
@@ -36,7 +38,7 @@ def uptrend_candles() -> list[dict]:
 
 
 @pytest.fixture
-def downtrend_candles() -> list[dict]:
+def downtrend_candles() -> list[dict[str, Any]]:
     """5 candles with clear downtrend."""
     return [
         {"open": 107, "high": 108, "low": 105, "close": 106, "volume": 1400},
@@ -48,7 +50,7 @@ def downtrend_candles() -> list[dict]:
 
 
 @pytest.fixture
-def consolidation_candles() -> list[dict]:
+def consolidation_candles() -> list[dict[str, Any]]:
     """5 candles in a tight range (<3%)."""
     return [
         {"open": 100, "high": 101, "low": 99.5, "close": 100.5, "volume": 1000},
@@ -60,7 +62,7 @@ def consolidation_candles() -> list[dict]:
 
 
 @pytest.fixture
-def flat_candles() -> list[dict]:
+def flat_candles() -> list[dict[str, Any]]:
     """Only 1 candle — insufficient for pattern detection."""
     return [
         {"open": 100, "high": 102, "low": 99, "close": 101, "volume": 1000},
@@ -84,13 +86,13 @@ class TestClusterLevels:
 
     def test_returns_sorted_ascending(self):
         prices = [10, 20, 10, 20, 10, 30, 40]
-        result = _cluster_levels(prices, ascending=True)
+        result = _cluster_levels(prices, ascending=True)  # type: ignore[arg-type]
         # Most frequent: 10 appears 3 times, 20 appears 2 times
         assert result == sorted(result)  # should be ascending
 
     def test_returns_sorted_descending(self):
         prices = [10, 20, 10, 20, 10, 30, 40]
-        result = _cluster_levels(prices, ascending=False)
+        result = _cluster_levels(prices, ascending=False)  # type: ignore[arg-type]
         assert result == sorted(result, reverse=True)  # should be descending
 
 
@@ -174,21 +176,21 @@ class TestScoreTrendConfidence:
         closes = [100, 106]  # 6% change
         highs = [102, 108]
         lows = [99, 105]
-        score = _score_trend_confidence(closes, highs, lows)
+        score = _score_trend_confidence(closes, highs, lows)  # type: ignore[arg-type]
         assert score > 80  # >5% move → 85
 
     def test_moderate_trend(self):
         closes = [100, 104]  # 4% change
         highs = [102, 106]
         lows = [99, 103]
-        score = _score_trend_confidence(closes, highs, lows)
+        score = _score_trend_confidence(closes, highs, lows)  # type: ignore[arg-type]
         assert 60 <= score < 80  # >3% move → 70
 
     def test_weak_trend(self):
         closes = [100, 101.1]  # 1.1% change → > 0.01 threshold
         highs = [102, 103]
         lows = [99, 100]
-        score = _score_trend_confidence(closes, highs, lows)
+        score = _score_trend_confidence(closes, highs, lows)  # type: ignore[arg-type]
         assert 50 <= score < 60  # >1% move → 55
 
     def test_no_trend(self):

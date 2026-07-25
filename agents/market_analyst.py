@@ -29,6 +29,7 @@ from backend.data.models import MarketDataRequest, OHLCVData
 
 logger = logging.getLogger(__name__)
 
+
 # ---------------------------------------------------------------------------
 # Input schema
 # ---------------------------------------------------------------------------
@@ -36,6 +37,7 @@ class MarketAnalystInput(BaseModel):
     """Input for the Market Analyst Agent.
     Can receive either pre-fetched candles or enough info to fetch them.
     """
+
     symbol: str = Field(..., description="Ticker symbol (e.g. BTC-USD, AAPL)")
     interval: str = Field(default="1d", description="Candle interval")
     lookback: int = Field(default=100, description="Number of candles to analyze")
@@ -43,6 +45,8 @@ class MarketAnalystInput(BaseModel):
         default=None,
         description="Pre-fetched OHLCV data (bypasses ingestor)",
     )
+
+
 # ---------------------------------------------------------------------------
 # Prompt templates
 # ---------------------------------------------------------------------------
@@ -66,10 +70,12 @@ Rules:
      "rationale": "<string explaining your reasoning>"
    }
 3. confidence < 50 means you're uncertain — prefer "flat" in that case.
-4. Consider: market structure (higher highs, lower lows), candlestick patterns,
-   trend, momentum (RSI), volatility (Bollinger Bands), volume, Stochastic,
-   ADX, and Time Series metrics.
+4. Consider: market structure (higher highs, lower lows), candlestick patterns, trend,
+   momentum (RSI), volatility (Bollinger Bands), volume, Stochastic, ADX, and Time Series
+   metrics.
 5. Be conservative. It's better to miss a trade than to take a bad one."""
+
+
 def build_analysis_prompt(
     symbol: str,
     indicators: dict[str, Any],
@@ -122,7 +128,8 @@ def build_analysis_prompt(
     if indicators.get("time_series") is not None:
         ts = indicators["time_series"]
         ind_lines.append(
-            f"Time Series: Stationarity={ts.get('stationarity')} / "
+            "Time Series: "
+            f"Stationarity={ts.get('stationarity')} / "
             f"Trend Strength={ts.get('trend_strength')} / "
             f"Seasonal Strength={ts.get('seasonal_strength')}"
         )
@@ -144,6 +151,8 @@ Analyze the above and return your trading signal as valid JSON matching the spec
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
     ]
+
+
 # ---------------------------------------------------------------------------
 # Rule-based analysis (degraded mode)
 # ---------------------------------------------------------------------------
@@ -237,6 +246,7 @@ def _rule_based_analysis(
     if trend != "neutral":
         rationale_parts.append(f"Trend={trend}")
     rationale = " | ".join(rationale_parts)
+
     return {
         "confidence": round(confidence, 1),
         "direction": direction,
@@ -244,8 +254,7 @@ def _rule_based_analysis(
         "setup": "Rule-based technicals",
         "entry_zone": f"{current_price}",
         "stop_loss": (
-            f"{round(current_price * 0.95, 2)}" if direction == "long"
-            else f"{round(current_price * 1.05, 2)}"
+            f"{round(current_price * 0.95, 2)}" if direction == "long" else f"{round(current_price * 1.05, 2)}"
         ),
         "targets": [f"{round(current_price * 1.1, 2)}" if direction == "long" else f"{round(current_price * 0.9, 2)}"],
         "invalidation": "Trend reversal or MACD cross",
@@ -253,13 +262,17 @@ def _rule_based_analysis(
         "indicators": output_indicators,
         "rationale": rationale,
     }
+
+
 def _volume_ratio(indicators: dict[str, Any]) -> float | None:
     """Ratio of current volume to 20-period SMA of volume."""
     current_vol = indicators.get("current_volume")
     avg_vol = indicators.get("volume_sma_20")
     if current_vol is not None and avg_vol is not None and avg_vol > 0:
-        return current_vol / avg_vol
+        return current_vol / avg_vol  # type: ignore[no-any-return]
     return None
+
+
 # ---------------------------------------------------------------------------
 # Response parser
 # ---------------------------------------------------------------------------
@@ -276,14 +289,14 @@ def _parse_llm_response(
         return fallback_result
     text = response_text.strip()
     # Strip markdown code fences
-    cleaned = re.sub(r'^```(?:json)?\s*|\s*```$', '', text, flags=re.MULTILINE)
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE)
     data = None
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError as e:
         logger.error(f"LLM JSON parse FAILED: {e}. Raw output: {text[:500]}")
         # Try regex extraction
-        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
         if match:
             try:
                 data = json.loads(match.group())
@@ -328,6 +341,8 @@ def _parse_llm_response(
         "used_fallback": False,
         "fallback_reason": None,
     }
+
+
 # ---------------------------------------------------------------------------
 # MarketAnalystAgent
 # ---------------------------------------------------------------------------
@@ -343,9 +358,11 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
         result = await agent.run(MarketAnalystInput(symbol="BTC-USD"))
         # result is a dict matching MarketAnalystOutput schema
     """
+
     agent_name: str = "market_analyst"
     input_schema: type[BaseModel] = MarketAnalystInput
     output_schema: type[BaseModel] = MarketAnalystOutput
+
     def __init__(
         self,
         router: ModelRouter,
@@ -355,7 +372,8 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
         super().__init__(context=context)
         self.router = router
         self.ingestor = ingestor
-    async def process(self, inputs: MarketAnalystInput) -> dict[str, Any]:
+
+    async def process(self, inputs: MarketAnalystInput) -> dict[str, Any]:  # type: ignore[override]
         """Execute market analysis.
         1. Fetch/validate OHLCV data
         2. Compute technical indicators
@@ -387,6 +405,7 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
         if llm_result is None:
             llm_result = _rule_based_analysis(inputs.symbol, indicators)
         return llm_result
+
     async def _get_candles(self, inputs: MarketAnalystInput) -> list[OHLCVData]:
         """Get OHLCV data — either pre-fetched or via ingestor."""
         if inputs.candles:
@@ -405,6 +424,7 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
                 logger.error(f"Unhandled exception: {e}", exc_info=True)
                 return []
         return []
+
     async def _llm_analysis(
         self,
         symbol: str,

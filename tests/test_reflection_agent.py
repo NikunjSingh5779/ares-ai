@@ -19,7 +19,7 @@ class TestReflectionAgent:
         """Evaluation for an executed trade."""
         agent = ReflectionAgent()
         result = await agent.process(
-            ReflectionInput(
+            ReflectionInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 execution_output={
                     "executed": True,
@@ -42,7 +42,7 @@ class TestReflectionAgent:
         """Evaluation for a rejected trade."""
         agent = ReflectionAgent()
         result = await agent.process(
-            ReflectionInput(
+            ReflectionInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 execution_output={
                     "executed": False,
@@ -62,7 +62,7 @@ class TestReflectionAgent:
         """High confidence + executed = high accuracy score."""
         agent = ReflectionAgent()
         result = await agent.process(
-            ReflectionInput(
+            ReflectionInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 execution_output={"executed": True, "rationale": "ok"},
                 market_analyst_output={
@@ -90,7 +90,7 @@ class TestReflectionAgent:
         """Low confidence + not executed = high accuracy (correctly cautious)."""
         agent = ReflectionAgent()
         result = await agent.process(
-            ReflectionInput(
+            ReflectionInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 execution_output={"executed": False, "rationale": "No trade"},
                 market_analyst_output={
@@ -117,7 +117,7 @@ class TestReflectionAgent:
         """Consensus approved, high confidence, but risk rejected = high accuracy (agents correct)."""
         agent = ReflectionAgent()
         result = await agent.process(
-            ReflectionInput(
+            ReflectionInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 execution_output={"executed": False, "rationale": "Risk rejected: portfolio exposure limit"},
                 market_analyst_output={
@@ -146,7 +146,7 @@ class TestReflectionAgent:
         """Consensus rejected (direction mismatch), high confidence, not executed = high accuracy."""
         agent = ReflectionAgent()
         result = await agent.process(
-            ReflectionInput(
+            ReflectionInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 execution_output={"executed": False, "rationale": "Consensus rejected"},
                 market_analyst_output={
@@ -175,7 +175,7 @@ class TestReflectionAgent:
         """Consensus approved, executed, high confidence = 90 accuracy."""
         agent = ReflectionAgent()
         result = await agent.process(
-            ReflectionInput(
+            ReflectionInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 execution_output={"executed": True, "fill_price": 50000.0, "rationale": "ok"},
                 market_analyst_output={
@@ -203,7 +203,7 @@ class TestReflectionAgent:
         """Consensus rejected, not executed, low confidence = 90 accuracy."""
         agent = ReflectionAgent()
         result = await agent.process(
-            ReflectionInput(
+            ReflectionInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 execution_output={"executed": False, "rationale": "Consensus rejected"},
                 market_analyst_output={
@@ -231,7 +231,7 @@ class TestReflectionAgent:
         """Consensus approved but low confidence, executed = lower accuracy."""
         agent = ReflectionAgent()
         result = await agent.process(
-            ReflectionInput(
+            ReflectionInput(  # type: ignore[call-arg]
                 symbol="BTC-USD",
                 execution_output={"executed": True, "fill_price": 50000.0, "rationale": "ok"},
                 market_analyst_output={

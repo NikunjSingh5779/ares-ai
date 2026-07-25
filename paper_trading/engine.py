@@ -143,7 +143,8 @@ class PaperTradingEngine:
             # Opposite direction — close existing, open new
             closed = self.close_position(existing.id, entry_price, exit_reason="signal")
             result["reversal"] = True
-            result["closed_trade"] = self._trade_to_dict(closed)
+            if closed is not None:
+                result["closed_trade"] = self._trade_to_dict(closed)
 
         # Open new position (only spend up to cash)
         position_value = min(quantity * entry_price, self._cash)

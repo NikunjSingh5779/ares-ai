@@ -249,9 +249,7 @@ class TestSourceRegistry:
         registry.register(source)
         assert registry.get("binance").source_name == "binance"
 
-    async def test_close_all_logs_on_failure(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_close_all_logs_on_failure(self, caplog: pytest.LogCaptureFixture) -> None:
         """When a source's close() raises, close_all logs the error."""
         from unittest.mock import AsyncMock
 
@@ -264,7 +262,4 @@ class TestSourceRegistry:
         with caplog.at_level(logging.ERROR):
             await registry.close_all()
 
-        assert any(
-            "Failed to close data source: bad_source" in rec.message
-            for rec in caplog.records
-        )
+        assert any("Failed to close data source: bad_source" in rec.message for rec in caplog.records)

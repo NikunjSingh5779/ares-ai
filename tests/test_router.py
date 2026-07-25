@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -202,7 +203,7 @@ class TestModelRouterMocked:
         # Track which model was called
         called_models = []
 
-        async def mock_chat(**kwargs: dict) -> dict:  # type: ignore[misc]
+        async def mock_chat(**kwargs: dict[str, Any]) -> dict[str, Any]:
             model = kwargs.get("model", "")
             called_models.append(model)
             if model == "model-a":

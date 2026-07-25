@@ -95,7 +95,7 @@ class BinanceConnector(ExchangeConnector):
         }
 
         try:
-            self._client = ccxt.binance(options)  # type: ignore[arg-type]
+            self._client = ccxt.binance(options)
             if is_testnet:
                 self._client.set_sandbox_mode(True)
 
@@ -153,7 +153,7 @@ class BinanceConnector(ExchangeConnector):
         try:
             raw = await self._client.create_order(  # type: ignore[union-attr]
                 symbol=ccxt_symbol,
-                type=order_type,  # type: ignore[arg-type]
+                type=order_type,
                 side=side,
                 amount=quantity,
                 price=price,

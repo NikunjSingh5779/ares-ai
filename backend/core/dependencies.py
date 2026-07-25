@@ -71,7 +71,7 @@ async def verify_auth(
                 raise credentials_exception
             return email
         except JWTError:
-            pass # Fallback to api key if JWT fails
+            pass  # Fallback to api key if JWT fails
 
     # ── API Key Validation (Server-to-Server) ───────────────
     if token == settings.api_secret_key:
@@ -93,10 +93,7 @@ async def get_current_user_id(
     return auth
 
 
-async def get_current_user(
-    auth: str = Depends(verify_auth),
-    db: AsyncSession = Depends(get_db)
-) -> User:
+async def get_current_user(auth: str = Depends(verify_auth), db: AsyncSession = Depends(get_db)) -> User:
     """Resolve the current user record from the database."""
     if auth == settings.api_secret_key or auth == "dev-user-id":
         # Server-to-server or dev mode fallback

@@ -50,7 +50,7 @@ class ModelCircuitBreaker:
         self,
         model_id: str,
         consecutive_threshold: int = 3,
-        reset_seconds: int = 300,
+        reset_seconds: float = 300,
     ) -> None:
         self.model_id = model_id
         self.consecutive_threshold = consecutive_threshold
@@ -140,7 +140,7 @@ class CircuitBreakerRegistry:
             self._breakers[model_id] = ModelCircuitBreaker(model_id=model_id)
         return self._breakers[model_id]
 
-    def register(self, model_id: str, threshold: int = 3, reset_seconds: int = 300) -> ModelCircuitBreaker:
+    def register(self, model_id: str, threshold: int = 3, reset_seconds: float = 300) -> ModelCircuitBreaker:
         """Register a breaker with custom parameters."""
         breaker = ModelCircuitBreaker(
             model_id=model_id,

@@ -19,8 +19,11 @@ from backend.core.exceptions import ModelUnavailableError
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
 class RetryConfig:
     """Configuration for retry behavior."""
+
     def __init__(
         self,
         max_retries: int = 3,
@@ -32,13 +35,15 @@ class RetryConfig:
         self.base_delay = base_delay
         self.max_delay = max_delay
         self.jitter_factor = jitter_factor
+
     def delay(self, attempt: int) -> float:
         """Calculate delay for attempt number (0-indexed).
         delay = min(base * 2^attempt, max_delay) + jitter
         """
         exponential = min(self.base_delay * (2**attempt), self.max_delay)
         jitter = random.uniform(0, exponential * self.jitter_factor)
-        return exponential + jitter
+        return exponential + jitter  # type: ignore[no-any-return]
+
     def copy(self) -> RetryConfig:
         return RetryConfig(
             max_retries=self.max_retries,
@@ -46,6 +51,8 @@ class RetryConfig:
             max_delay=self.max_delay,
             jitter_factor=self.jitter_factor,
         )
+
+
 # Common retryable HTTP status codes
 RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
 # Common retryable exception types
@@ -54,6 +61,8 @@ RETRYABLE_EXCEPTIONS = (
     TimeoutError,
     asyncio.TimeoutError,
 )
+
+
 def is_retryable_error(exception: Exception) -> bool:
     """Check if an exception should trigger a retry."""
     if isinstance(exception, RETRYABLE_EXCEPTIONS):
@@ -68,8 +77,11 @@ def is_retryable_error(exception: Exception) -> bool:
     if exc_name in ("ConnectError", "RemoteProtocolError", "ReadTimeout", "WriteTimeout", "PoolTimeout"):
         return True
     return False
+
+
 class RetryResult:
     """Result of a retry operation."""
+
     def __init__(self) -> None:
         self.success: bool = False
         self.result: T | None = None  # type: ignore[valid-type]
@@ -77,6 +89,8 @@ class RetryResult:
         self.attempts: int = 0
         self.total_delay_ms: int = 0
         self.last_error_type: str = ""
+
+
 async def with_retry(
     func: Callable[[], Awaitable[T]],
     config: RetryConfig | None = None,

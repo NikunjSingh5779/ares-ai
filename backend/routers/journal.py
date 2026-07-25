@@ -12,8 +12,8 @@ from typing import Any
 from fastapi import APIRouter
 from sqlalchemy import text
 
-from backend.core.dependencies import async_session_factory
 from backend.routers.analysis import get_last_state
+from database.connection import async_session_factory
 
 router = APIRouter(prefix="/api/v1", tags=["journal"])
 

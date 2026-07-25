@@ -9,8 +9,10 @@ class UserBase(BaseModel):
     display_name: str
     role: str = "user"
 
+
 class UserCreate(UserBase):
     password: str = Field(min_length=8)
+
 
 class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
@@ -18,6 +20,7 @@ class UserResponse(UserBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
 
 class UserUpdate(BaseModel):
     email: EmailStr | None = None

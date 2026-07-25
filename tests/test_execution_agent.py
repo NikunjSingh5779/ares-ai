@@ -13,7 +13,8 @@ Tests cover:
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import MagicMock
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -27,6 +28,7 @@ from paper_trading.engine import PaperTradingEngine
 def mock_live_engine():
     engine = MagicMock()
     engine.mode = TradingMode.HUMAN_APPROVAL
+    engine.paper_record = AsyncMock(return_value={"promotion": {"passed": False}})
     return engine
 
 
@@ -66,7 +68,7 @@ def default_candles() -> list[OHLCVData]:
     ]
 
 
-def approved_risk_output() -> dict:
+def approved_risk_output() -> dict[str, Any]:
     """Return a risk output with trade approved."""
     return {
         "approved": True,
@@ -78,7 +80,7 @@ def approved_risk_output() -> dict:
     }
 
 
-def rejected_risk_output() -> dict:
+def rejected_risk_output() -> dict[str, Any]:
     """Return a risk output with trade rejected."""
     return {
         "approved": False,
@@ -90,7 +92,7 @@ def rejected_risk_output() -> dict:
     }
 
 
-def long_market_analyst() -> dict:
+def long_market_analyst() -> dict[str, Any]:
     """Return a market analyst output with long direction."""
     return {
         "confidence": 85.0,

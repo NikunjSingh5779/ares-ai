@@ -20,11 +20,11 @@ class LoggerWriter:
                 if line:
                     f.write(f"[{timestamp}] {line}\n")
             f.flush()
-        sys.__stdout__.write(message)
-        sys.__stdout__.flush()
+        sys.__stdout__.write(message)  # type: ignore[union-attr]
+        sys.__stdout__.flush()  # type: ignore[union-attr]
 
     def flush(self):
-        sys.__stdout__.flush()
+        sys.__stdout__.flush()  # type: ignore[union-attr]
 
 
 async def main():

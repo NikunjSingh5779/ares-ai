@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -38,7 +39,7 @@ SAMPLE_ROSTER = {
 
 
 @pytest.fixture
-def sample_config() -> dict:
+def sample_config() -> dict[str, Any]:
     return SAMPLE_ROSTER["agents"]
 
 

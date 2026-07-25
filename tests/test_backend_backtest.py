@@ -50,6 +50,7 @@ async def test_run_backtest_success(monkeypatch):
     # Mock ingestor to return synthetic data
     async def mock_ingest(self, req, *args, **kwargs):
         from backend.data.models import MarketDataResult
+
         res = MarketDataResult(symbol=req.symbol, source=req.source, interval=req.interval)
         res.candles = candles
         return res

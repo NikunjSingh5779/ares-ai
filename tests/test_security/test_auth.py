@@ -19,7 +19,7 @@ def _make_app(debug: bool = False, secret_key: str = "changeme_in_production") -
     return app
 
 
-def _patch_settings(app: FastAPI, **kwargs) -> None:  # type: ignore[no-untyped-def]
+def _patch_settings(app: FastAPI, **kwargs) -> None:
     """Patch settings for the test app."""
     import configs.settings as settings_module
 
@@ -30,7 +30,7 @@ def _patch_settings(app: FastAPI, **kwargs) -> None:  # type: ignore[no-untyped-
 class TestVerifyAuth:
     """Tests for the verify_auth dependency."""
 
-    def test_debug_mode_no_auth(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_debug_mode_no_auth(self, monkeypatch) -> None:
         """In debug mode with default key, requests without auth get a dev user."""
         from fastapi import Depends, FastAPI
 
@@ -51,7 +51,7 @@ class TestVerifyAuth:
             assert resp.status_code == 200
             assert resp.json()["user"] == "dev-user-id"
 
-    def test_debug_mode_with_bearer_token(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_debug_mode_with_bearer_token(self, monkeypatch) -> None:
         """In debug mode, a bearer token is accepted."""
         from fastapi import Depends, FastAPI
 
@@ -72,7 +72,7 @@ class TestVerifyAuth:
             assert resp.status_code == 200
             assert resp.json()["user"] == "my-token"
 
-    def test_debug_mode_with_api_key(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_debug_mode_with_api_key(self, monkeypatch) -> None:
         """In debug mode, an X-API-Key header is accepted."""
         from fastapi import Depends, FastAPI
 
@@ -93,7 +93,7 @@ class TestVerifyAuth:
             assert resp.status_code == 200
             assert resp.json()["user"] == "my-api-key"
 
-    def test_production_requires_auth(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_production_requires_auth(self, monkeypatch) -> None:
         """In production mode, requests without auth return 401."""
         from fastapi import Depends, FastAPI
 
@@ -113,7 +113,7 @@ class TestVerifyAuth:
             resp = client.get("/protected")
             assert resp.status_code == 401
 
-    def test_production_accepts_bearer_token(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_production_accepts_bearer_token(self, monkeypatch) -> None:
         """In production mode, a valid bearer token is accepted."""
         from fastapi import Depends, FastAPI
 
@@ -137,7 +137,7 @@ class TestVerifyAuth:
             assert resp.status_code == 200
             assert resp.json()["user"] == "prod-secret-key"
 
-    def test_production_accepts_api_key(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_production_accepts_api_key(self, monkeypatch) -> None:
         """In production mode, a valid X-API-Key header is accepted."""
         from fastapi import Depends, FastAPI
 
@@ -161,7 +161,7 @@ class TestVerifyAuth:
             assert resp.status_code == 200
             assert resp.json()["user"] == "prod-secret-key"
 
-    def test_production_rejects_wrong_key(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_production_rejects_wrong_key(self, monkeypatch) -> None:
         """In production mode, a wrong key returns 401."""
         from fastapi import Depends, FastAPI
 
@@ -184,7 +184,7 @@ class TestVerifyAuth:
             )
             assert resp.status_code == 401
 
-    def test_production_rejects_wrong_api_key(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_production_rejects_wrong_api_key(self, monkeypatch) -> None:
         """In production mode, a wrong X-API-Key returns 401."""
         from fastapi import Depends, FastAPI
 
@@ -207,7 +207,7 @@ class TestVerifyAuth:
             )
             assert resp.status_code == 401
 
-    def test_get_current_user_id(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def test_get_current_user_id(self, monkeypatch) -> None:
         """Verify get_current_user_id extracts the credential."""
         from fastapi import Depends, FastAPI
 

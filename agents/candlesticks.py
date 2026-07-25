@@ -16,7 +16,7 @@ def detect_candlestick_patterns(candles: list[OHLCVData]) -> list[str]:
     if len(candles) < 2:
         return []
 
-    patterns = []
+    patterns: list[str] = []
 
     # Calculate some basics about the current and previous candles
     current = candles[-1]

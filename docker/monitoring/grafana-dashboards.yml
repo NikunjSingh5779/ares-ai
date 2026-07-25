@@ -1,0 +1,15 @@
+# =============================================================================
+# ARES AI — Grafana Dashboard Provisioning
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: "ARES AI Dashboards"
+    orgId: 1
+    folder: "ARES AI"
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

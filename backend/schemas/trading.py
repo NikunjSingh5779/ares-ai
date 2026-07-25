@@ -9,9 +9,11 @@ class AccountBase(BaseModel):
     account_name: str
     trading_mode: str = "human_approval"
 
+
 class AccountCreate(AccountBase):
     api_key: str
     api_secret: str
+
 
 class AccountResponse(AccountBase):
     model_config = ConfigDict(from_attributes=True)
@@ -20,6 +22,7 @@ class AccountResponse(AccountBase):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
 
 class PortfolioBase(BaseModel):
     total_value: float
@@ -31,6 +34,7 @@ class PortfolioBase(BaseModel):
     max_drawdown_pct: float
     currency: str = "USD"
 
+
 class PortfolioResponse(PortfolioBase):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
@@ -38,6 +42,7 @@ class PortfolioResponse(PortfolioBase):
     last_rebalanced_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
 
 class PositionBase(BaseModel):
     symbol: str
@@ -53,6 +58,7 @@ class PositionBase(BaseModel):
     strategy_name: str | None = None
     is_open: bool = True
 
+
 class PositionResponse(PositionBase):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
@@ -62,6 +68,7 @@ class PositionResponse(PositionBase):
     created_at: datetime
     updated_at: datetime
 
+
 class OrderBase(BaseModel):
     symbol: str
     side: str
@@ -70,6 +77,7 @@ class OrderBase(BaseModel):
     price: float | None = None
     stop_price: float | None = None
     strategy_name: str | None = None
+
 
 class OrderResponse(OrderBase):
     model_config = ConfigDict(from_attributes=True)

@@ -139,7 +139,7 @@ class CoinGeckoSource(BaseDataSource):
 
     def _parse_ohlcv(
         self,
-        raw: list[list],
+        raw: list[list[Any]],
         symbol: str,
         interval: str,
     ) -> list[OHLCVData]:

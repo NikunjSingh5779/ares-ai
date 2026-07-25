@@ -114,11 +114,11 @@ class BinanceSource(BaseDataSource):
         """Fetch exchange info (trading pairs, filters, etc.)."""
         response = await self._client.get(BINANCE_EXCHANGE_INFO)
         response.raise_for_status()
-        return response.json()
+        return response.json()  # type: ignore[no-any-return]
 
     def _parse_klines(
         self,
-        raw: list[list],
+        raw: list[list[Any]],
         symbol: str,
         interval: str,
     ) -> list[OHLCVData]:

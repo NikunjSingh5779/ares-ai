@@ -114,6 +114,8 @@ class KillSwitch:
         """When the kill switch was triggered."""
         ts = self._get("ares:kill_switch:timestamp")
         if ts:
+            if isinstance(ts, bytes):
+                return datetime.datetime.fromisoformat(ts.decode("utf-8"))
             return datetime.datetime.fromisoformat(ts)
         return None
 

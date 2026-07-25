@@ -61,11 +61,11 @@ def execution_input():
                 symbol="BTC-USD",
                 interval="1m",
                 timestamp=datetime.now(),
-                open="50000",
-                high="50100",
-                low="49900",
-                close="50000",
-                volume="10",
+                open=50000.0,
+                high=50100.0,
+                low=49900.0,
+                close=50000.0,
+                volume=10.0,
             )
         ],
         portfolio_value=100000.0,
@@ -93,8 +93,10 @@ async def test_routes_to_paper_when_mode_auto_but_promotion_gate_failed(
 ):
     mock_live_engine.mode = TradingMode.AUTO
 
-    # Mock paper_record as property returning dict
-    mock_live_engine.paper_record = {"promotion": {"passed": False}}
+    # Mock paper_record as async method returning dict
+    from unittest.mock import AsyncMock
+
+    mock_live_engine.paper_record = AsyncMock(return_value={"promotion": {"passed": False}})
 
     agent = ExecutionAgent(engine=mock_paper_engine, live_engine=mock_live_engine)
     result = await agent.process(execution_input)
@@ -110,7 +112,9 @@ async def test_routes_to_live_when_mode_auto_and_promotion_gate_passed(
     mock_paper_engine, mock_live_engine, execution_input
 ):
     mock_live_engine.mode = TradingMode.AUTO
-    mock_live_engine.paper_record = {"promotion": {"passed": True}}
+    from unittest.mock import AsyncMock
+
+    mock_live_engine.paper_record = AsyncMock(return_value={"promotion": {"passed": True}})
 
     agent = ExecutionAgent(engine=mock_paper_engine, live_engine=mock_live_engine)
     result = await agent.process(execution_input)

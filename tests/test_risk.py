@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -50,7 +51,7 @@ def sample_candles() -> list[OHLCVData]:
 
 
 @pytest.fixture
-def sample_indicators(sample_candles: list[OHLCVData]) -> dict:
+def sample_indicators(sample_candles: list[OHLCVData]) -> dict[str, Any]:
     return compute_all_indicators(sample_candles)
 
 
@@ -60,7 +61,7 @@ def sample_indicators(sample_candles: list[OHLCVData]) -> dict:
 
 
 class TestBuildRiskPrompt:
-    def test_returns_message_list(self, sample_indicators: dict) -> None:
+    def test_returns_message_list(self, sample_indicators: dict[str, Any]) -> None:
         messages = build_risk_prompt("BTC-USD", sample_indicators, None, None, None, 100000.0)
         assert len(messages) >= 2
         assert messages[0]["role"] == "system"
@@ -73,13 +74,13 @@ class TestBuildRiskPrompt:
         assert "stop loss" in system.lower()
         assert "volatility" in system.lower()
 
-    def test_user_prompt_contains_symbol_and_portfolio(self, sample_indicators: dict) -> None:
+    def test_user_prompt_contains_symbol_and_portfolio(self, sample_indicators: dict[str, Any]) -> None:
         messages = build_risk_prompt("ETH-USD", sample_indicators, None, None, None, 50000.0)
         content = messages[1]["content"]
         assert "ETH-USD" in content
         assert "50,000" in content
 
-    def test_includes_upstream_signals(self, sample_indicators: dict) -> None:
+    def test_includes_upstream_signals(self, sample_indicators: dict[str, Any]) -> None:
         ma = {"direction": "long", "confidence": 85.0, "rationale": "Bullish"}
         quant = {"direction": "long", "confidence": 90.0, "rationale": "Momentum"}
         consensus = {"approved": True, "composite_confidence": 87.5, "rationale": "Agreed"}
@@ -100,7 +101,7 @@ class TestBuildRiskPrompt:
 
 
 class TestRuleBasedRisk:
-    def test_returns_risk_structure(self, sample_indicators: dict) -> None:
+    def test_returns_risk_structure(self, sample_indicators: dict[str, Any]) -> None:
         """Baseline: valid output structure."""
         result = _rule_based_risk("BTC-USD", sample_indicators)
         assert "approved" in result
@@ -112,7 +113,7 @@ class TestRuleBasedRisk:
         assert isinstance(result["approved"], bool)
         assert isinstance(result["reasons"], list)
 
-    def test_approved_with_good_signal(self, sample_indicators: dict) -> None:
+    def test_approved_with_good_signal(self, sample_indicators: dict[str, Any]) -> None:
         """High confidence, consensus approved → approved."""
         result = _rule_based_risk(
             "BTC-USD",
@@ -124,7 +125,7 @@ class TestRuleBasedRisk:
         assert result["approved"] is True
         assert result["risk_score"] <= MAX_RISK_SCORE
 
-    def test_rejected_without_consensus(self, sample_indicators: dict) -> None:
+    def test_rejected_without_consensus(self, sample_indicators: dict[str, Any]) -> None:
         """No consensus output and low confidence → rejected."""
         result = _rule_based_risk(
             "BTC-USD",
@@ -136,7 +137,7 @@ class TestRuleBasedRisk:
         assert result["approved"] is False
         assert "did not pass consensus" in result["rationale"]
 
-    def test_rejected_when_consensus_not_approved(self, sample_indicators: dict) -> None:
+    def test_rejected_when_consensus_not_approved(self, sample_indicators: dict[str, Any]) -> None:
         """Consensus output says not approved → rejected."""
         result = _rule_based_risk(
             "BTC-USD",
@@ -151,13 +152,13 @@ class TestRuleBasedRisk:
         assert isinstance(result["approved"], bool)
         assert isinstance(result["risk_score"], (int, float))
 
-    def test_negative_portfolio_value_clamped(self, sample_indicators: dict) -> None:
+    def test_negative_portfolio_value_clamped(self, sample_indicators: dict[str, Any]) -> None:
         """Negative portfolio value should be handled gracefully."""
         result = _rule_based_risk("BTC-USD", sample_indicators, portfolio_value=-1000.0)
         assert isinstance(result["approved"], bool)
         assert result["risk_score"] >= 0
 
-    def test_position_size_calculation(self, sample_indicators: dict) -> None:
+    def test_position_size_calculation(self, sample_indicators: dict[str, Any]) -> None:
         """Position size should follow 2% rule."""
         consensus = {"approved": True, "composite_confidence": 85.0}
         ma = {"direction": "long", "confidence": 85.0}
@@ -237,7 +238,7 @@ class TestParseRiskResponse:
             '"risk_score": 45.0, "reasons": ["Low volatility"], '
             '"rationale": "Risk approved"}'
         )
-        fallback = {
+        fallback: dict[str, Any] = {
             "approved": False,
             "max_position_size": None,
             "stop_loss": None,
@@ -254,7 +255,7 @@ class TestParseRiskResponse:
 
     def test_handles_markdown_fenced_json(self) -> None:
         response = '```json\n{"approved": false, "risk_score": 90.0, "rationale": "Too risky"}\n```'
-        fallback = {
+        fallback: dict[str, Any] = {
             "approved": False,
             "max_position_size": None,
             "stop_loss": None,
@@ -268,7 +269,7 @@ class TestParseRiskResponse:
 
     def test_fallback_on_invalid_json(self) -> None:
         response = "not json"
-        fallback = {
+        fallback: dict[str, Any] = {
             "approved": False,
             "max_position_size": None,
             "stop_loss": None,
@@ -281,7 +282,7 @@ class TestParseRiskResponse:
 
     def test_fallback_on_missing_required(self) -> None:
         response = '{"risk_score": 50}'  # missing approved and rationale
-        fallback = {
+        fallback: dict[str, Any] = {
             "approved": False,
             "max_position_size": None,
             "stop_loss": None,
@@ -294,7 +295,7 @@ class TestParseRiskResponse:
 
     def test_clamps_risk_score_above_100(self) -> None:
         response = '{"approved": true, "risk_score": 200.0, "rationale": "over max"}'
-        fallback = {
+        fallback: dict[str, Any] = {
             "approved": False,
             "max_position_size": None,
             "stop_loss": None,
@@ -307,7 +308,7 @@ class TestParseRiskResponse:
 
     def test_clamps_risk_score_below_0(self) -> None:
         response = '{"approved": true, "risk_score": -50.0, "rationale": "under min"}'
-        fallback = {
+        fallback: dict[str, Any] = {
             "approved": False,
             "max_position_size": None,
             "stop_loss": None,
@@ -319,7 +320,7 @@ class TestParseRiskResponse:
         assert result["risk_score"] == 0.0
 
     def test_empty_response_uses_fallback(self) -> None:
-        fallback = {
+        fallback: dict[str, Any] = {
             "approved": False,
             "max_position_size": None,
             "stop_loss": None,
@@ -331,7 +332,7 @@ class TestParseRiskResponse:
         assert result == fallback
 
     def test_none_response_uses_fallback(self) -> None:
-        fallback = {
+        fallback: dict[str, Any] = {
             "approved": False,
             "max_position_size": None,
             "stop_loss": None,
@@ -480,9 +481,9 @@ class TestRiskInput:
             quant_output={"direction": "long", "confidence": 90.0},
             consensus_output={"approved": True, "composite_confidence": 87.5},
         )
-        assert inp.market_analyst_output["direction"] == "long"
-        assert inp.quant_output["confidence"] == 90.0
-        assert inp.consensus_output["approved"] is True
+        assert inp.market_analyst_output is not None and inp.market_analyst_output["direction"] == "long"
+        assert inp.quant_output is not None and inp.quant_output["confidence"] == 90.0
+        assert inp.consensus_output is not None and inp.consensus_output["approved"] is True
 
     def test_custom_portfolio_value(self) -> None:
         inp = RiskInput(symbol="BTC-USD", portfolio_value=50000.0)

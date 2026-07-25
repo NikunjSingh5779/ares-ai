@@ -32,6 +32,8 @@ MAX_POSITION_SIZE_PCT: float = 2.0
 """Maximum position size as percentage of portfolio value (2% rule)."""
 MAX_RISK_SCORE: float = 70.0
 """Maximum risk score allowed for approval (0-100)."""
+
+
 # ---------------------------------------------------------------------------
 # Input schema
 # ---------------------------------------------------------------------------
@@ -40,6 +42,7 @@ class RiskInput(BaseModel):
     Receives pre-fetched candles or enough info to fetch them,
     plus the outputs from upstream agents for context.
     """
+
     symbol: str = Field(..., description="Ticker symbol")
     interval: str = Field(default="1d", description="Candle interval")
     lookback: int = Field(default=100, description="Number of candles")
@@ -67,6 +70,8 @@ class RiskInput(BaseModel):
         default=None,
         description="ConsensusEngine output",
     )
+
+
 # ---------------------------------------------------------------------------
 # Prompt templates
 # ---------------------------------------------------------------------------
@@ -88,6 +93,8 @@ Return ONLY valid JSON matching this schema:
   "reasons": [<string, ...>, list of reasons for the decision>,
   "rationale": "<string explaining your risk assessment>"
 }}"""
+
+
 def build_risk_prompt(
     symbol: str,
     indicators: dict[str, Any],
@@ -148,6 +155,8 @@ def build_risk_prompt(
         {"role": "system", "content": RISK_SYSTEM_PROMPT},
         {"role": "user", "content": "\n".join(context_parts)},
     ]
+
+
 # ---------------------------------------------------------------------------
 # Rule-based risk assessment (degraded mode)
 # ---------------------------------------------------------------------------
@@ -226,6 +235,8 @@ def _rule_based_risk(
             f"Max position={max_position_size} units at ${price:.2f}"
         ),
     }
+
+
 def _compute_risk_score(
     indicators: dict[str, Any],
     portfolio_value: float,
@@ -260,6 +271,8 @@ def _compute_risk_score(
     if portfolio_value < 10000:
         score += 10  # small account = higher risk per trade
     return min(score, 100.0)
+
+
 # ---------------------------------------------------------------------------
 # Response parser
 # ---------------------------------------------------------------------------
@@ -313,6 +326,8 @@ def _parse_risk_response(
         "reasons": reasons,
         "rationale": rationale,
     }
+
+
 # ---------------------------------------------------------------------------
 # RiskAgent
 # ---------------------------------------------------------------------------
@@ -327,9 +342,11 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
         agent = RiskAgent(router=router)
         result = await agent.run(RiskInput(symbol="BTC-USD", ...))
     """
+
     agent_name: str = "risk"
     input_schema: type[BaseModel] = RiskInput
     output_schema: type[BaseModel] = RiskOutput
+
     def __init__(
         self,
         router: ModelRouter,
@@ -339,7 +356,8 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
         super().__init__(context=context)
         self.router = router
         self.ingestor = ingestor
-    async def process(self, inputs: RiskInput) -> dict[str, Any]:
+
+    async def process(self, inputs: RiskInput) -> dict[str, Any]:  # type: ignore[override]
         """Execute risk assessment.
         1. Get OHLCV data for volatility context
         2. Compute indicators
@@ -367,6 +385,7 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
                 portfolio_value=inputs.portfolio_value,
             )
         return llm_result
+
     async def _get_candles(self, inputs: RiskInput) -> list[OHLCVData]:
         """Get OHLCV data — either pre-fetched or via ingestor."""
         if inputs.candles:
@@ -385,6 +404,7 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
                 logger.error(f"Unhandled exception: {e}", exc_info=True)
                 return []
         return []
+
     async def _llm_risk(
         self,
         symbol: str,

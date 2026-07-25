@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import chromadb
+from chromadb.api import ClientAPI
 from pydantic import BaseModel, ConfigDict, Field
 
 from agents.base import AgentContext, BaseAgent
@@ -21,6 +22,7 @@ from agents.state import MemoryOutput
 from configs.settings import settings
 
 logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Input schema
@@ -30,11 +32,14 @@ class MemoryInput(BaseModel):
     Receives all pipeline outputs via extra fields (``extra="allow"``)
     since the input shape depends on which agents have run.
     """
+
     symbol: str = Field(default="", description="Ticker symbol")
     request: str = Field(default="", description="Original user request")
     strategy_id: str = Field(default="default", description="Strategy identifier for namespacing")
     rolling_memory: list[dict[str, Any]] = Field(default_factory=list, description="Historical memory rolling window")
     model_config = ConfigDict(extra="allow")
+
+
 # ---------------------------------------------------------------------------
 # Memory types
 # ---------------------------------------------------------------------------
@@ -45,6 +50,8 @@ MEMORY_TYPE_MAP: dict[str, str] = {
     "consensus": "agent_output",
     "risk": "agent_output",
 }
+
+
 # ---------------------------------------------------------------------------
 # Memory Agent
 # ---------------------------------------------------------------------------
@@ -56,32 +63,36 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
         agent = MemoryAgent()
         result = await agent.run(MemoryInput(symbol="BTC-USD", ...))
     """
+
     agent_name: str = "memory"
     input_schema: type[BaseModel] = MemoryInput
     output_schema: type[BaseModel] = MemoryOutput
+
     def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
         super().__init__(context=context)
+        self.chroma_client: ClientAPI | None = None
         try:
             self.chroma_client = chromadb.HttpClient(
-                host=settings.chromadb_host,
-                port=settings.chromadb_port,
+                host=settings.chroma_host,
+                port=settings.chroma_port,
             )
         except Exception as e:
             logger.error(f"Unhandled exception: {e}", exc_info=True)
             self.chroma_client = None
+
     def get_collection(self, strategy_id: str) -> chromadb.Collection | None:
         """Always namespace by strategy ID."""
         if not self.chroma_client:
             return None
         try:
             return self.chroma_client.get_or_create_collection(
-                name=f"ares_memory_{strategy_id}",
-                metadata={"hnsw:space": "cosine"}
+                name=f"ares_memory_{strategy_id}", metadata={"hnsw:space": "cosine"}
             )
         except Exception as e:
             logger.error(f"Unhandled exception: {e}", exc_info=True)
             return None
-    async def process(self, inputs: MemoryInput) -> dict[str, Any]:
+
+    async def process(self, inputs: MemoryInput) -> dict[str, Any]:  # type: ignore[override]
         """Consolidate the pipeline run into memory records.
         1. Extract outputs from all pipeline agents
         2. Build structured memory records from key outputs
@@ -177,13 +188,11 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                     doc_id = f"{symbol}_{datetime.now(UTC).timestamp()}_{i}"
                     ids.append(doc_id)
                     docs.append(mem["content"])
-                    metadatas.append({
-                        "type": mem["type"],
-                        "importance": mem["importance"],
-                        "timestamp": mem["timestamp"]
-                    })
+                    metadatas.append(
+                        {"type": mem["type"], "importance": mem["importance"], "timestamp": mem["timestamp"]}
+                    )
                 try:
-                    collection.add(ids=ids, documents=docs, metadatas=metadatas)
+                    collection.add(ids=ids, documents=docs, metadatas=metadatas)  # type: ignore[arg-type]
                 except Exception as e:
                     logger.error(f"Unhandled exception: {e}", exc_info=True)
                     pass
@@ -193,6 +202,8 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
             "consolidated": True,
             "rationale": " | ".join(rationale_parts),
         }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

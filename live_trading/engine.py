@@ -7,7 +7,10 @@ checklist before reaching the exchange.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+from sqlalchemy import text
 
 from backend.core.metrics import record_live_order
 from live_trading.audit import AuditEntry, OrderAuditor
@@ -25,6 +28,8 @@ from live_trading.safety import (
     SafetyCheckResult,
     TradingMode,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LiveTradingEngine:
@@ -53,12 +58,14 @@ class LiveTradingEngine:
         mode_manager: ModeManager,
         promotion_gate: PromotionGate,
         auditor: OrderAuditor | None = None,
+        session_factory: Any = None,
     ) -> None:
         self.exchange = exchange
         self.kill_switch = kill_switch
         self.mode_manager = mode_manager
         self.promotion_gate = promotion_gate
         self.auditor = auditor or OrderAuditor()
+        self._session_factory = session_factory
 
         self._running = False
         self._paper_trades_count = 0
@@ -84,20 +91,67 @@ class LiveTradingEngine:
     # ── Paper record (for promotion gate) ───────────────────────────
 
     def set_paper_record(self, trades: int, days: int) -> None:
-        """Set the paper trading record for promotion evaluation."""
+        """Set the paper trading record for promotion evaluation (in-memory fallback)."""
         self._paper_trades_count = trades
         self._paper_days_count = days
 
-    @property
-    def paper_record(self) -> dict[str, Any]:
-        """Return the paper record and promotion status."""
+    async def _query_paper_record_from_db(self, account_id: str | None = None) -> tuple[int, int]:
+        """Query paper trading stats from the database.
+
+        Returns (trades_count, days_count). Falls back to in-memory if no DB.
+        """
+        if not self._session_factory:
+            return self._paper_trades_count, self._paper_days_count
+
+        try:
+            async with self._session_factory() as session:
+                params: dict[str, Any] = {}
+                account_filter = ""
+                if account_id:
+                    account_filter = "AND th.account_id = :account_id"
+                    params["account_id"] = account_id
+
+                trades_count = (
+                    await session.execute(
+                        text(f"""
+                    SELECT COUNT(*) FROM trade_history th
+                    JOIN accounts a ON th.account_id = a.id
+                    WHERE a.exchange = 'paper' AND th.is_closed = true
+                    {account_filter}
+                """),
+                        params,
+                    )
+                ).scalar() or 0
+
+                days_count = (
+                    await session.execute(
+                        text(f"""
+                    SELECT COUNT(DISTINCT DATE(entry_at)) FROM trade_history th
+                    JOIN accounts a ON th.account_id = a.id
+                    WHERE a.exchange = 'paper'
+                    {account_filter}
+                """),
+                        params,
+                    )
+                ).scalar() or 0
+
+                return int(trades_count), int(days_count)
+        except Exception:
+            logger.exception("Failed to query paper record from DB, falling back to in-memory")
+            return self._paper_trades_count, self._paper_days_count
+
+    async def paper_record(self, account_id: str | None = None) -> dict[str, Any]:
+        """Return the paper record and promotion status.
+
+        Queries the database when a session factory is available.
+        Falls back to in-memory values otherwise.
+        Supports optional per-account isolation via ``account_id``.
+        """
+        trades, days = await self._query_paper_record_from_db(account_id)
         return {
-            "trades": self._paper_trades_count,
-            "days": self._paper_days_count,
-            "promotion": self.promotion_gate.progress(
-                self._paper_trades_count,
-                self._paper_days_count,
-            ),
+            "trades": trades,
+            "days": days,
+            "promotion": self.promotion_gate.progress(trades, days),
         }
 
     # ── Lifecycle ───────────────────────────────────────────────────
@@ -120,9 +174,10 @@ class LiveTradingEngine:
 
     # ── Safety check ────────────────────────────────────────────────
 
-    def check_pre_trade(self) -> list[SafetyCheckResult]:
+    async def check_pre_trade(self, account_id: str | None = None) -> list[SafetyCheckResult]:
         """Run all pre-trade safety checks.
 
+        Accepts an optional ``account_id`` for per-account promotion gate isolation.
         Returns a list of ``SafetyCheckResult`` in evaluation order.
         The caller should treat any ``passed=False`` result as a block.
         """
@@ -134,8 +189,9 @@ class LiveTradingEngine:
         # 2. Mode — check if approval is needed (doesn't block)
         results.append(self.mode_manager.check())
 
-        # 3. PromotionGate
-        results.append(self.promotion_gate.check(self._paper_trades_count, self._paper_days_count))
+        # 3. PromotionGate — DB-backed with per-account isolation
+        trades, days = await self._query_paper_record_from_db(account_id)
+        results.append(self.promotion_gate.check(trades, days))
 
         # 4. Exchange connection
         if not self.exchange.is_connected:
@@ -201,7 +257,7 @@ class LiveTradingEngine:
         }
 
         # ── Pre-trade safety check ──────────────────────────────────
-        safety_results = self.check_pre_trade()
+        safety_results = await self.check_pre_trade(signal.get("account_id"))
 
         # Check if human approval is needed
         if self.mode_manager.requires_approval() and not approval_id:
@@ -232,7 +288,7 @@ class LiveTradingEngine:
         try:
             order = await self.exchange.create_order(
                 symbol=order_intent["symbol"],
-                side=order_intent["side"],  # type: ignore[arg-type]
+                side=order_intent["side"],
                 quantity=order_intent["quantity"],
                 order_type=order_intent["order_type"],
                 price=order_intent.get("price"),
@@ -261,7 +317,7 @@ class LiveTradingEngine:
             "status": order.status,
         }
 
-        record_live_order(order_dict["status"])
+        record_live_order(str(order_dict["status"]))
 
         entry = AuditEntry(
             order_intent=order_intent,

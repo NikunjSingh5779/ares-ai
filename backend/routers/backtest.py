@@ -46,6 +46,7 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
     # 1. Fetch historical data
     ingestor = MarketDataIngestor()
     from backend.data.models import MarketDataRequest
+
     try:
         req = MarketDataRequest(
             symbol=request.symbol,
@@ -89,14 +90,16 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
 
         # Only take signals above a basic confidence threshold (e.g. 60%)
         if direction != "neutral" and confidence > 60.0:
-            signals.append({
-                "direction": direction,
-                "timestamp": current_candle.timestamp,
-                "strategy_name": quant_out.get("strategy_name", request.strategy),
-                "confidence": confidence,
-                "stop_loss": quant_out.get("stop_loss"),
-                "take_profit": quant_out.get("take_profit"),
-            })
+            signals.append(
+                {
+                    "direction": direction,
+                    "timestamp": current_candle.timestamp,
+                    "strategy_name": quant_out.get("strategy_name", request.strategy),
+                    "confidence": confidence,
+                    "stop_loss": quant_out.get("stop_loss"),
+                    "take_profit": quant_out.get("take_profit"),
+                }
+            )
 
     if not signals:
         logger.warning(f"No valid signals generated for {request.symbol} over {len(candles)} candles")
@@ -108,8 +111,8 @@ async def run_backtest(request: BacktestRequest) -> dict[str, Any]:
         candles=candles,
         initial_capital=request.initial_capital,
         signals=signals,
-        commission_pct=0.001, # 0.1% typical exchange fee
-        slippage_pct=0.001,   # 0.1% slippage
+        commission_pct=0.001,  # 0.1% typical exchange fee
+        slippage_pct=0.001,  # 0.1% slippage
     )
 
     try:

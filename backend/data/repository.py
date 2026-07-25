@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.data.models import OHLCVData
 
@@ -73,7 +73,7 @@ class MarketDataRepository:
         LIMIT 1
     """)
 
-    def __init__(self, session_factory: type[AsyncSession] | None = None) -> None:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession] | None = None) -> None:
         self._session_factory = session_factory
 
     async def insert_ohlcv(self, candles: list[OHLCVData], session: AsyncSession | None = None) -> int:

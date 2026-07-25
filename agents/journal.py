@@ -172,7 +172,7 @@ class JournalAgent(BaseAgent[JournalInput, JournalOutput]):
         super().__init__(context=context)
         self.writer = AsyncBatchWriter(batch_size=100, session_factory=session_factory)
 
-    async def process(self, inputs: JournalInput) -> dict[str, Any]:
+    async def process(self, inputs: JournalInput) -> dict[str, Any]:  # type: ignore[override]
         """Generate a structured journal entry from pipeline outputs.
 
         1. Extract pipeline outputs from extra fields

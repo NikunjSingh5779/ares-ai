@@ -101,11 +101,11 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
 
     def validate_input(self, data: dict[str, Any]) -> InputT:
         """Validate input data against the agent's input schema."""
-        return self.input_schema.model_validate(data)
+        return self.input_schema.model_validate(data)  # type: ignore[return-value]
 
     def validate_output(self, data: dict[str, Any]) -> OutputT:
         """Validate output data against the agent's output schema."""
-        return self.output_schema.model_validate(data)
+        return self.output_schema.model_validate(data)  # type: ignore[return-value]
 
     async def run(self, inputs: InputT | dict[str, Any]) -> OutputT:
         """Full execution lifecycle: validate, execute, validate output, log.

@@ -15,25 +15,16 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register_user(
-    payload: UserCreate,
-    db: AsyncSession = Depends(get_db)
-) -> UserResponse:
+async def register_user(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> UserResponse:
     """Register a new user."""
     existing_user = await user_service.get_by_email(db, payload.email)
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    return await user_service.create_user(db, payload)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+    return await user_service.create_user(db, payload)  # type: ignore[return-value]
 
 
 @router.post("/login")
-async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(get_db)
-) -> dict[str, str]:
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)) -> dict[str, str]:
     """Authenticate a user and return a JWT token."""
     user = await user_service.get_by_email(db, form_data.username)
     if not user:

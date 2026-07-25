@@ -157,7 +157,7 @@ class PaperTradingWorker:
                             "portfolio_id": portfolio_id,
                             "symbol": trade.symbol,
                             "side": trade.side,
-                        }
+                        },
                     )
 
                     # Update portfolio
@@ -176,7 +176,7 @@ class PaperTradingWorker:
                             "pnl": trade.pnl,
                             "entry_value": trade.quantity * trade.entry_price,
                             "portfolio_id": portfolio_id,
-                        }
+                        },
                     )
 
                     # Log order
@@ -202,7 +202,7 @@ class PaperTradingWorker:
                             "price": trade.exit_price,
                             "strategy_name": trade.strategy_name,
                             "reason": trade.exit_reason,
-                        }
+                        },
                     )
 
                 await session.commit()

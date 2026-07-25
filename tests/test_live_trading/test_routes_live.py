@@ -5,6 +5,7 @@ Uses FastAPI TestClient with mocked engine dependencies.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -38,7 +39,7 @@ def _make_mock_engine():
         auditor = OrderAuditor()
 
         is_running = False
-        _paper_record: dict = {}
+        _paper_record: dict[str, Any] = {}
 
         @property
         def is_connected(self):
@@ -55,8 +56,7 @@ def _make_mock_engine():
                 "promotion": self.promotion_gate.progress(trades, days),
             }
 
-        @property
-        def paper_record(self):
+        async def paper_record(self, account_id=None):
             if self._paper_record:
                 return self._paper_record
             return {

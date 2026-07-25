@@ -23,6 +23,7 @@ from agents.state import VisionOutput
 
 logger = logging.getLogger(__name__)
 
+
 # ---------------------------------------------------------------------------
 # Input schema
 # ---------------------------------------------------------------------------
@@ -31,6 +32,7 @@ class VisionInput(BaseModel):
     Accepts either raw OHLCV data for rule-based pattern detection, or
     chart image URLs for LLM-powered vision analysis.
     """
+
     symbol: str = Field(default="", description="Ticker symbol")
     candles: list[dict[str, Any]] = Field(
         default_factory=list,
@@ -40,6 +42,8 @@ class VisionInput(BaseModel):
         default_factory=list,
         description="Optional chart screenshot URLs for vision model analysis",
     )
+
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -49,6 +53,8 @@ SUPPORT_RESISTANCE_BINS: int = 10
 """Number of price bins for clustering support/resistance levels."""
 PATTERN_MIN_CONSECUTIVE: int = 3
 """Minimum consecutive higher/lower closes for trend pattern detection."""
+
+
 # ---------------------------------------------------------------------------
 # Vision Agent
 # ---------------------------------------------------------------------------
@@ -66,9 +72,11 @@ class VisionAgent(BaseAgent[VisionInput, VisionOutput]):
         agent = VisionAgent()
         result = await agent.run(VisionInput(symbol="BTC-USD", candles=[...]))
     """
+
     agent_name: str = "vision"
     input_schema: type[BaseModel] = VisionInput
     output_schema: type[BaseModel] = VisionOutput
+
     def __init__(
         self,
         context: AgentContext | None = None,
@@ -76,7 +84,8 @@ class VisionAgent(BaseAgent[VisionInput, VisionOutput]):
     ) -> None:
         super().__init__(context=context)
         self.model_available = model_available
-    async def process(self, inputs: VisionInput) -> dict[str, Any]:
+
+    async def process(self, inputs: VisionInput) -> dict[str, Any]:  # type: ignore[override]
         """Execute chart pattern analysis.
         Always runs rule-based detection. If chart images are provided and
         a vision model is available, enhances with model analysis.
@@ -112,6 +121,7 @@ class VisionAgent(BaseAgent[VisionInput, VisionOutput]):
             "available": model_available,
             "rationale": " | ".join(rationale_parts),
         }
+
     async def _analyze_with_model(self, inputs: VisionInput) -> str:
         """Send chart images to the vision model for interpretation.
         Override this method in subclasses to integrate with specific
@@ -122,6 +132,8 @@ class VisionAgent(BaseAgent[VisionInput, VisionOutput]):
         # Default: no model integration yet
         # Subclasses can override to call CLIP, GPT-4V, or other VL models
         return "Vision model analysis not configured — using rule-based results only"
+
+
 # ---------------------------------------------------------------------------
 # Pattern detection helpers
 # ---------------------------------------------------------------------------
@@ -136,6 +148,8 @@ def _detect_support_levels(candles: list[dict[str, Any]]) -> list[float]:
     if not lows:
         return []
     return _cluster_levels(lows, ascending=True)
+
+
 def _detect_resistance_levels(candles: list[dict[str, Any]]) -> list[float]:
     """Detect resistance levels from price highs using clustering."""
     if not candles:
@@ -144,6 +158,8 @@ def _detect_resistance_levels(candles: list[dict[str, Any]]) -> list[float]:
     if not highs:
         return []
     return _cluster_levels(highs, ascending=False)
+
+
 def _cluster_levels(prices: list[float], ascending: bool) -> list[float]:
     """Cluster price points into levels using equal-width binning.
     Args:
@@ -176,6 +192,8 @@ def _cluster_levels(prices: list[float], ascending: bool) -> list[float]:
         median = bin_prices[len(bin_prices) // 2]
         levels.append(median)
     return sorted(levels, reverse=not ascending)
+
+
 def _detect_chart_pattern(candles: list[dict[str, Any]]) -> tuple[str, float]:
     """Detect the dominant chart pattern from recent price action.
     Returns (pattern_name, confidence_0_to_100).
@@ -207,6 +225,8 @@ def _detect_chart_pattern(candles: list[dict[str, Any]]) -> tuple[str, float]:
     if price_range < 0.03:  # Less than 3% range over the period
         return "consolidation", 60.0
     return "flat", 20.0
+
+
 def _score_trend_confidence(
     closes: list[float],
     highs: list[float],
@@ -226,6 +246,8 @@ def _score_trend_confidence(
     if close_change > 0.01:  # >1% move
         return 55.0
     return 40.0
+
+
 def _build_pattern_rationale(
     pattern: str,
     support: list[float],

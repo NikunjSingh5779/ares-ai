@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from agents.base import BaseAgent
 from agents.log import AgentLogger
@@ -41,6 +42,8 @@ from agents.state import (
     VisionOutput,
 )
 from backend.core.metrics import record_agent_fallback
+
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -454,7 +457,12 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
         )
 
         # Convert Pydantic FlexibleSchema to dict
-        result = raw_result.model_dump() if hasattr(raw_result, "model_dump") else raw_result
+        if hasattr(raw_result, "model_dump"):
+            result: dict[str, Any] = raw_result.model_dump()
+        elif isinstance(raw_result, dict):
+            result = raw_result
+        else:
+            result = {}
 
         result["fallback_model"] = fallback_model
         result["available"] = model_available
@@ -557,16 +565,18 @@ async def _execute_agent_impl(
     try:
         agent_class = type(base_agent)
         if agent_name in ("market_analyst", "quant", "risk"):
-            agent_instance = agent_class(
+            agent_instance = agent_class(  # type: ignore[call-arg]
                 router=router, ingestor=getattr(base_agent, "ingestor", None), context=agent_ctx
             )
         elif agent_name == "execution":
-            agent_instance = agent_class(engine=getattr(base_agent, "engine", None), context=agent_ctx)
+            agent_instance = agent_class(  # type: ignore[call-arg]
+                engine=getattr(base_agent, "engine", None), context=agent_ctx
+            )
         elif agent_name in ("journal", "reflection", "memory"):
             agent_instance = agent_class(context=agent_ctx)
         else:
             # Fallback
-            agent_instance = agent_class(router=router, context=agent_ctx)
+            agent_instance = agent_class(router=router, context=agent_ctx)  # type: ignore[call-arg]
 
         output = await agent_instance.run(input_data)
 
@@ -604,7 +614,7 @@ async def _execute_agent_impl(
 # ---------------------------------------------------------------------------
 
 
-def _build_pipeline_nodes(graph: StateGraph) -> None:
+def _build_pipeline_nodes(graph: StateGraph[AgentState]) -> None:
     """Add all pipeline nodes and edges to the graph."""
 
     # Add supervisor node
@@ -702,7 +712,7 @@ class Supervisor:
         self.registry = registry
         self.router = router
         self.logger = logger
-        self.graph = None
+        self.graph: CompiledStateGraph[AgentState, None, AgentState, AgentState] | None = None
         self._agent_configs: dict[str, AgentModelConfig] = {}
 
     def build_graph(self) -> None:
@@ -753,7 +763,7 @@ class Supervisor:
         if not state.session_id:
             state.session_id = str(uuid.uuid4())
 
-        result = await self.graph.ainvoke(state)
+        result = await self.graph.ainvoke(state)  # type: ignore[union-attr]
         final_state = AgentState.model_validate(result)
         await self.log_execution(final_state)
         return final_state
@@ -782,7 +792,7 @@ class Supervisor:
         )
 
         final_state = None
-        async for event in self.graph.astream(state, stream_mode="values"):
+        async for event in self.graph.astream(state, stream_mode="values"):  # type: ignore[union-attr]
             final_state = AgentState.model_validate(event)
             yield final_state
 
@@ -818,8 +828,8 @@ class Supervisor:
         # Explicitly log the supervisor summary row with consensus_score for the daily report
         supervisor_data = {}
         if getattr(state, "consensus", None) is not None:
-            supervisor_data["consensus_score"] = state.consensus.composite_confidence
-            supervisor_data["approved"] = state.consensus.approved
+            supervisor_data["consensus_score"] = state.consensus.composite_confidence  # type: ignore[union-attr]
+            supervisor_data["approved"] = state.consensus.approved  # type: ignore[union-attr]
 
         total_ms = 0
         if state.pipeline_status.start_time:

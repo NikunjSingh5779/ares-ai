@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
     yield
     # ── Shutdown ──────────────────────────────────────────────────
     logger.info("ARES AI shutting down")
-    worker = getattr(app.state, "paper_trading_worker", None)
+    worker = getattr(app.state, "paper_trading_worker", None)  # type: ignore[assignment]
     if worker:
         await worker.stop()
 

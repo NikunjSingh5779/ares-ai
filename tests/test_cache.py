@@ -128,9 +128,7 @@ class TestNullCache:
 class TestMarketDataCacheExceptions:
     """Force every except-Exception path in cache.py and assert the log fires."""
 
-    async def test_get_candles_exception_logs(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_get_candles_exception_logs(self, caplog: pytest.LogCaptureFixture) -> None:
         """When Redis scan/mget raises, get_candles logs and returns None."""
         mock_redis = AsyncMock(spec=["scan", "mget"])
         mock_redis.scan.side_effect = ConnectionError("Redis connection lost")
@@ -158,9 +156,7 @@ class TestMarketDataCacheExceptions:
         assert result == 0
         assert any("set_candles failed" in rec.message for rec in caplog.records)
 
-    async def test_invalidate_exception_logs(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_invalidate_exception_logs(self, caplog: pytest.LogCaptureFixture) -> None:
         """When Redis scan/delete raises, invalidate logs and returns False."""
         mock_redis = AsyncMock(spec=["scan", "delete"])
         mock_redis.scan.side_effect = ConnectionError("Redis connection lost")
@@ -172,9 +168,7 @@ class TestMarketDataCacheExceptions:
         assert result is False
         assert any("invalidate failed" in rec.message for rec in caplog.records)
 
-    async def test_clear_all_exception_logs(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_clear_all_exception_logs(self, caplog: pytest.LogCaptureFixture) -> None:
         """When Redis scan/delete raises, clear_all logs and returns False."""
         mock_redis = AsyncMock(spec=["scan", "delete"])
         mock_redis.scan.side_effect = ConnectionError("Redis connection lost")
