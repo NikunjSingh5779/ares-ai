@@ -11,7 +11,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import text
 
 from database.connection import async_session_factory
 from live_trading import (
@@ -281,56 +280,16 @@ async def paper_record(
     By default aggregates across all paper accounts. Pass ``account_id``
     and/or ``strategy_name`` to scope the query to a specific account or
     strategy.
+
+    Delegates to ``engine.paper_record()`` for the DB query, matching the
+    router's pattern of keeping DB access behind the engine layer.
     """
     engine = _get_engine()
     if engine is None:
         return _NOT_CONFIGURED_STATUS["paper_record"]  # type: ignore[no-any-return]
 
     try:
-        async with async_session_factory() as session:
-            # Build dynamic filters
-            params: dict[str, Any] = {}
-            account_filter = ""
-            strategy_filter = ""
-
-            if account_id:
-                account_filter = "AND th.account_id = :account_id"
-                params["account_id"] = account_id
-            if strategy_name:
-                strategy_filter = "AND th.strategy_name = :strategy_name"
-                params["strategy_name"] = strategy_name
-
-            # Query number of closed paper trades
-            trades_count = (
-                await session.execute(
-                    text(f"""
-                SELECT COUNT(*) FROM trade_history th
-                JOIN accounts a ON th.account_id = a.id
-                WHERE a.exchange = 'paper' AND th.is_closed = true
-                {account_filter} {strategy_filter}
-            """),
-                    params,
-                )
-            ).scalar() or 0
-
-            # Query number of unique trading days
-            days_count = (
-                await session.execute(
-                    text(f"""
-                SELECT COUNT(DISTINCT DATE(entry_at)) FROM trade_history th
-                JOIN accounts a ON th.account_id = a.id
-                WHERE a.exchange = 'paper'
-                {account_filter} {strategy_filter}
-            """),
-                    params,
-                )
-            ).scalar() or 0
-
-            return {
-                "trades": trades_count,
-                "days": days_count,
-                "promotion": engine.promotion_gate.progress(trades_count, days_count),
-            }
+        return await engine.paper_record(account_id=account_id, strategy_name=strategy_name)
     except Exception as e:
         logger.error(f"Failed to query paper_record from DB: {e}")
         raise HTTPException(status_code=500, detail="Failed to query paper trading record from database")

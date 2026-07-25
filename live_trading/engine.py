@@ -95,9 +95,14 @@ class LiveTradingEngine:
         self._paper_trades_count = trades
         self._paper_days_count = days
 
-    async def _query_paper_record_from_db(self, account_id: str | None = None) -> tuple[int, int]:
+    async def _query_paper_record_from_db(
+        self,
+        account_id: str | None = None,
+        strategy_name: str | None = None,
+    ) -> tuple[int, int]:
         """Query paper trading stats from the database.
 
+        Accepts optional ``account_id`` and ``strategy_name`` filters.
         Returns (trades_count, days_count). Falls back to in-memory if no DB.
         """
         if not self._session_factory:
@@ -106,10 +111,16 @@ class LiveTradingEngine:
         try:
             async with self._session_factory() as session:
                 params: dict[str, Any] = {}
-                account_filter = ""
+                filters: list[str] = []
+
                 if account_id:
-                    account_filter = "AND th.account_id = :account_id"
+                    filters.append("AND th.account_id = :account_id")
                     params["account_id"] = account_id
+                if strategy_name:
+                    filters.append("AND th.strategy_name = :strategy_name")
+                    params["strategy_name"] = strategy_name
+
+                filter_clause = " ".join(filters)
 
                 trades_count = (
                     await session.execute(
@@ -117,7 +128,7 @@ class LiveTradingEngine:
                     SELECT COUNT(*) FROM trade_history th
                     JOIN accounts a ON th.account_id = a.id
                     WHERE a.exchange = 'paper' AND th.is_closed = true
-                    {account_filter}
+                    {filter_clause}
                 """),
                         params,
                     )
@@ -129,7 +140,7 @@ class LiveTradingEngine:
                     SELECT COUNT(DISTINCT DATE(entry_at)) FROM trade_history th
                     JOIN accounts a ON th.account_id = a.id
                     WHERE a.exchange = 'paper'
-                    {account_filter}
+                    {filter_clause}
                 """),
                         params,
                     )
@@ -140,14 +151,18 @@ class LiveTradingEngine:
             logger.exception("Failed to query paper record from DB, falling back to in-memory")
             return self._paper_trades_count, self._paper_days_count
 
-    async def paper_record(self, account_id: str | None = None) -> dict[str, Any]:
+    async def paper_record(
+        self,
+        account_id: str | None = None,
+        strategy_name: str | None = None,
+    ) -> dict[str, Any]:
         """Return the paper record and promotion status.
 
         Queries the database when a session factory is available.
         Falls back to in-memory values otherwise.
-        Supports optional per-account isolation via ``account_id``.
+        Supports optional per-account and per-strategy isolation.
         """
-        trades, days = await self._query_paper_record_from_db(account_id)
+        trades, days = await self._query_paper_record_from_db(account_id, strategy_name)
         return {
             "trades": trades,
             "days": days,
