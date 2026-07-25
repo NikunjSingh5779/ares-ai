@@ -14,7 +14,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import chromadb
-from chromadb.api import ClientAPI
 from pydantic import BaseModel, ConfigDict, Field
 
 from agents.base import AgentContext, BaseAgent
@@ -26,26 +25,19 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Input schema
 # ---------------------------------------------------------------------------
-
-
 class MemoryInput(BaseModel):
     """Input for the Memory Agent.
-
     Receives all pipeline outputs via extra fields (``extra="allow"``)
     since the input shape depends on which agents have run.
     """
-
     symbol: str = Field(default="", description="Ticker symbol")
     request: str = Field(default="", description="Original user request")
     strategy_id: str = Field(default="default", description="Strategy identifier for namespacing")
     rolling_memory: list[dict[str, Any]] = Field(default_factory=list, description="Historical memory rolling window")
     model_config = ConfigDict(extra="allow")
-
-
 # ---------------------------------------------------------------------------
 # Memory types
 # ---------------------------------------------------------------------------
-
 MEMORY_TYPE_MAP: dict[str, str] = {
     "execution": "trade",
     "market_analyst": "agent_output",
@@ -53,29 +45,20 @@ MEMORY_TYPE_MAP: dict[str, str] = {
     "consensus": "agent_output",
     "risk": "agent_output",
 }
-
-
 # ---------------------------------------------------------------------------
 # Memory Agent
 # ---------------------------------------------------------------------------
-
-
 class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
     """Post-trade memory consolidation agent.
-
     Extracts key information from each pipeline output and builds
     structured memory records. In-memory for M9 — no ChromaDB writes.
-
     Usage::
-
         agent = MemoryAgent()
         result = await agent.run(MemoryInput(symbol="BTC-USD", ...))
     """
-
     agent_name: str = "memory"
     input_schema: type[BaseModel] = MemoryInput
     output_schema: type[BaseModel] = MemoryOutput
-
     def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
         super().__init__(context=context)
         self.chroma_client: ClientAPI | None = None
@@ -87,7 +70,6 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
         except Exception as e:
             logger.error(f"Unhandled exception: {e}", exc_info=True)
             self.chroma_client = None
-
     def get_collection(self, strategy_id: str) -> chromadb.Collection | None:
         """Always namespace by strategy ID."""
         if not self.chroma_client:
@@ -102,7 +84,6 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
 
     async def process(self, inputs: MemoryInput) -> dict[str, Any]:  # type: ignore[override]
         """Consolidate the pipeline run into memory records.
-
         1. Extract outputs from all pipeline agents
         2. Build structured memory records from key outputs
         3. Mark consolidation as complete
@@ -110,13 +91,10 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
         output_map = _extract_agent_outputs(inputs)
         symbol = inputs.symbol or "unknown"
         request = inputs.request or "No request"
-
         execution = output_map.get("execution", {})
         market_analyst = output_map.get("market_analyst", {})
-
         # --- Build relevant memories ---
         memories: list[dict[str, Any]] = []
-
         # Memory from execution
         if execution:
             executed = bool(execution.get("executed", False))
@@ -133,7 +111,6 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                     "timestamp": datetime.now(UTC).isoformat(),
                 }
             )
-
         # Memory from market analyst
         if market_analyst:
             direction = market_analyst.get("direction", "flat")
@@ -150,7 +127,6 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                     "timestamp": datetime.now(UTC).isoformat(),
                 }
             )
-
         # Memory from risk if rejected
         risk = output_map.get("risk", {})
         if risk:
@@ -168,7 +144,6 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                         "timestamp": datetime.now(UTC).isoformat(),
                     }
                 )
-
         # Memory about the request context
         memories.append(
             {
@@ -178,7 +153,6 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                 "timestamp": datetime.now(UTC).isoformat(),
             }
         )
-
         # --- Build rationale ---
         rationale_parts = [
             f"Memory consolidation for {symbol}:",
@@ -188,13 +162,11 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
             rationale_parts.append(
                 "Executed" if execution.get("executed") else "Not executed",
             )
-
         # --- Update Rolling Window ---
         rolling_memory = inputs.rolling_memory.copy() if inputs.rolling_memory else []
         rolling_memory.extend(memories)
         # Enforce strict 10-item window
         rolling_memory = rolling_memory[-10:]
-
         # --- Store in ChromaDB ---
         if self.chroma_client and memories:
             collection = self.get_collection(inputs.strategy_id)
@@ -214,20 +186,15 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
                 except Exception as e:
                     logger.error(f"Unhandled exception: {e}", exc_info=True)
                     pass
-
         return {
             "relevant_memories": memories,
             "rolling_memory": rolling_memory,
             "consolidated": True,
             "rationale": " | ".join(rationale_parts),
         }
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
 def _extract_agent_outputs(inputs: MemoryInput) -> dict[str, Any]:
     """Extract agent outputs from the input's extra fields."""
     output_map: dict[str, Any] = {}

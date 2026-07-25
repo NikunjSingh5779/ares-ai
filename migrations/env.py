@@ -6,7 +6,6 @@ can run migrations against the same database config as the app.
 
 import asyncio
 from logging.config import fileConfig
-
 from alembic import context
 from sqlalchemy import pool
 

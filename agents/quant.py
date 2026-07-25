@@ -24,6 +24,7 @@ from agents.base import AgentContext, BaseAgent
 from agents.indicators import compute_all_indicators
 from agents.router import ModelRouter, RouterResult
 from agents.state import QuantOutput
+from backend.core.metrics import record_agent_fallback
 from backend.data.ingestor import MarketDataIngestor
 from backend.data.models import MarketDataRequest, OHLCVData
 
@@ -32,15 +33,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Input schema
 # ---------------------------------------------------------------------------
-
-
 class QuantInput(BaseModel):
     """Input for the Quant Agent.
-
     Can receive either pre-fetched candles or enough info to fetch them.
     The optional strategy field hints which strategy to evaluate.
     """
-
     symbol: str = Field(..., description="Ticker symbol (e.g. BTC-USD, AAPL)")
     interval: str = Field(default="1d", description="Candle interval")
     lookback: int = Field(default=100, description="Number of candles to analyze")
@@ -56,17 +53,12 @@ class QuantInput(BaseModel):
         default=None,
         description="Output from MarketAnalystAgent for additional context",
     )
-
-
 # ---------------------------------------------------------------------------
 # Prompt templates
 # ---------------------------------------------------------------------------
-
 QUANT_SYSTEM_PROMPT = """You are the Quant Agent in the ARES AI trading system.
-
 Your role: Analyze market indicators and recent price action, select a quantitative
 trading strategy, and produce a structured signal with expected return projection.
-
 Available strategies:
 - momentum: Enter in the direction of the prevailing trend. Best when trend is strong
   and RSI confirms (not overbought/oversold).
@@ -75,7 +67,6 @@ Available strategies:
 - trend_following: Follow the established trend direction with MACD confirmation.
 - breakout: Trade breakouts from Bollinger Bands or support/resistance with volume confirmation.
 - neutral: No clear signal. Use as default when confidence is low.
-
 Rules:
 1. Return ONLY valid JSON — no markdown, no explanation outside the JSON.
 2. Your JSON must match this schema exactly:
@@ -99,8 +90,6 @@ Rules:
 6. If market analyst context is provided, weigh it but do not copy it — apply your own
    quantitative framework.
 7. Be conservative. It is better to miss a trade than to take a bad one."""
-
-
 def build_quant_prompt(
     symbol: str,
     indicators: dict[str, Any],
@@ -109,14 +98,12 @@ def build_quant_prompt(
     market_analyst_result: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """Build the messages for the LLM quant analysis call.
-
     Args:
         symbol: Ticker symbol.
         indicators: Output from compute_all_indicators().
         recent_candles: Last 20-30 OHLCV candles for context.
         strategy_hint: Optional strategy name to evaluate.
         market_analyst_result: Optional MarketAnalystAgent output.
-
     Returns:
         List of {"role": ..., "content": ...} dicts for the LLM call.
     """
@@ -129,12 +116,10 @@ def build_quant_prompt(
             f"C={c.close:.2f} V={c.volume:.1f}"
         )
     price_summary = "\n".join(recent_lines)
-
     # Format indicators
     ind_lines = []
     ind_lines.append(f"Current Price: ${indicators.get('current_price', 'N/A')}")
     ind_lines.append(f"Trend: {indicators.get('trend', 'neutral')}")
-
     if indicators.get("sma_20") is not None:
         ind_lines.append(f"SMA(20): ${indicators['sma_20']:.2f}")
     if indicators.get("sma_50") is not None:
@@ -159,9 +144,7 @@ def build_quant_prompt(
     if indicators.get("volume_sma_20") is not None:
         vol_ratio = _volume_ratio(indicators)
         ind_lines.append(f"Volume vs SMA(20): {f'{vol_ratio:.1f}x' if vol_ratio else 'N/A'}")
-
     indicator_summary = "\n".join(ind_lines)
-
     # Build user content
     user_parts = [
         f"Symbol: {symbol}",
@@ -169,10 +152,8 @@ def build_quant_prompt(
         f"Date Range: {recent_candles[0].timestamp.strftime('%Y-%m-%d') if recent_candles else 'N/A'} "
         f"to {recent_candles[-1].timestamp.strftime('%Y-%m-%d') if recent_candles else 'N/A'}",
     ]
-
     if strategy_hint:
         user_parts.append(f"\nSuggested strategy to evaluate: {strategy_hint}")
-
     if market_analyst_result:
         ma_direction = market_analyst_result.get("direction", "unknown")
         ma_confidence = market_analyst_result.get("confidence", "unknown")
@@ -183,24 +164,19 @@ def build_quant_prompt(
             f"  Confidence: {ma_confidence}\n"
             f"  Rationale: {ma_rationale}"
         )
-
     user_parts.append(f"\n--- Recent Price Data ---\n{price_summary}")
     user_parts.append(f"\n--- Technical Indicators ---\n{indicator_summary}")
     user_parts.append(
         "\nAnalyze the above, select a strategy, and return your trading "
         "signal as valid JSON matching the specified schema."
     )
-
     return [
         {"role": "system", "content": QUANT_SYSTEM_PROMPT},
         {"role": "user", "content": "\n".join(user_parts)},
     ]
-
-
 # ---------------------------------------------------------------------------
 # Rule-based quant analysis (degraded mode)
 # ---------------------------------------------------------------------------
-
 VALID_STRATEGIES = frozenset(
     {
         "momentum",
@@ -210,22 +186,17 @@ VALID_STRATEGIES = frozenset(
         "neutral",
     }
 )
-
-
 def _rule_based_quant(
     symbol: str,
     indicators: dict[str, Any],
     strategy_hint: str | None = None,
 ) -> dict[str, Any]:
     """Rule-based quantitative signal generation when LLM is unavailable.
-
     Evaluates all available strategies and picks the one with the strongest
     signal. Computes expected return estimates based on ATR.
-
     Returns a dict matching QuantOutput schema.
     """
     candidates: list[dict[str, Any]] = []
-
     # Evaluate all strategies
     if _detect_momentum(indicators):
         candidates.append(_build_momentum_signal(indicators))
@@ -235,13 +206,10 @@ def _rule_based_quant(
         candidates.append(_build_trend_following_signal(indicators))
     if _detect_breakout(indicators):
         candidates.append(_build_breakout_signal(indicators))
-
     if not candidates:
         return _build_neutral_signal(indicators)
-
     # Sort by confidence descending
     candidates.sort(key=lambda c: c["confidence"], reverse=True)
-
     # If strategy_hint specified, prefer it among candidates
     if strategy_hint and strategy_hint in VALID_STRATEGIES:
         match = next(
@@ -250,15 +218,10 @@ def _rule_based_quant(
         )
         if match:
             return match
-
     return candidates[0]
-
-
 # ---------------------------------------------------------------------------
 # Strategy detectors
 # ---------------------------------------------------------------------------
-
-
 def _detect_momentum(indicators: dict[str, Any]) -> bool:
     """Momentum strategy trigger: SMA crossover with non-extreme RSI."""
     sma_20 = indicators.get("sma_20")
@@ -269,16 +232,12 @@ def _detect_momentum(indicators: dict[str, Any]) -> bool:
     # Require meaningful SMA separation and non-extreme RSI
     spread = abs(sma_20 - sma_50) / max(sma_50, 1)
     return spread > 0.005 and 30 <= rsi <= 70  # type: ignore[no-any-return]
-
-
 def _detect_mean_reversion(indicators: dict[str, Any]) -> bool:
     """Mean reversion trigger: RSI at extremes."""
     rsi = indicators.get("rsi_14")
     if rsi is None:
         return False
     return rsi < 30 or rsi > 70  # type: ignore[no-any-return]
-
-
 def _detect_trend_following(indicators: dict[str, Any]) -> bool:
     """Trend following trigger: clear trend + MACD confirmation."""
     trend = indicators.get("trend", "neutral")
@@ -291,8 +250,6 @@ def _detect_trend_following(indicators: dict[str, Any]) -> bool:
     if trend == "bullish":
         return histogram > 0  # type: ignore[no-any-return]
     return histogram < 0  # type: ignore[no-any-return]
-
-
 def _detect_breakout(indicators: dict[str, Any]) -> bool:
     """Breakout trigger: high volume at Bollinger Band edge."""
     vol_ratio = _volume_ratio(indicators)
@@ -307,13 +264,9 @@ def _detect_breakout(indicators: dict[str, Any]) -> bool:
     if lower is not None and current_price <= lower:
         return True
     return False
-
-
 # ---------------------------------------------------------------------------
 # Signal builders
 # ---------------------------------------------------------------------------
-
-
 def _atr_ratio(indicators: dict[str, Any]) -> float | None:
     """ATR as percentage of current price."""
     atr = indicators.get("atr_14")
@@ -321,8 +274,6 @@ def _atr_ratio(indicators: dict[str, Any]) -> float | None:
     if atr is not None and price > 0:
         return atr / price * 100  # type: ignore[no-any-return]
     return None
-
-
 def _volume_ratio(indicators: dict[str, Any]) -> float | None:
     """Ratio of current volume to 20-period SMA of volume."""
     current_vol = indicators.get("current_volume")
@@ -330,8 +281,6 @@ def _volume_ratio(indicators: dict[str, Any]) -> float | None:
     if current_vol is not None and avg_vol is not None and avg_vol > 0:
         return current_vol / avg_vol  # type: ignore[no-any-return]
     return None
-
-
 def _build_momentum_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     """Build signal for momentum strategy."""
     sma_20 = indicators.get("sma_20", 0)
@@ -339,10 +288,8 @@ def _build_momentum_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     is_bullish = sma_20 > sma_50 if (sma_20 and sma_50) else True
     direction = "long" if is_bullish else "short"
     atr_pct = _atr_ratio(indicators)
-
     confidence = 55.0 + (5.0 if atr_pct and atr_pct > 1.0 else 0.0)
     expected_return = round(atr_pct * 2.0, 2) if atr_pct else None
-
     return {
         "confidence": min(confidence, 80.0),
         "direction": direction,
@@ -360,8 +307,6 @@ def _build_momentum_signal(indicators: dict[str, Any]) -> dict[str, Any]:
             f"signals {'bullish' if is_bullish else 'bearish'} momentum"
         ),
     }
-
-
 def _build_mean_reversion_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     """Build signal for mean reversion strategy."""
     rsi = indicators.get("rsi_14", 50)
@@ -370,16 +315,13 @@ def _build_mean_reversion_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     price = indicators.get("current_price", 0)
     bb = indicators.get("bollinger_bands", {})
     bb_mid = bb.get("middle")
-
     # Expected return = distance to mean / price * 0.5
     expected_return = None
     if bb_mid is not None and price > 0:
         retrace = abs(price - bb_mid) / price * 0.5
         expected_return = round(retrace * 100, 2)
-
     rsi_extreme = rsi if is_oversold else (100 - rsi)
     confidence = min(55.0 + (70 - rsi_extreme) * 0.5, 75.0)
-
     return {
         "confidence": confidence,
         "direction": direction,
@@ -401,18 +343,14 @@ def _build_mean_reversion_signal(indicators: dict[str, Any]) -> dict[str, Any]:
             f"{'oversold bounce' if is_oversold else 'overbought pullback'}"
         ),
     }
-
-
 def _build_trend_following_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     """Build signal for trend following strategy."""
     trend = indicators.get("trend", "neutral")
     direction = "long" if trend == "bullish" else "short"
     atr_pct = _atr_ratio(indicators)
     macd = indicators.get("macd", {})
-
     expected_return = round(atr_pct * 1.5, 2) if atr_pct else None
     confidence = 60.0 + (5.0 if atr_pct and atr_pct > 1.0 else 0.0)
-
     return {
         "confidence": min(confidence, 80.0),
         "direction": direction,
@@ -430,8 +368,6 @@ def _build_trend_following_signal(indicators: dict[str, Any]) -> dict[str, Any]:
             f"{'positive' if macd.get('histogram', 0) > 0 else 'negative'} histogram"
         ),
     }
-
-
 def _build_breakout_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     """Build signal for breakout strategy."""
     price = indicators.get("current_price", 0)
@@ -439,14 +375,11 @@ def _build_breakout_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     upper = bb.get("upper", 0)
     lower = bb.get("lower", 0)
     mid = bb.get("middle", 0)
-
     breaking_upper = upper and price >= upper
     direction = "short" if breaking_upper else "long"
     bandwidth = ((upper - lower) / mid) if (mid and mid != 0) else 0
-
     expected_return = round(bandwidth * 0.5 * 100, 2) if bandwidth else None
     confidence = 60.0
-
     return {
         "confidence": confidence,
         "direction": direction,
@@ -464,8 +397,6 @@ def _build_breakout_signal(indicators: dict[str, Any]) -> dict[str, Any]:
             f"Bollinger Band with elevated volume ({_volume_ratio(indicators):.1f}x)"
         ),
     }
-
-
 def _build_neutral_signal(indicators: dict[str, Any]) -> dict[str, Any]:
     """Build neutral signal when no strategy triggers."""
     return {
@@ -482,29 +413,22 @@ def _build_neutral_signal(indicators: dict[str, Any]) -> dict[str, Any]:
         },
         "rationale": "No clear quantitative signal detected across any strategy",
     }
-
-
 # ---------------------------------------------------------------------------
 # Response parser
 # ---------------------------------------------------------------------------
-
-
 def _parse_quant_response(
     response_text: str | None,
     fallback_result: dict[str, Any],
 ) -> dict[str, Any]:
     """Parse LLM response text into a structured QuantOutput-compatible dict.
-
     If parsing fails, returns the fallback result.
     """
     if not response_text:
         fallback_result["used_fallback"] = True
         fallback_result["fallback_reason"] = "Empty response from LLM"
         return fallback_result
-
     text = response_text.strip()
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE)
-
     data = None
     try:
         data = json.loads(cleaned)
@@ -523,7 +447,6 @@ def _parse_quant_response(
         fallback_result["used_fallback"] = True
         fallback_result["fallback_reason"] = "JSONDecodeError"
         return fallback_result
-
     # Validate required fields
     required_fields = {"confidence", "direction", "rationale"}
     if not required_fields.issubset(data.keys()):
@@ -531,21 +454,17 @@ def _parse_quant_response(
         fallback_result["used_fallback"] = True
         fallback_result["fallback_reason"] = "Missing required fields in LLM output"
         return fallback_result
-
     if data.get("direction") not in ("long", "short", "flat"):
         logger.error(f"Invalid direction in LLM output: {data.get('direction')}")
         fallback_result["used_fallback"] = True
         fallback_result["fallback_reason"] = "Invalid direction in LLM output"
         return fallback_result
-
     # Clamp confidence
     confidence = max(0.0, min(100.0, float(data.get("confidence", 0))))
-
     # Validate strategy_name
     strategy = data.get("strategy_name", "neutral")
     if strategy not in VALID_STRATEGIES:
         strategy = "neutral"
-
     # Validate expected_return
     expected_return = data.get("expected_return")
     if expected_return is not None:
@@ -553,20 +472,16 @@ def _parse_quant_response(
             expected_return = float(expected_return)
         except (ValueError, TypeError):
             expected_return = None
-
     # Validate params
     params = data.get("params", {})
     if not isinstance(params, dict):
         params = {}
-
     rationale = str(data.get("rationale", "")) or fallback_result.get("rationale", "")
-
     # Fill in missing fields from fallback
     if expected_return is None and fallback_result.get("expected_return") is not None:
         expected_return = fallback_result["expected_return"]
     if strategy == "neutral" and fallback_result.get("strategy_name", "neutral") != "neutral":
         strategy = fallback_result["strategy_name"]
-
     return {
         "confidence": confidence,
         "direction": data["direction"],
@@ -577,32 +492,24 @@ def _parse_quant_response(
         "used_fallback": False,
         "fallback_reason": None,
     }
-
-
 # ---------------------------------------------------------------------------
 # QuantAgent
 # ---------------------------------------------------------------------------
-
-
 class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
     """Quantitative analysis agent combining technical indicators with LLM-based
     strategy generation and expected return projection.
-
     Two-tier analysis:
     1. Compute technical indicators from OHLCV data
     2. Send indicators + market data to LLM via ModelRouter for quantitative analysis
     3. If LLM unavailable or returns invalid output, fall back to rule-based quant
     4. Return structured QuantOutput-compatible dict
-
     Usage:
         agent = QuantAgent(router=router, ingestor=ingestor)
         result = await agent.run(QuantInput(symbol="BTC-USD"))
     """
-
     agent_name: str = "quant"
     input_schema: type[BaseModel] = QuantInput
     output_schema: type[BaseModel] = QuantOutput
-
     def __init__(
         self,
         router: ModelRouter,
@@ -615,7 +522,6 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
 
     async def process(self, inputs: QuantInput) -> dict[str, Any]:  # type: ignore[override]
         """Execute quantitative analysis.
-
         1. Fetch/validate OHLCV data
         2. Compute technical indicators
         3. Attempt LLM-based quant analysis with strategy selection
@@ -633,10 +539,8 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
                 "params": {},
                 "rationale": f"No market data available for {inputs.symbol}",
             }
-
         # Step 2: Compute indicators
         indicators = compute_all_indicators(candles)
-
         # Step 3: Try LLM analysis
         llm_result = await self._llm_quant(
             inputs.symbol,
@@ -645,7 +549,6 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
             strategy_hint=inputs.strategy,
             market_analyst_result=inputs.market_analyst_result,
         )
-
         # Step 4: Fall back to rule-based if needed
         if llm_result is None:
             llm_result = _rule_based_quant(
@@ -653,14 +556,11 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
                 indicators,
                 strategy_hint=inputs.strategy,
             )
-
         return llm_result
-
     async def _get_candles(self, inputs: QuantInput) -> list[OHLCVData]:
         """Get OHLCV data — either pre-fetched or via ingestor."""
         if inputs.candles:
             return inputs.candles
-
         if self.ingestor is not None:
             try:
                 request = MarketDataRequest(
@@ -674,9 +574,7 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
             except Exception as e:
                 logger.error(f"Unhandled exception: {e}", exc_info=True)
                 return []
-
         return []
-
     async def _llm_quant(
         self,
         symbol: str,
@@ -694,7 +592,6 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
             strategy_hint=strategy_hint,
             market_analyst_result=market_analyst_result,
         )
-
         # Get agent model config from context
         try:
             model_chain = self.context.model_preferences.get("model_chain", [])
@@ -707,10 +604,8 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
             rpm = 10
             temperature = 0.3
             max_tokens = 1024
-
         if not model_chain:
             return None
-
         # Execute via model router
         router_result: RouterResult = await self.router.execute(
             model_chain=model_chain,
@@ -719,10 +614,11 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
             max_tokens=max_tokens,
             rpm=rpm,
         )
-
+        if router_result.fallback_used:
+            primary_model = model_chain[0] if model_chain else "unknown"
+            record_agent_fallback(self.agent_name, primary_model, router_result.model_used)
         if not router_result.success or router_result.degraded:
             return None
-
         # Parse the response
         response_text = None
         if router_result.response:
@@ -730,6 +626,5 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
                 response_text = router_result.response["choices"][0]["message"]["content"]
             except (KeyError, IndexError, TypeError):
                 pass
-
         fallback = _rule_based_quant(symbol, indicators, strategy_hint=strategy_hint)
         return _parse_quant_response(response_text, fallback)

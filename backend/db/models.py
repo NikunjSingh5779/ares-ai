@@ -55,7 +55,9 @@ class Account(Base):
     )
 
     user: Mapped[User] = relationship("User", back_populates="accounts")
-    last_rebalanced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    portfolios: Mapped[list[Portfolio]] = relationship(
+        "Portfolio", back_populates="account", cascade="all, delete-orphan"
+    )
     orders: Mapped[list[Order]] = relationship("Order", back_populates="account", cascade="all, delete-orphan")
 
 
@@ -79,6 +81,9 @@ class Portfolio(Base):
     )
 
     account: Mapped[Account] = relationship("Account", back_populates="portfolios")
+    positions: Mapped[list[Position]] = relationship(
+        "Position", back_populates="portfolio", cascade="all, delete-orphan"
+    )
     unrealized_pnl_pct: Mapped[float] = mapped_column(Numeric(10, 4), default=0, nullable=False)
 
 

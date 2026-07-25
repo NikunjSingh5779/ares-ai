@@ -6,7 +6,7 @@ name: CI
 
 on:
   push:
-    branches: [master, develop, 'codex/**']
+    branches: [master, develop, 'codex/**', 'feat/**', 'fix/**']
   pull_request:
     branches: [master, develop]
 
@@ -129,6 +129,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
+      - name: Create .env from example
+        run: cp .env.example .env
+
+      - name: Validate docker-compose.yml
+        run: docker compose config > /dev/null
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

@@ -20,7 +20,7 @@ from agents.risk import (
     _rule_based_risk,
     build_risk_prompt,
 )
-from agents.router import RouterResult
+from agents.router import ModelRouter, RouterResult
 from backend.data.models import OHLCVData
 
 # ---------------------------------------------------------------------------
@@ -353,7 +353,7 @@ class TestRiskAgentProcess:
     @pytest.mark.asyncio
     async def test_returns_valid_structure(self, sample_candles: list[OHLCVData]) -> None:
         """Agent returns valid risk output with pre-fetched candles."""
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         router.execute.return_value = RouterResult()
 
         agent = RiskAgent(router=router)
@@ -377,7 +377,7 @@ class TestRiskAgentProcess:
     @pytest.mark.asyncio
     async def test_with_empty_candles(self) -> None:
         """Empty candles should still produce a result."""
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         agent = RiskAgent(router=router)
         result = await agent.run(RiskInput(symbol="BTC-USD", candles=[]))
         assert isinstance(result.approved, bool)
@@ -386,7 +386,7 @@ class TestRiskAgentProcess:
     @pytest.mark.asyncio
     async def test_rejected_with_no_consensus(self, sample_candles: list[OHLCVData]) -> None:
         """No consensus output → rejected in rule-based fallback."""
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         agent = RiskAgent(router=router)
         result = await agent.run(
             RiskInput(
@@ -400,7 +400,7 @@ class TestRiskAgentProcess:
     @pytest.mark.asyncio
     async def test_llm_success_parsed(self, sample_candles: list[OHLCVData]) -> None:
         """Mocked LLM returns valid risk output."""
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         llm_response = RouterResult()
         llm_response.success = True
         llm_response.response = {
@@ -437,7 +437,7 @@ class TestRiskAgentProcess:
     @pytest.mark.asyncio
     async def test_llm_failure_fallthrough(self, sample_candles: list[OHLCVData]) -> None:
         """LLM fails → rule-based fallback used."""
-        router = AsyncMock()
+        router = AsyncMock(spec=ModelRouter)
         router.execute.return_value = RouterResult()  # success=False by default
 
         ctx = AgentContext(model_preferences={"model_chain": ["test-model"]})

@@ -19,10 +19,8 @@ from agents.retry import RetryConfig, with_retry
 
 logger = logging.getLogger(__name__)
 
-
 class RouterResult:
     """Result of a model router execution."""
-
     def __init__(self) -> None:
         self.success: bool = False
         self.response: dict[str, Any] | None = None
@@ -32,7 +30,6 @@ class RouterResult:
         self.fallback_used: bool = False
         self.degraded: bool = False
         self.errors: list[dict[str, Any]] = []
-
     def to_dict(self) -> dict[str, Any]:
         return {
             "success": self.success,
@@ -43,11 +40,8 @@ class RouterResult:
             "degraded": self.degraded,
             "errors": self.errors,
         }
-
-
 class ModelRouter:
     """Executes a model call across a fallback chain.
-
     For each model in the chain:
     1. Check circuit breaker (fast-fail if OPEN)
     2. Acquire rate-limit slot
@@ -56,7 +50,6 @@ class ModelRouter:
     5. On failure → log error, try next model in chain
     6. If all models exhausted → graceful degradation
     """
-
     def __init__(
         self,
         llm_client: LLMClient | NoOpLLMClient,
@@ -68,7 +61,6 @@ class ModelRouter:
         self.breakers = breaker_registry
         self.queues = queue_registry
         self.retry_config = retry_config or RetryConfig()
-
     async def execute(
         self,
         model_chain: list[str],
@@ -78,20 +70,17 @@ class ModelRouter:
         rpm: int = 20,
     ) -> RouterResult:
         """Execute across the fallback chain.
-
         Args:
             model_chain: Ordered list of model IDs. First is primary.
             messages: Chat messages to send.
             temperature: Sampling temperature.
             max_tokens: Max tokens in response.
             rpm: Rate limit for each model.
-
         Returns:
             RouterResult with success/failure, response, model used, etc.
         """
         result = RouterResult()
         start = time.monotonic()
-
         for i, model_id in enumerate(model_chain):
             is_fallback = i > 0
             attempt_info: dict[str, Any] = {
@@ -102,14 +91,11 @@ class ModelRouter:
                 "latency_ms": 0,
             }
             model_start = time.monotonic()
-
             try:
                 # Get or create circuit breaker for this model
                 breaker = self.breakers.get(model_id)
-
                 # Get or create rate-limit queue
                 queue = self.queues.get(model_id, rpm=rpm)
-
                 # Check circuit breaker first
                 if not breaker.check():
                     attempt_info["error"] = f"Circuit breaker OPEN ({breaker.failure_count} consecutive failures)"
@@ -117,7 +103,6 @@ class ModelRouter:
                     attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
                     result.errors.append(attempt_info)
                     continue  # Try next model
-
                 # Acquire rate-limit slot
                 try:
                     queue_wait = await queue.acquire()
@@ -128,7 +113,6 @@ class ModelRouter:
                     attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
                     result.errors.append(attempt_info)
                     continue
-
                 try:
                     # Execute with retry
                     retry_result = await with_retry(
@@ -143,9 +127,7 @@ class ModelRouter:
                     )
                 finally:
                     await queue.release()
-
                 attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
-
                 if retry_result.success:
                     elapsed = int((time.monotonic() - start) * 1000)
                     result.success = True
@@ -160,7 +142,6 @@ class ModelRouter:
                     attempt_info["error_type"] = retry_result.last_error_type
                     result.errors.append(attempt_info)
                     # Continue to next model in chain
-
             except Exception as e:
                 logger.error(f"Unhandled exception: {e}", exc_info=True)
                 attempt_info["error"] = str(e)
@@ -168,7 +149,6 @@ class ModelRouter:
                 attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
                 result.errors.append(attempt_info)
                 continue
-
         # All models exhausted — graceful degradation
         elapsed = int((time.monotonic() - start) * 1000)
         result.total_latency_ms = elapsed

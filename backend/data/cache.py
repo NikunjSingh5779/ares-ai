@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from typing import Any
 
 from backend.data.models import OHLCVData
+
+logger = logging.getLogger(__name__)
 
 # Cache key pattern components
 KEY_PREFIX = "ares:market_data"
@@ -121,6 +124,7 @@ class MarketDataCache:
             return candles
 
         except Exception:
+            logger.exception("get_candles failed — Redis may be unavailable or data corrupt")
             return None
 
     async def set_candles(
@@ -144,6 +148,7 @@ class MarketDataCache:
                 await pipe.execute()
             return len(candles)
         except Exception:
+            logger.exception("set_candles failed — write to Redis failed")
             return 0
 
     async def invalidate(
@@ -163,6 +168,7 @@ class MarketDataCache:
                 await self._redis.delete(*keys)  # type: ignore[union-attr]
             return True
         except Exception:
+            logger.exception("invalidate failed — Redis may be unavailable")
             return False
 
     async def clear_all(self) -> bool:
@@ -177,6 +183,7 @@ class MarketDataCache:
                 await self._redis.delete(*keys)  # type: ignore[union-attr]
             return True
         except Exception:
+            logger.exception("clear_all failed — Redis may be unavailable")
             return False
 
 

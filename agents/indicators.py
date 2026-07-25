@@ -257,6 +257,8 @@ def compute_stochastic(
     period: int = 14,
     smooth_k: int = 3,
     smooth_d: int = 3,
+    candles: list[OHLCVData], period: int = 14, smooth_k: int = 3, smooth_d: int = 3,
+>>>>>>> origin/master
 ) -> dict[str, float | None]:
     """Stochastic Oscillator (%K and %D)."""
     if len(candles) < period + smooth_k + smooth_d:
