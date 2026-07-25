@@ -23,6 +23,7 @@ from configs.settings import settings
 
 logger = logging.getLogger(__name__)
 
+
 # ---------------------------------------------------------------------------
 # Input schema
 # ---------------------------------------------------------------------------
@@ -31,11 +32,14 @@ class MemoryInput(BaseModel):
     Receives all pipeline outputs via extra fields (``extra="allow"``)
     since the input shape depends on which agents have run.
     """
+
     symbol: str = Field(default="", description="Ticker symbol")
     request: str = Field(default="", description="Original user request")
     strategy_id: str = Field(default="default", description="Strategy identifier for namespacing")
     rolling_memory: list[dict[str, Any]] = Field(default_factory=list, description="Historical memory rolling window")
     model_config = ConfigDict(extra="allow")
+
+
 # ---------------------------------------------------------------------------
 # Memory types
 # ---------------------------------------------------------------------------
@@ -46,6 +50,8 @@ MEMORY_TYPE_MAP: dict[str, str] = {
     "consensus": "agent_output",
     "risk": "agent_output",
 }
+
+
 # ---------------------------------------------------------------------------
 # Memory Agent
 # ---------------------------------------------------------------------------
@@ -57,9 +63,11 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
         agent = MemoryAgent()
         result = await agent.run(MemoryInput(symbol="BTC-USD", ...))
     """
+
     agent_name: str = "memory"
     input_schema: type[BaseModel] = MemoryInput
     output_schema: type[BaseModel] = MemoryOutput
+
     def __init__(self, context: AgentContext | None = None, **kwargs) -> None:
         super().__init__(context=context)
         self.chroma_client: ClientAPI | None = None
@@ -71,6 +79,7 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
         except Exception as e:
             logger.error(f"Unhandled exception: {e}", exc_info=True)
             self.chroma_client = None
+
     def get_collection(self, strategy_id: str) -> chromadb.Collection | None:
         """Always namespace by strategy ID."""
         if not self.chroma_client:
@@ -193,6 +202,8 @@ class MemoryAgent(BaseAgent[MemoryInput, MemoryOutput]):
             "consolidated": True,
             "rationale": " | ".join(rationale_parts),
         }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

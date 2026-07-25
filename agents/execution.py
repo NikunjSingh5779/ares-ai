@@ -28,6 +28,7 @@ from paper_trading.engine import PaperTradingEngine
 
 logger = logging.getLogger(__name__)
 
+
 # ---------------------------------------------------------------------------
 # Input schema
 # ---------------------------------------------------------------------------
@@ -36,6 +37,7 @@ class ExecutionInput(BaseModel):
     Receives upstream agent outputs and market data to execute a trade
     on the paper trading engine.
     """
+
     symbol: str = Field(..., description="Ticker symbol")
     candles: list[OHLCVData] | None = Field(
         default=None,
@@ -53,6 +55,8 @@ class ExecutionInput(BaseModel):
         default=None,
         description="RiskAgent output for approval, stop loss, position size",
     )
+
+
 # ---------------------------------------------------------------------------
 # Execution Agent
 # ---------------------------------------------------------------------------
@@ -69,9 +73,11 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         agent = ExecutionAgent(engine=engine)
         result = await agent.run(ExecutionInput(symbol="BTC-USD", ...))
     """
+
     agent_name: str = "execution"
     input_schema: type[BaseModel] = ExecutionInput
     output_schema: type[BaseModel] = ExecutionOutput
+
     def __init__(
         self,
         engine: PaperTradingEngine,
@@ -83,6 +89,7 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         self.engine = engine
         self.live_engine = live_engine
         self.session_factory = session_factory
+
     async def _get_default_ids(self, session: AsyncSession) -> tuple[str, str] | None:
         account_id = (await session.execute(text("SELECT id FROM accounts WHERE exchange='paper' LIMIT 1"))).scalar()
         if not account_id:
@@ -95,6 +102,7 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         if portfolio_id:
             return str(account_id), str(portfolio_id)
         return None
+
     async def process(self, inputs: ExecutionInput) -> ExecutionOutput:
         """Execute a trade signal against the paper portfolio.
         1. Validate that we have trade approval and a price to fill at.

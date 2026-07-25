@@ -19,8 +19,10 @@ from agents.retry import RetryConfig, with_retry
 
 logger = logging.getLogger(__name__)
 
+
 class RouterResult:
     """Result of a model router execution."""
+
     def __init__(self) -> None:
         self.success: bool = False
         self.response: dict[str, Any] | None = None
@@ -30,6 +32,7 @@ class RouterResult:
         self.fallback_used: bool = False
         self.degraded: bool = False
         self.errors: list[dict[str, Any]] = []
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "success": self.success,
@@ -40,6 +43,8 @@ class RouterResult:
             "degraded": self.degraded,
             "errors": self.errors,
         }
+
+
 class ModelRouter:
     """Executes a model call across a fallback chain.
     For each model in the chain:
@@ -50,6 +55,7 @@ class ModelRouter:
     5. On failure → log error, try next model in chain
     6. If all models exhausted → graceful degradation
     """
+
     def __init__(
         self,
         llm_client: LLMClient | NoOpLLMClient,
@@ -61,6 +67,7 @@ class ModelRouter:
         self.breakers = breaker_registry
         self.queues = queue_registry
         self.retry_config = retry_config or RetryConfig()
+
     async def execute(
         self,
         model_chain: list[str],

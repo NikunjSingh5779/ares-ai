@@ -184,9 +184,11 @@ async def test_check_connection_exception_logs(caplog: pytest.LogCaptureFixture)
         they aren't properly awaited.  This class avoids both problems by
         returning a connection whose ``__aenter__`` raises synchronously.
         """
+
         class _FailingConnection:
             async def __aenter__(self) -> None:
                 raise ConnectionError("Database unavailable")
+
             async def __aexit__(self, *args: object) -> None:
                 pass
 

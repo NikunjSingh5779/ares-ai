@@ -44,7 +44,7 @@ def fix_file(filepath: str) -> tuple[bool, str]:
         return False, "logger line not found"
 
     # Collect everything AFTER the logger line
-    after = lines[logger_idx + 1:]
+    after = lines[logger_idx + 1 :]
 
     # Split after-logger content into: [import_block, non_import_rest]
     import_block = []
