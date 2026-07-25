@@ -7,13 +7,26 @@ Usage::
     balance = await conn.get_balance()
 
 Supported exchanges: binance, bybit, coinbase, kraken, zerodha, ibkr
+
+.. warning::
+
+   ``zerodha`` and ``ibkr`` are **intentional stubs**.  They can connect
+   and report an empty balance, but every order method raises
+   ``NotImplementedError``.  Do not select these in a live trading
+   context until real implementations land.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from live_trading.exchange.base import ExchangeConnector
+
+logger = logging.getLogger(__name__)
+
+# Connectors whose order methods raise NotImplementedError
+_STUB_EXCHANGES = frozenset({"zerodha", "ibkr"})
 
 
 def create_exchange(name: str, config: dict[str, Any] | None = None) -> ExchangeConnector:
@@ -31,6 +44,13 @@ def create_exchange(name: str, config: dict[str, Any] | None = None) -> Exchange
         ValueError: If the exchange name is unknown.
     """
     config = config or {}
+
+    if name in _STUB_EXCHANGES:
+        logger.warning(
+            "Exchange '%s' is a stub — connect()/get_balance() work, but all order methods "
+            "raise NotImplementedError. Do not use for live trading.",
+            name,
+        )
 
     if name == "binance":
         from live_trading.exchange.binance import BinanceConnector

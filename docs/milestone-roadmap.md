@@ -19,7 +19,7 @@ milestone number than this table.
 | M9 | Backtest Engine | ✅ Verified — `backtesting/engine.py` (597 lines), wired into `backend/routers/backtest.py`. **Open decision:** this is a custom pure-Python simulator, not VectorBT/Backtrader as `AGENTS.md` specifies — either update the spec or migrate the implementation |
 | M10 | API Gateway (FastAPI endpoints) | ✅ Verified |
 | M11 | Frontend Dashboard (Next.js) | ✅ Verified — 16/16 pages exist, confirmed calling real backend endpoints (`frontend/src/lib/api.ts` does real `fetch()`, not mock data) |
-| M12 | Live Trading + Safety Gates | ✅ Verified, but recently hardened — two kill-switch drawdown tests were silently erroring at fixture setup (never run in CI) until fixed 2026-07; `/paper_record` was bypassing the engine to query the DB directly until refactored the same week |
+| M12 | Live Trading + Safety Gates | ✅ Verified — 4 of 6 exchange connectors (Binance, Bybit, Coinbase, Kraken) are fully functional; Zerodha and IBKR are intentional stubs — connect/balance work, but order placement raises ``NotImplementedError`` (see "Genuinely open items" below). Kill-switch drawdown tests fixed 2026-07. ``/paper_record`` refactored to delegate through the engine the same week. |
 | M13 | Monitoring, CI/CD & Security Hardening | ✅ Verified — Prometheus + Grafana in `docker/monitoring/`, CI now runs the *full* suite (the `--ignore=tests/test_live_trading` exclusion was removed after discovering it had been there since the tests were written) |
 
 ## Reconciliation note
@@ -35,6 +35,7 @@ kept in sync with verified status, not branch-naming convention at the time.
 - **Backtest engine spec decision** (see M9 above): keep the custom simulator or adopt VectorBT/Backtrader.
 - **Security hardening depth unconfirmed**: `backend/core/security.py`, `rate_limit.py`, `auth.py` exist; scope/coverage of what they actually enforce hasn't been independently audited.
 - **Vision Agent has no fallback model** — `nemotron-nano-12b-v2-vl` is the only vision-capable model in the roster (flagged in `AGENTS.md` itself). Degrades gracefully today; a second VL-capable free model would remove the single point of failure.
+- **Zerodha and IBKR stub connectors**: 2 of 6 exchange connectors are intentional stubs — ``connect()`` / ``get_balance()`` / ``get_ticker()`` work, but ``create_order`` / ``cancel_order`` / ``get_order_status`` / ``cancel_all_orders`` all raise ``NotImplementedError``. Real implementations are needed before these can be selected for live trading.
 - **Slow tests**: several `live_trading/` test files take 60-110s each, likely from real connection attempts before mocks engage — not a correctness issue, worth a look if CI time matters.
 - **Ongoing loop backlog**: see `.agents/workflows/improvement-loop.md` Section 3 for anything currently in flight.
 

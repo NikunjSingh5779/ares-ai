@@ -8,9 +8,10 @@ Provides a single source of truth for all configuration values:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 # Root project directory (two levels up from this file)
@@ -21,7 +22,16 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables.
 
     All values have defaults — override via .env or environment variables.
+
+    **Production safety**: if ``environment == "production"`` and any of
+    ``api_secret_key``, ``jwt_secret_key``, or the password inside
+    ``database_url`` still equals ``"changeme_in_production"``, the
+    application refuses to start.  This is enforced by a Pydantic
+    ``model_validator`` that runs when ``Settings()`` is constructed.
     """
+
+    # Runtime environment — used for production-safety gates
+    environment: Literal["development", "test", "production"] = "development"
 
     # Database
     database_url: str = "postgresql+asyncpg://ares:changeme_in_production@localhost:5432/ares_ai"
@@ -97,6 +107,40 @@ class Settings(BaseSettings):
     prometheus_port: int = 9090
     grafana_port: int = 3001
     health_check_interval_seconds: int = 30
+
+    # ── Production-safety validator ──────────────────────────────────
+
+    @model_validator(mode="after")
+    def _reject_default_secrets_in_production(self) -> Settings:
+        """Refuse to start if production mode is set but defaults remain.
+
+        Checks ``api_secret_key``, ``jwt_secret_key``, and the embedded
+        password inside ``database_url`` — all three must be overridden
+        when ``environment == "production"``.
+        """
+        if self.environment != "production":
+            return self
+
+        failures: list[str] = []
+
+        if self.api_secret_key == "changeme_in_production":
+            failures.append("api_secret_key")
+        if self.jwt_secret_key == "changeme_in_production":
+            failures.append("jwt_secret_key")
+        if "changeme_in_production" in self.database_url:
+            failures.append("database_url (password still contains 'changeme_in_production')")
+
+        if failures:
+            msg = (
+                "SECURITY: Production environment was requested but the"
+                f" following secret(s) still use the default value"
+                f" 'changeme_in_production': {', '.join(failures)}.\n"
+                "  Set the corresponding environment variable or .env entry"
+                " to a unique, non-default value before running in production."
+            )
+            raise ValueError(msg)
+
+        return self
 
     model_config = {
         "env_file": ".env",

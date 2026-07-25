@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
-from configs.settings import settings
+from configs.settings import Settings, settings
 
 MODELS_YAML_PATH = Path(__file__).resolve().parent.parent / "configs" / "models.yaml"
 
@@ -92,3 +93,77 @@ def test_models_yaml_timeouts() -> None:
         timeout = cfg.get("timeout_seconds", data["defaults"]["timeout_seconds"])
         assert timeout > 0, f"{name} agent has invalid timeout: {timeout}"
         assert timeout <= 300, f"{name} agent timeout too high: {timeout} (max 300)"
+
+
+# ── Production-secret rejection tests ────────────────────────────────────
+
+
+def test_production_rejects_default_api_secret() -> None:
+    """If ``api_secret_key`` is still the default, production mode must raise."""
+    with pytest.raises(ValueError, match="api_secret_key"):
+        Settings(
+            environment="production",
+            api_secret_key="changeme_in_production",
+            jwt_secret_key="real-secret",  # override this one
+            database_url="postgresql+asyncpg://ares:real-password@localhost:5432/ares_ai",
+        )
+
+
+def test_production_rejects_default_jwt_secret() -> None:
+    """If ``jwt_secret_key`` is still the default, production mode must raise."""
+    with pytest.raises(ValueError, match="jwt_secret_key"):
+        Settings(
+            environment="production",
+            api_secret_key="real-secret",
+            jwt_secret_key="changeme_in_production",
+            database_url="postgresql+asyncpg://ares:real-password@localhost:5432/ares_ai",
+        )
+
+
+def test_production_rejects_default_db_password() -> None:
+    """If ``database_url`` still contains the default password, production mode must raise."""
+    with pytest.raises(ValueError, match="database_url"):
+        Settings(
+            environment="production",
+            api_secret_key="real-secret",
+            jwt_secret_key="real-secret",
+            database_url="postgresql+asyncpg://ares:changeme_in_production@localhost:5432/ares_ai",
+        )
+
+
+def test_production_rejects_all_defaults_simultaneously() -> None:
+    """All three defaults left in place should mention all three in the error."""
+    with pytest.raises(ValueError) as exc_info:
+        Settings(
+            environment="production",
+            api_secret_key="changeme_in_production",
+            jwt_secret_key="changeme_in_production",
+            database_url="postgresql+asyncpg://ares:changeme_in_production@localhost:5432/ares_ai",
+        )
+    msg = str(exc_info.value)
+    assert "api_secret_key" in msg
+    assert "jwt_secret_key" in msg
+    assert "database_url" in msg
+
+
+def test_development_accepts_defaults() -> None:
+    """Development mode (the default) MUST NOT reject defaults — local dev
+    relies on them before .env is configured."""
+    s = Settings(
+        api_secret_key="changeme_in_production",
+        jwt_secret_key="changeme_in_production",
+        database_url="postgresql+asyncpg://ares:changeme_in_production@localhost:5432/ares_ai",
+    )
+    assert s.environment == "development"
+
+
+def test_production_allows_custom_secrets() -> None:
+    """Production mode with all secrets overridden must succeed."""
+    s = Settings(
+        environment="production",
+        api_secret_key="a1b2c3d4e5-production-secret",
+        jwt_secret_key="f6g7h8i9j0-production-secret",
+        database_url="postgresql+asyncpg://ares:really-secure-password-42@db.example.com:5432/ares_ai",
+    )
+    assert s.environment == "production"
+    assert s.api_secret_key == "a1b2c3d4e5-production-secret"
