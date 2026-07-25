@@ -8,12 +8,11 @@ All tests use injected time (``now``) — no ``sleep`` calls.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from unittest.mock import MagicMock, PropertyMock
 
 import pytest
-from fastapi import FastAPI, status
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.core.login_rate_limit import (
@@ -21,7 +20,6 @@ from backend.core.login_rate_limit import (
     LoginRateLimiter,
     SlidingWindow,
 )
-
 
 # ======================================================================
 # SlidingWindow unit tests
@@ -175,8 +173,11 @@ class TestLoginRateLimiterCheckAndRecord:
         assert limiter.check_and_record("", "unknown", now=101.0) is None
 
     def test_hash_key_is_deterministic(self) -> None:
-        h1 = LoginRateLimiter._hash_key("alice@example.com", "10.0.0.1")
-        h2 = LoginRateLimiter._hash_key(" alice@example.com ", "10.0.0.1")
+        """Normalized emails produce the same hash key."""
+        n1 = LoginRateLimiter._normalize_email("alice@example.com")
+        n2 = LoginRateLimiter._normalize_email(" ALICE@Example.com ")
+        h1 = LoginRateLimiter._hash_key(n1, "10.0.0.1")
+        h2 = LoginRateLimiter._hash_key(n2, "10.0.0.1")
         assert h1 == h2
 
     def test_hash_key_contains_no_plaintext(self) -> None:
@@ -260,7 +261,6 @@ def app_with_mock_user(monkeypatch) -> FastAPI:
     Returns a (app, mock_user_service) tuple.
     """
     from backend.routers import auth as auth_router
-    from backend.services import user_service as real_user_service
 
     # Replace real DB dependencies with a mock user service
     mock_service = MagicMock()
@@ -269,7 +269,7 @@ def app_with_mock_user(monkeypatch) -> FastAPI:
         if email == "existing@example.com":
             user = MagicMock()
             user.email = "existing@example.com"
-            user.password_hash = "$2b$12$abcdefghijklmnopqrstuv"  # fake bcrypt hash
+            user.password_hash = "mock_hash_that_wont_be_checked"
             user.is_active = True
             return user
         return None
@@ -287,9 +287,11 @@ def app_with_mock_user(monkeypatch) -> FastAPI:
     mock_service.create_user = create_user
 
     monkeypatch.setattr(auth_router, "user_service", mock_service)
+    # Mock verify_password so test doesn't depend on bcrypt/passlib compatibility
+    monkeypatch.setattr(auth_router, "verify_password", lambda pw, _h: pw == "correct-password")
 
     app = FastAPI()
-    app.include_router(auth_router)
+    app.include_router(auth_router.router)
 
     # Replace the global login_rate_limiter with a fresh one for each test
     monkeypatch.setattr(auth_router, "login_rate_limiter", _rate_limiter_for_test())
@@ -464,12 +466,17 @@ class TestLoginEndpointRateLimit:
             assert retry_after.isdigit()
 
     def test_different_ips_not_blocked(self, monkeypatch, app_with_mock_user) -> None:
-        """Requests from different IPs should have independent rate limits."""
+        """Requests from different IPs should have independent rate limits.
+
+        Uses a limiter with trusted_proxies so X-Forwarded-For is honoured.
+        """
         app = app_with_mock_user
         tight_limiter = _rate_limiter_for_test(email_limit=1)
         from backend.routers import auth as auth_router
+        from configs.settings import settings
 
         monkeypatch.setattr(auth_router, "login_rate_limiter", tight_limiter)
+        monkeypatch.setattr(settings, "trusted_proxies", "10.0.0.1, 10.0.0.2")
 
         with TestClient(app) as client:
             # Exhaust the bucket from IP A
@@ -497,7 +504,7 @@ class TestLoginEndpointRateLimit:
                 data={"username": "existing@example.com", "password": "wrong"},
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded",
-                    "X-Forwarded-For": "10.0.0.2",
+                    "X-Forwarded-For": "10.0.0.3",
                 },
             )
             assert r_allowed.status_code in (200, 401), "Different IP should be allowed"
@@ -524,7 +531,7 @@ class TestRegisterEndpoint:
 class TestConstructorValidation:
     def test_missing_settings_attr_raises(self) -> None:
         with pytest.raises(TypeError, match="login_rate_limit_attempts"):
-            LoginRateLimiter(MagicMock())
+            LoginRateLimiter(object())  # plain object has no required attrs
 
     def test_rejects_zero_attempts(self) -> None:
         """A limit of 0 would block everyone — the constructor does not enforce
@@ -544,8 +551,6 @@ class TestLoggingSafety:
     def test_log_lines_contain_no_plaintext_email(self, caplog, monkeypatch) -> None:
         import logging
 
-        from backend.core import login_rate_limit as lrl
-
         caplog.set_level(logging.WARNING)
         limiter = _rate_limiter_for_test(email_limit=0)  # blocks everything
         assert limiter.check_and_record("alice@example.com", "10.0.0.1", now=100.0) is not None
@@ -556,8 +561,6 @@ class TestLoggingSafety:
 
     def test_extra_hash_prefix_not_full_hash(self, caplog, monkeypatch) -> None:
         import logging
-
-        from backend.core import login_rate_limit as lrl
 
         caplog.set_level(logging.WARNING)
         limiter = _rate_limiter_for_test(email_limit=0)

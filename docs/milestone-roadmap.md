@@ -21,6 +21,7 @@ milestone number than this table.
 | M11 | Frontend Dashboard (Next.js) | ✅ Verified — 16/16 pages exist, confirmed calling real backend endpoints (`frontend/src/lib/api.ts` does real `fetch()`, not mock data) |
 | M12 | Live Trading + Safety Gates | ✅ Verified — 4 of 6 exchange connectors (Binance, Bybit, Coinbase, Kraken) are fully functional; Zerodha and IBKR are intentional stubs — connect/balance work, but order placement raises ``NotImplementedError`` (see "Genuinely open items" below). Kill-switch drawdown tests fixed 2026-07. ``/paper_record`` refactored to delegate through the engine the same week. |
 | M13 | Monitoring, CI/CD & Security Hardening | ✅ Verified — Prometheus + Grafana in `docker/monitoring/`, CI now runs the *full* suite (the `--ignore=tests/test_live_trading` exclusion was removed after discovering it had been there since the tests were written) |
+| S1  | Login Brute-Force Protection (two-tier sliding window) | ✅ Verified 2026-07-26 — `backend/core/login_rate_limit.py` (SHA-256 privacy-preserving keys, in-process sliding windows), 35 unit/integration tests pass |
 
 ## Reconciliation note
 

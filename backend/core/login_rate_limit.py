@@ -207,10 +207,7 @@ class LoginRateLimiter:
 
 def _require_setting(settings: object, name: str) -> None:
     if not hasattr(settings, name):
-        raise TypeError(
-            f"LoginRateLimiter received a settings object without "
-            f"the required attribute '{name}'"
-        )
+        raise TypeError(f"LoginRateLimiter received a settings object without the required attribute '{name}'")
 
 
 # ------------------------------------------------------------------

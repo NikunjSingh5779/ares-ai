@@ -38,9 +38,7 @@ async def login(
     narrow (email + IP) or wide (IP-only) limit is exceeded.
     """
     # ── Brute-force throttle (checked BEFORE password verification) ──
-    client_ip = login_rate_limiter.get_client_ip(
-        request, trusted_proxies=settings.trusted_proxies
-    )
+    client_ip = login_rate_limiter.get_client_ip(request, trusted_proxies=settings.trusted_proxies)
     blocked = login_rate_limiter.check_and_record(form_data.username, client_ip)
     if blocked:
         retry_after_sec = int(login_rate_limiter.retry_after(form_data.username, client_ip))
