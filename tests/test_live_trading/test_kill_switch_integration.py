@@ -3,12 +3,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from live_trading.engine import LiveTradingEngine
+from live_trading.exchange.base import ExchangeConnector
 from live_trading.safety import TradingMode
 
 
 @pytest.fixture
 def mock_exchange():
-    exchange = MagicMock()
+    exchange = MagicMock(spec=ExchangeConnector)
     exchange.cancel_all_orders = AsyncMock(return_value=True)
     return exchange
 
@@ -20,13 +21,11 @@ def engine(mock_exchange):
     engine = LiveTradingEngine(
         exchange=mock_exchange, kill_switch=KillSwitch(), mode_manager=ModeManager(), promotion_gate=PromotionGate()
     )
-    # The default max_drawdown_pct in KillSwitch is 15.0 unless overridden
-    # The requirement is to test the drawdown evaluation.
-    engine.mode_manager.set_mode(TradingMode.AUTO)
-    # Mock is_connected via exchange
-    import unittest.mock as mock
 
-    mock.patch.object(type(engine.exchange), "is_connected", new_callable=mock.PropertyMock, return_value=True).start()
+    engine.mode_manager.set_mode(TradingMode.AUTO)
+    # Set is_connected directly on the instance — with spec=ExchangeConnector
+    # the mock is aware of the attribute and allows overriding it.
+    engine.exchange.is_connected = True
     return engine
 
 
