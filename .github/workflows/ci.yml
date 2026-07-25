@@ -89,7 +89,7 @@ jobs:
         run: uv sync --all-extras --dev
 
       - name: Run tests
-        run: uv run pytest tests/ --ignore=tests/test_live_trading -v
+        run: uv run pytest tests/ -v
         env:
           DATABASE_URL: postgresql+asyncpg://ares:ares_test@localhost:5432/ares_ai_test
           REDIS_HOST: localhost
