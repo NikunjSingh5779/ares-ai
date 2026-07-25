@@ -35,8 +35,8 @@ kept in sync with verified status, not branch-naming convention at the time.
 - **Backtest engine spec decision** (see M9 above): keep the custom simulator or adopt VectorBT/Backtrader.
 - **Security hardening depth unconfirmed**: `backend/core/security.py`, `rate_limit.py`, `auth.py` exist; scope/coverage of what they actually enforce hasn't been independently audited.
 - **Vision Agent has no fallback model** — `nemotron-nano-12b-v2-vl` is the only vision-capable model in the roster (flagged in `AGENTS.md` itself). Degrades gracefully today; a second VL-capable free model would remove the single point of failure.
-- **Zerodha and IBKR stub connectors**: 2 of 6 exchange connectors are intentional stubs — ``connect()`` / ``get_balance()`` / ``get_ticker()`` work, but ``create_order`` / ``cancel_order`` / ``get_order_status`` / ``cancel_all_orders`` all raise ``NotImplementedError``. Real implementations are needed before these can be selected for live trading.
-- **Slow tests**: several `live_trading/` test files take 60-110s each, likely from real connection attempts before mocks engage — not a correctness issue, worth a look if CI time matters.
+- **Zerodha and IBKR real implementations**: Stub connectors now have dedicated tests (22 tests, 1.2s), emit a loud warning when selected, and are removed from the coverage-omit list. The remaining gap is implementing ``create_order`` / ``cancel_order`` / ``get_order_status`` / ``cancel_all_orders`` against the real APIs so these can be selected for live trading.
+- **Slow tests**: the conftest ``autouse=True`` Redis-timeout issue (which caused stub tests to take 573s) has been fixed. Some ``live_trading/`` exchange test files may still take 60-110s due to connection-attempt timeouts before mocks engage — a mock-ordering fix would bring those down.
 - **Ongoing loop backlog**: see `.agents/workflows/improvement-loop.md` Section 3 for anything currently in flight.
 
 ## How to keep this file honest
