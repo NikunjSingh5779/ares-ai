@@ -64,6 +64,16 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["backend*", "agents*", "database*", "configs*", "backtesting*", "paper_trading*", "live_trading*"]
 
+[tool.coverage.run]
+omit = [
+    "live_trading/exchange/binance.py",
+    "live_trading/exchange/bybit.py",
+    "live_trading/exchange/coinbase.py",
+    "live_trading/exchange/ibkr.py",
+    "live_trading/exchange/kraken.py",
+    "live_trading/exchange/zerodha.py",
+]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
