@@ -113,7 +113,7 @@ async def test_record_agent_fallback_on_router_fallback(mock_context, mock_route
 
     mock_context.model_preferences = {"model_chain": ["primary-model", "fallback-model"]}
     news_agent = NewsAgent(context=mock_context, router=mock_router)
-    news_agent.fetch_news = AsyncMock(return_value=[{"title": "Test", "publisher": "Test"}])
+    news_agent.fetch_news = AsyncMock(return_value=[{"title": "Test", "publisher": "Test"}])  # type: ignore[method-assign]
 
     router_result = RouterResult()
     router_result.success = True

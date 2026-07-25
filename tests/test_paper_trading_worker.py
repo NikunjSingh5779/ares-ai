@@ -67,7 +67,6 @@ async def test_worker_tick_closes_trade_and_persists(engine, ingestor, session_f
     assert len(engine._closed_trades) == 1
     assert engine._closed_trades[0].exit_reason == "take_profit"
 
-<<<<<<< HEAD
     ingestor.ingest_batch.assert_called_once_with(
         symbols=["BTC-USD"], source="yahoo", interval="1m", limit=1
     )

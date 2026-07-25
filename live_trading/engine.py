@@ -317,7 +317,7 @@ class LiveTradingEngine:
             "status": order.status,
         }
 
-        record_live_order(order_dict["status"])
+        record_live_order(str(order_dict["status"]))
 
         entry = AuditEntry(
             order_intent=order_intent,

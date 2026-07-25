@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import chromadb
+from chromadb.api import ClientAPI
 from pydantic import BaseModel, ConfigDict, Field
 
 from agents.base import AgentContext, BaseAgent
