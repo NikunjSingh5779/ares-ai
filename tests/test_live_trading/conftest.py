@@ -5,6 +5,7 @@ import pytest
 def clear_kill_switch_redis():
     try:
         import redis
+
         from configs.settings import settings
 
         r = redis.Redis(
