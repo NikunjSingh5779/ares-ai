@@ -1,12 +1,12 @@
 import pytest
-import redis
-
-from configs.settings import settings
 
 
 @pytest.fixture(autouse=True)
 def clear_kill_switch_redis():
     try:
+        import redis
+        from configs.settings import settings
+
         r = redis.Redis(
             host=settings.redis_host,
             port=settings.redis_port,
