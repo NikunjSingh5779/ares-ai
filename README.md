@@ -82,19 +82,29 @@ cp .env.example .env
 ```
 Open `.env` and fill in **either** your `OPENROUTER_API_KEY` or `OPENCODE_API_KEY` (which you can generate for free). Both are supported, but at least one is required to enable agent reasoning.
 
-### 2. Start the Database & Cache Stack
-Spin up the backing databases, cache, and vector store via Docker:
+### 2. Start the Stack
+Spin up the core services via Docker Compose:
 ```powershell
-docker-compose up -d
+docker compose -f docker/docker-compose.yml up -d
 ```
-This runs **7 services**: PostgreSQL, Redis, ChromaDB, the FastAPI backend, the Next.js frontend, Prometheus, and Grafana — see docker/docker-compose.yml for ports.
+This runs **7 services**: PostgreSQL, Redis, ChromaDB, the FastAPI backend, the Next.js frontend, Prometheus, and Grafana — see ``docker/docker-compose.yml`` for ports.
+
+You can also use the root ``docker-compose.yml`` (11 services) for the full
+stack that includes nginx, automated Postgres backups, the live trading loop
+(``run-live``), and the daily reporter:
+```powershell
+docker compose up -d
+```
 
 ### 3. Run Pipeline Simulation
 Test that the entire Python agent graph is wired and executing successfully:
 ```powershell
 python scripts/simulate_pipeline.py
 ```
-This simulates a mock market event and walks the state through all 6 core stages.
+This simulates a mock market event through all 10 agents in the pipeline
+(market_analyst, quant, news, vision, consensus, risk, execution, journal,
+reflection, memory) and the live-trading engine safety gates.
+Requires PostgreSQL and ChromaDB to be running (``docker compose -f docker/docker-compose.yml up -d``).
 
 ### 4. Start the Web Dashboards
 
