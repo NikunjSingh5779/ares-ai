@@ -103,6 +103,13 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
 
+    # Login brute-force protection
+    login_rate_limit_attempts: int = 5
+    login_rate_limit_window_seconds: int = 300  # 5 minutes
+    login_rate_limit_ip_attempts: int = 20
+    login_rate_limit_ip_window_seconds: int = 900  # 15 minutes
+    trusted_proxies: str = ""
+
     # Monitoring
     prometheus_port: int = 9090
     grafana_port: int = 3001
