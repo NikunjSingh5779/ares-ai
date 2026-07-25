@@ -1,12 +1,13 @@
 import pytest
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def clear_kill_switch_redis():
     """Clear Redis-backed kill switch state between tests.
 
-    Only used by tests that exercise Redis-persisted kill switch state.
-    Does not auto-apply — tests must explicitly request this fixture.
+    Explicitly request this fixture in any test that exercises
+    Redis-persisted kill switch state (e.g. integration tests for
+    :func:`~live_trading.safety.KillSwitch`).
     """
     try:
         import redis
