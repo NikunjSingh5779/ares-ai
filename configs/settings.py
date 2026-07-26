@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
 
+    # Content Security Policy
+    csp_connect_src: str = "http://localhost:8000 ws://localhost:8000"
+
     # Login brute-force protection
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 300  # 5 minutes

@@ -41,6 +41,7 @@ def test_content_security_policy_default() -> None:
     from fastapi import FastAPI
 
     from backend.core.security import SecurityHeadersMiddleware
+    from configs.settings import settings
 
     app = FastAPI()
 
@@ -59,6 +60,13 @@ def test_content_security_policy_default() -> None:
         assert "frame-src 'none'" in csp
         assert "object-src 'none'" in csp
         assert "base-uri 'self'" in csp
+        # No unverified third-party CDNs
+        assert "js.stripe.com" not in csp, "stripe not used in this project"
+        assert "cdn.jsdelivr.net" not in csp, "jsdelivr not used in this project"
+        # connect-src driven by settings
+        expected_connect = settings.csp_connect_src
+        for origin in expected_connect.split():
+            assert origin in csp, f"connect-src origin {origin} should be in CSP (from settings)"
 
 
 def test_hsts_header() -> None:

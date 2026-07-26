@@ -54,11 +54,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     CSP_DEFAULT = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://js.stripe.com https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: https:; "
         "font-src 'self' data:; "
-        "connect-src 'self' http://localhost:8000 ws://localhost:8000; "
+        f"connect-src 'self' {settings.csp_connect_src}; "
         "frame-src 'none'; "
         "object-src 'none'; "
         "base-uri 'self'"
