@@ -49,7 +49,7 @@ Read the full `SKILL.md` before applying code.
 
 ## 3. Standing Backlog
 
-*Last verified: 2026-07-25 — M8/M14 branch reconciliation complete; kill-switch
+*Last verified: 2026-07-26 — see below for newly discovered items top-priority.*
 test bug, CI live_trading exclusion, and paper_record DB-coupling all resolved
 and CI-confirmed. Docs (roadmap, architecture, README) audited and corrected —
 they had drifted in both directions (premature "done," and premature "not done").*
@@ -92,6 +92,33 @@ they had drifted in both directions (premature "done," and premature "not done")
 - `ruff check` and `ruff format --check` both clean.
 
 **⚠️ Carried forward, unresolved**
+1. **[Deployment-breaking]** Frontend API URL baked at Docker build time, not
+   runtime. `frontend/src/lib/api.ts` falls back to
+   `NEXT_PUBLIC_API_URL || "http://localhost:8080"`. Next.js inlines
+   `NEXT_PUBLIC_*` at build time, but `frontend/Dockerfile` never declares it as
+   a build `ARG`, and `docker/docker-compose.yml` only sets it under
+   `environment:` (runtime) — that assignment currently does nothing. The
+   root `docker-compose.yml` maps the backend to host port 8000 by default and
+   never sets this var at all, so the dashboard silently calls a port nothing
+   is listening on there. `next.config.ts`'s own comment ("API fetches go
+   directly to the backend at localhost:8000") contradicts the 8080 fallback
+   three lines away in `api.ts`.
+2. **[Hardening]** `backend/core/security.py`'s CSP allowlists
+   `js.stripe.com` and `cdn.jsdelivr.net` in `script-src`/`style-src` with no
+   Stripe integration anywhere in the codebase (grep confirms zero references)
+   — looks like unedited boilerplate. Also `connect-src` is hardcoded to
+   `http://localhost:8000`, disconnected from `configs/settings.py` entirely.
+   Fix: remove the Stripe/jsdelivr allowances unless a real integration
+   justifies them, and make `connect-src` driven by settings instead of a literal.
+3. **[Hygiene]** `.agents/skills.json` contains a hardcoded personal path
+   (`C:\Users\ASUS\OneDrive\Desktop\skills`) that resolves on no other machine
+   or CI runner. Fix: make it relative to the repo or remove the entry.
+4. **[Decision needed]** PR #45 (dependabot: typescript 5.8 → 7.0.2) is open
+   and failing CI (`frontend` and `docker` jobs). Investigate the failure, and
+   either fix compatibility or close the PR with a pinning rule added to
+   `.github/dependabot.yml` (ignore major version bumps for typescript) so it
+   stops recurring — don't just leave it open.
+
 - GitHub CLI auth — status unconfirmed as of this pass; verify directly with
   `gh auth status` rather than trusting this note either way.
 - Several `live_trading/` test files (the 4 exchange connectors, `test_safety.py`)
