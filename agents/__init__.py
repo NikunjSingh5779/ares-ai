@@ -49,6 +49,7 @@ from agents.state import (
     VisionOutput,
 )
 from agents.supervisor import Supervisor
+from agents.kronos_predictor import KronosPredictorAgent, KronosPredictorInput
 from agents.vision import VisionAgent, VisionInput
 
 __all__ = [
@@ -113,4 +114,7 @@ __all__ = [
     "VisionOutput",
     "PipelineStatus",
     "Supervisor",
+    "KronosPredictorAgent",
+    "KronosPredictorInput",
+    "KronosOutput",
 ]

@@ -26,6 +26,7 @@ from backend.routers import (
 )
 from backend.routers.auth import router as auth_router
 from backend.routers.backtest import router as backtest_router
+from backend.routers.predictions import router as predictions_router
 from backend.routers.trading import _get_engine as get_paper_trading_engine
 from backend.routers.users import router as users_router
 from configs.settings import settings
@@ -118,6 +119,7 @@ app.include_router(agents_router)
 app.include_router(monitoring_router)
 app.include_router(live_router)
 app.include_router(backtest_router)
+app.include_router(predictions_router)
 
 # ── Prometheus /metrics endpoint (ASGI mount) ─────────────────────────
 

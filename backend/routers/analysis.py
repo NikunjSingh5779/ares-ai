@@ -74,12 +74,14 @@ def _get_supervisor() -> Supervisor:
 
     from agents.execution import ExecutionAgent
     from agents.journal import JournalAgent
+    from agents.kronos_predictor import KronosPredictorAgent
     from agents.market_analyst import MarketAnalystAgent
     from agents.memory import MemoryAgent
     from agents.news import NewsAgent
     from agents.quant import QuantAgent
     from agents.reflection import ReflectionAgent
     from agents.risk import RiskAgent
+    from agents.web_collector import WebCollectorAgent
     from backend.data.ingestor import MarketDataIngestor
     from backend.data.repository import MarketDataRepository
     from backend.routers.live import _get_engine as get_live_engine
@@ -103,11 +105,17 @@ def _get_supervisor() -> Supervisor:
     registry.register("reflection", agent=ReflectionAgent())
     registry.register("memory", agent=MemoryAgent())
 
+    # Register Kronos predictor (ML-powered OHLCV forecasting)
+    registry.register("kronos_predictor", agent=KronosPredictorAgent(ingestor=shared_ingestor))
+
+    # Register web data collector (browser-use for scraping)
+    registry.register("web_collector", agent=WebCollectorAgent())
+
     # Special cased / missing implementation
     registry.register("consensus")
     registry.register("vision")
 
-    # Register news agent
+    # Register news agent (now enhanced with web search fallback)
     registry.register("news", agent=NewsAgent(router=router_model))
 
     # 6. Supervisor

@@ -8,6 +8,7 @@ from backend.data.sources.base import BaseDataSource
 from backend.data.sources.binance import BinanceSource
 from backend.data.sources.coingecko import CoinGeckoSource
 from backend.data.sources.yahoo import YahooFinanceSource
+from backend.data.sources.web_search import DuckDuckGoSearcher
 
 logger = logging.getLogger(__name__)
 

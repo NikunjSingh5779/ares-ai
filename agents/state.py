@@ -133,6 +133,23 @@ class VisionOutput(BaseModel):
     rationale: str = Field(...)
 
 
+class KronosOutput(BaseModel):
+    """Output from the Kronos Market Predictor Agent.
+
+    Provides ML-powered OHLCV price predictions using the Kronos foundation model.
+    """
+
+    confidence: float = Field(..., ge=0, le=100, description="Confidence score (0-100)")
+    direction: str = Field(default="flat", pattern="^(long|short|flat)$")
+    bias: str = Field(default="neutral", pattern="^(bullish|bearish|neutral)$", description="Predicted trend bias")
+    predicted_prices: list[float] = Field(default_factory=list, description="Predicted future close prices")
+    predicted_change_pct: float = Field(default=0.0, description="Predicted price change percentage")
+    predicted_range_pct: float = Field(default=0.0, description="Predicted price range as % of current price")
+    current_price: float = Field(default=0.0, description="Current/recent price")
+    model_used: str = Field(default="", description="Model identifier or 'trend_fallback'/'none'")
+    rationale: str = Field(default="", description="Explanation of the prediction")
+
+
 class PipelineStatus(BaseModel):
     """Tracks which agents have been executed and their results."""
 
@@ -174,6 +191,7 @@ class AgentState(BaseModel):
     journal: JournalOutput | None = None
     reflection: ReflectionOutput | None = None
     memory: MemoryOutput | None = None
+    kronos: KronosOutput | None = None
 
     # Pipeline metadata
     pipeline_status: PipelineStatus = Field(default_factory=PipelineStatus)
