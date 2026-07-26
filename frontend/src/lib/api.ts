@@ -24,7 +24,7 @@ import type {
   BacktestMetrics,
 } from "@/types/api";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
