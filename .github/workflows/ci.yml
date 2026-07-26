@@ -29,7 +29,7 @@ jobs:
         run: uv python install 3.14
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
       - name: Ruff lint check
         run: uv run ruff check .
@@ -86,7 +86,7 @@ jobs:
         run: uv python install 3.14
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
       - name: Run tests
         run: uv run pytest tests/ -v
@@ -108,7 +108,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 9.12.3
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

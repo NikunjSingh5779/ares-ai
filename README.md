@@ -132,4 +132,4 @@ Run the full pytest suite to verify no regressions in the agent graph, endpoints
 ```powershell
 python -m pytest tests/ -v
 ```
-Currently, all **836 tests** pass cleanly with **82.85% coverage** (verified 2026-07-26 via full local run with `uv sync --all-extras --dev && uv run pytest tests/ -v`, matching CI).
+Currently, all **871 tests** pass cleanly with **83.57% coverage** (verified 2026-07-26 via full local run with `uv sync --locked --all-extras --dev && uv run pytest tests/ -v`, matching CI).
