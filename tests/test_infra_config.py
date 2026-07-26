@@ -54,9 +54,7 @@ def test_root_compose_has_api_url_build_arg() -> None:
         f"{path} is missing NEXT_PUBLIC_API_URL build arg — the frontend "
         "service will inherit whatever was baked into the image."
     )
-    assert "build:" in text and "args:" in text, (
-        f"{path} must have a 'build.args' section for the frontend service."
-    )
+    assert "build:" in text and "args:" in text, f"{path} must have a 'build.args' section for the frontend service."
 
 
 # ── docker/docker-compose.yml (7-service core stack) ───────────────────
@@ -87,8 +85,7 @@ def test_api_ts_fallback_matches_dev_stack() -> None:
     text = path.read_text(encoding="utf-8")
 
     assert "localhost:8000" in text, (
-        f"{path} fallback URL doesn't resolve to the root docker-compose stack's "
-        "default backend port (8000)."
+        f"{path} fallback URL doesn't resolve to the root docker-compose stack's default backend port (8000)."
     )
 
 
@@ -108,8 +105,7 @@ def test_skills_json_no_absolute_paths() -> None:
         path = entry.get("path", "")
         # Reject drive-letter roots (Windows) and leading slashes (Unix)
         assert not path.startswith(("/", "\\", "C:", "D:")), (
-            f"A machine-specific absolute path was found in {SKILLS_JSON}: {path!r}. "
-            "Use a repo-relative path instead."
+            f"A machine-specific absolute path was found in {SKILLS_JSON}: {path!r}. Use a repo-relative path instead."
         )
 
 
