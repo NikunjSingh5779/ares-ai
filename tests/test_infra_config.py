@@ -29,8 +29,7 @@ def test_skills_json_no_absolute_paths() -> None:
         path = entry.get("path", "")
         # Reject drive-letter roots (Windows) and leading slashes (Unix)
         assert not path.startswith(("/", "\\", "C:", "D:")), (
-            f"A machine-specific absolute path was found in {SKILLS_JSON}: {path!r}. "
-            "Use a repo-relative path instead."
+            f"A machine-specific absolute path was found in {SKILLS_JSON}: {path!r}. Use a repo-relative path instead."
         )
 
 
@@ -63,6 +62,6 @@ def test_dependabot_ignores_typescript_major() -> None:
         "dependabot.yml has no ignore rule for typescript major version bumps. "
         "Add:\n"
         "  ignore:\n"
-        "    - dependency-name: \"typescript\"\n"
-        "      update-types: [\"version-update:semver-major\"]"
+        '    - dependency-name: "typescript"\n'
+        '      update-types: ["version-update:semver-major"]'
     )
