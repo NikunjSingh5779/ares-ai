@@ -18,7 +18,6 @@ Model info:
 from __future__ import annotations
 
 import logging
-import math
 from typing import Any
 
 import numpy as np
@@ -97,11 +96,10 @@ class _KronosModel:
             return True
 
         try:
-            import torch
-
-            # Try multiple locations for the Kronos model module
-            import sys
             import os
+            import sys
+
+            import torch
 
             # Priority: 1) pip-installed version, 2) local kronos_model/ dir,
             #            3) desktop Kronos repo
@@ -118,9 +116,9 @@ class _KronosModel:
 
             # Try pip-installed first, then local module
             try:
-                from kronos.model import Kronos, KronosTokenizer, KronosPredictor  # type: ignore[import-untyped]
+                from kronos.model import Kronos, KronosTokenizer, KronosPredictor  # noqa: I001  # try/except fallback pattern
             except ImportError:
-                from model import Kronos, KronosTokenizer, KronosPredictor  # type: ignore[import-untyped]
+                from model import Kronos, KronosTokenizer, KronosPredictor  # noqa: I001  # fallback import
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
             logger.info(
@@ -157,7 +155,7 @@ class _KronosModel:
 # Prediction logic
 # ---------------------------------------------------------------------------
 
-def _prepare_dataframe(candles: list[OHLCVData]) -> "Any":
+def _prepare_dataframe(candles: list[OHLCVData]) -> Any:
     """Convert OHLCV candles to the pandas DataFrame format Kronos expects."""
     try:
         import pandas as pd
@@ -184,7 +182,7 @@ def _prepare_dataframe(candles: list[OHLCVData]) -> "Any":
     return df
 
 
-def _make_timestamps(candles: list[OHLCVData], pred_len: int) -> tuple["Any", "Any"]:
+def _make_timestamps(candles: list[OHLCVData], pred_len: int) -> tuple[Any, Any]:
     """Create x_timestamp and y_timestamp pandas Series for Kronos."""
     try:
         import pandas as pd
@@ -212,15 +210,13 @@ def _make_timestamps(candles: list[OHLCVData], pred_len: int) -> tuple["Any", "A
 def _analysis_from_prediction(
     symbol: str,
     candles: list[OHLCVData],
-    pred_df: "Any",
+    pred_df: Any,
 ) -> dict[str, Any]:
     """Convert Kronos prediction DataFrame into a structured analysis result.
 
     Compares the predicted close prices to recent historical close prices
     to determine direction and confidence.
     """
-    import pandas as pd
-
     # Extract predicted values
     pred_closes = pred_df["close"].values if hasattr(pred_df, "values") else [getattr(r, "close", 0) for r in pred_df]
 
@@ -368,9 +364,6 @@ class KronosPredictorAgent(BaseAgent[KronosPredictorInput, KronosOutput]):
             return None
 
         try:
-            import pandas as pd
-            from model import KronosPredictor  # type: ignore[import-untyped]
-
             # Prepare data
             df = _prepare_dataframe(candles)
             x_ts, y_ts = _make_timestamps(candles, inputs.pred_len)

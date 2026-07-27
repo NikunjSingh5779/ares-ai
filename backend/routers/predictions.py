@@ -62,8 +62,8 @@ async def kronos_predict(
 
         # Convert to dict for response
         if hasattr(result, "model_dump"):
-            return result.model_dump()  # type: ignore[return-value]
-        return dict(result)  # type: ignore[arg-type]
+            return result.model_dump()
+        return dict(result)
 
     except Exception as e:
         logger.error(f"Kronos prediction failed: {e}", exc_info=True)
@@ -102,8 +102,8 @@ async def collect_web_data(
         )
 
         if hasattr(result, "model_dump"):
-            return result.model_dump()  # type: ignore[return-value]
-        return dict(result)  # type: ignore[arg-type]
+            return result.model_dump()
+        return dict(result)
 
     except Exception as e:
         logger.error(f"Web data collection failed: {e}", exc_info=True)

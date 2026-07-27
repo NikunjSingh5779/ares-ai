@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from starlette.testclient import TestClient
 
 from backend.core.metrics import MetricsMiddleware
@@ -176,3 +177,36 @@ def test_record_live_order() -> None:
     after = REGISTRY.get_sample_value("ares_live_orders_total", {"status": "filled"}) or 0
 
     assert after == before + 1
+
+
+def test_metrics_middleware_records_exception_as_500() -> None:
+    """Verify the exception branch in dispatch is exercised when call_next raises.
+
+    The middleware records the 500 metric and re-raises the exception.
+    The exception propagates through to the client, but the metric
+    is incremented before the re-raise.
+    """
+    from fastapi import FastAPI
+    from prometheus_client import REGISTRY
+
+    app = FastAPI()
+
+    @app.get("/test-exception")
+    async def test_endpoint():
+        raise RuntimeError("unexpected error")
+
+    app.add_middleware(MetricsMiddleware)
+
+    with pytest.raises(RuntimeError, match="unexpected error"):
+        with TestClient(app) as client:
+            client.get("/test-exception")
+
+    # The metric should still be recorded even though the exception propagates
+    count = (
+        REGISTRY.get_sample_value(
+            "ares_requests_total",
+            {"method": "GET", "endpoint": "/test-exception", "status": "500"},
+        )
+        or 0
+    )
+    assert count >= 1

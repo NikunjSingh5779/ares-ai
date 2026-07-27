@@ -10,7 +10,6 @@ ARES's existing data pipeline structure.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
 from typing import Any
@@ -132,7 +131,7 @@ class DuckDuckGoSearcher:
             return []
 
         try:
-            from duckduckgo_search import DDGS  # type: ignore[import-untyped]
+            from duckduckgo_search import DDGS  # optional dep, guarded by try/except
 
             results: list[SearchResult] = []
             with DDGS() as ddgs:
@@ -177,7 +176,7 @@ class DuckDuckGoSearcher:
             # Parse HTML results (simple extraction)
             from html.parser import HTMLParser
 
-            class DDGParser(HTMLParser):  # type: ignore[misc]
+            class DDGParser(HTMLParser):
                 def __init__(self) -> None:
                     super().__init__()
                     self.results: list[SearchResult] = []
@@ -190,7 +189,7 @@ class DuckDuckGoSearcher:
                     attrs_dict = dict(attrs)
                     if tag == "a" and attrs_dict.get("class") == "result__a":
                         self._in_result = True
-                        self._current = {"title": "", "url": attrs_dict.get("href", ""), "snippet": ""}
+                        self._current = {"title": "", "url": str(attrs_dict.get("href", "") or ""), "snippet": ""}
                     elif tag == "a" and "result__snippet" in str(attrs_dict.get("class", "")):
                         self._current["snippet"] = ""
 

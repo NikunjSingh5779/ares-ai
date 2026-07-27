@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 class WebCollectorInput(BaseModel):
     """Input for the Web Data Collector Agent."""
 
-    task: str = Field(..., description="Navigation or data collection task (e.g., 'Extract AAPL PE ratio from Yahoo Finance')")
+    task: str = Field(..., description="Navigation or data collection task")
     url: str | None = Field(default=None, description="Starting URL (optional, agent can navigate from search)")
     max_steps: int = Field(default=30, ge=5, le=100, description="Max browser interaction steps")
     headless: bool = Field(default=True, description="Run browser in headless mode")
@@ -103,7 +103,7 @@ class WebCollectorAgent(BaseAgent[WebCollectorInput, WebCollectorOutput]):
     ) -> dict[str, Any] | None:
         """Attempt data collection using browser-use."""
         try:
-            from browser_use import Agent as BrowserAgent  # type: ignore[import-untyped]
+            from browser_use import Agent as BrowserAgent  # optional dep, guarded by try/except
             from langchain_openai import ChatOpenAI
 
             # Try to use available LLM via OpenRouter-compatible endpoint
@@ -126,7 +126,7 @@ class WebCollectorAgent(BaseAgent[WebCollectorInput, WebCollectorOutput]):
                         temperature=0.1,
                     )
             except Exception:
-                pass
+                logger.debug("Failed to configure LLM for browser-use", exc_info=True)
 
             if llm is None:
                 logger.error(
@@ -156,7 +156,7 @@ class WebCollectorAgent(BaseAgent[WebCollectorInput, WebCollectorOutput]):
 
             # Extract results
             all_text = []
-            all_data = []
+            all_data: list[Any] = []
             steps = 0
 
             if history:

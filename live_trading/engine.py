@@ -32,6 +32,44 @@ from live_trading.safety import (
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Pre-parameterized SQL for paper-record queries — avoids f-string
+# SQL construction that bandit flags as B608 injection vector.
+# Each statement uses :param IS NULL gating instead of dynamic WHERE clauses.
+# ---------------------------------------------------------------------------
+
+_TRADES_COUNT_SQL = text("""
+    SELECT COUNT(*) FROM trade_history th
+    JOIN accounts a ON th.account_id = a.id
+    WHERE a.exchange = 'paper' AND th.is_closed = true
+      AND (:account_id IS NULL OR th.account_id = :account_id)
+      AND (:strategy_name IS NULL OR th.strategy_name = :strategy_name)
+""")
+
+_DAYS_COUNT_SQL = text("""
+    SELECT COUNT(DISTINCT DATE(entry_at)) FROM trade_history th
+    JOIN accounts a ON th.account_id = a.id
+    WHERE a.exchange = 'paper'
+      AND (:account_id IS NULL OR th.account_id = :account_id)
+      AND (:strategy_name IS NULL OR th.strategy_name = :strategy_name)
+""")
+
+_TOTAL_PNL_SQL = text("""
+    SELECT COALESCE(SUM(th.pnl), 0) FROM trade_history th
+    JOIN accounts a ON th.account_id = a.id
+    WHERE a.exchange = 'paper' AND th.is_closed = true
+      AND (:account_id IS NULL OR th.account_id = :account_id)
+      AND (:strategy_name IS NULL OR th.strategy_name = :strategy_name)
+""")
+
+_MAX_DRAWDOWN_SQL = text("""
+    SELECT MAX(p.max_drawdown_pct) FROM portfolio p
+    JOIN accounts a ON p.account_id = a.id
+    WHERE a.exchange = 'paper'
+      AND (:account_id IS NULL OR a.id = :account_id)
+""")
+
+
 class LiveTradingEngine:
     """Live trading engine wrapping an exchange connector with safety gates.
 
@@ -125,71 +163,29 @@ class LiveTradingEngine:
 
         try:
             async with self._session_factory() as session:
-                params: dict[str, Any] = {}
-                filters: list[str] = []
-
-                if account_id:
-                    filters.append("AND th.account_id = :account_id")
-                    params["account_id"] = account_id
-                if strategy_name:
-                    filters.append("AND th.strategy_name = :strategy_name")
-                    params["strategy_name"] = strategy_name
-
-                filter_clause = " ".join(filters)
+                params: dict[str, Any] = {
+                    "account_id": account_id,
+                    "strategy_name": strategy_name,
+                }
 
                 trades_count = (
-                    await session.execute(
-                        text(f"""
-                    SELECT COUNT(*) FROM trade_history th
-                    JOIN accounts a ON th.account_id = a.id
-                    WHERE a.exchange = 'paper' AND th.is_closed = true
-                    {filter_clause}
-                """),
-                        params,
-                    )
+                    await session.execute(_TRADES_COUNT_SQL, params)
                 ).scalar() or 0
 
                 days_count = (
-                    await session.execute(
-                        text(f"""
-                    SELECT COUNT(DISTINCT DATE(entry_at)) FROM trade_history th
-                    JOIN accounts a ON th.account_id = a.id
-                    WHERE a.exchange = 'paper'
-                    {filter_clause}
-                """),
-                        params,
-                    )
+                    await session.execute(_DAYS_COUNT_SQL, params)
                 ).scalar() or 0
 
                 total_pnl_raw = (
-                    await session.execute(
-                        text(f"""
-                    SELECT COALESCE(SUM(th.pnl), 0) FROM trade_history th
-                    JOIN accounts a ON th.account_id = a.id
-                    WHERE a.exchange = 'paper' AND th.is_closed = true
-                    {filter_clause}
-                """),
-                        params,
-                    )
+                    await session.execute(_TOTAL_PNL_SQL, params)
                 ).scalar()
                 total_pnl = float(total_pnl_raw) if total_pnl_raw is not None else 0.0
 
                 # Portfolio-level drawdown — not strategy-scoped (see docstring).
-                account_filter = ""
-                account_params: dict[str, Any] = {}
-                if account_id:
-                    account_filter = "AND a.id = :account_id"
-                    account_params["account_id"] = account_id
-
                 max_dd_raw = (
                     await session.execute(
-                        text(f"""
-                    SELECT MAX(p.max_drawdown_pct) FROM portfolio p
-                    JOIN accounts a ON p.account_id = a.id
-                    WHERE a.exchange = 'paper'
-                    {account_filter}
-                """),
-                        account_params,
+                        _MAX_DRAWDOWN_SQL,
+                        {"account_id": account_id},
                     )
                 ).scalar()
                 max_drawdown_pct = float(max_dd_raw) if max_dd_raw is not None else None

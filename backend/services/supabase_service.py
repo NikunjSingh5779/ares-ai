@@ -49,12 +49,12 @@ class SupabaseService:
         """Check if Supabase is available and configured."""
         if self._available is None:
             self._check_availability()
-        return self._available  # type: ignore[return-value]
+        return self._available  # type: ignore[return-value]  # _available is bool|None, caller expects bool
 
     def _check_availability(self) -> None:
         """Check if supabase-py is installed and env vars are set."""
         try:
-            import supabase  # type: ignore[import-untyped]  # noqa: F401
+            import supabase  # noqa: F401  # optional dep, guarded by try/except
 
             url = os.getenv("SUPABASE_URL", "")
             key = os.getenv("SUPABASE_KEY", "")
@@ -76,7 +76,7 @@ class SupabaseService:
             return None
 
         try:
-            from supabase import create_client  # type: ignore[import-untyped]
+            from supabase import create_client  # optional dep, guarded by try/except
 
             url = os.getenv("SUPABASE_URL", "")
             key = os.getenv("SUPABASE_KEY", "")
@@ -100,7 +100,7 @@ class SupabaseService:
         try:
             # sync call wrapped for async context
             resp = client.auth.sign_up({"email": email, "password": password, "options": {"data": metadata or {}}})
-            return {"user_id": resp.user.id, "email": resp.user.email, "created_at": resp.user.created_at}  # type: ignore[union-attr]
+            return {"user_id": resp.user.id, "email": resp.user.email, "created_at": resp.user.created_at}
         except Exception as e:
             logger.error(f"Supabase sign_up failed: {e}")
             return None
@@ -112,7 +112,7 @@ class SupabaseService:
             return None
         try:
             resp = client.auth.sign_in_with_password({"email": email, "password": password})
-            return {"user_id": resp.user.id, "email": resp.user.email, "access_token": resp.session.access_token}  # type: ignore[union-attr]
+            return {"user_id": resp.user.id, "email": resp.user.email, "access_token": resp.session.access_token}
         except Exception as e:
             logger.error(f"Supabase sign_in failed: {e}")
             return None
@@ -135,7 +135,7 @@ class SupabaseService:
             return None
         try:
             user = client.auth.get_user()
-            return {"id": user.user.id, "email": user.user.email}  # type: ignore[union-attr]
+            return {"id": user.user.id, "email": user.user.email}
         except Exception:
             return None
 
@@ -150,7 +150,7 @@ class SupabaseService:
             return None
         try:
             resp = client.table(table).insert(data).execute()
-            return resp.data  # type: ignore[return-value]
+            return resp.data  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"Supabase insert failed: {e}")
             return None
@@ -175,7 +175,7 @@ class SupabaseService:
             if order:
                 query = query.order(order)
             resp = query.limit(limit).execute()
-            return resp.data  # type: ignore[return-value]
+            return resp.data  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"Supabase select failed: {e}")
             return None
@@ -195,7 +195,7 @@ class SupabaseService:
             for key, value in filters.items():
                 query = query.eq(key, value)
             resp = query.execute()
-            return resp.data  # type: ignore[return-value]
+            return resp.data  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"Supabase update failed: {e}")
             return None
@@ -241,7 +241,11 @@ class SupabaseService:
         if not client or not callback:
             return None
         try:
-            sub = client.channel(channel).on("postgres_changes", {"event": event, "schema": "public", "table": table}, callback).subscribe()
+            sub = (
+                client.channel(channel)
+                .on("postgres_changes", {"event": event, "schema": "public", "table": table}, callback)
+                .subscribe()
+            )
             return sub
         except Exception as e:
             logger.error(f"Supabase subscribe failed: {e}")
@@ -251,7 +255,13 @@ class SupabaseService:
     # Storage
     # ------------------------------------------------------------------
 
-    async def upload_file(self, bucket: str, path: str, file_data: bytes, content_type: str = "application/octet-stream") -> str | None:
+    async def upload_file(
+        self,
+        bucket: str,
+        path: str,
+        file_data: bytes,
+        content_type: str = "application/octet-stream",
+    ) -> str | None:
         """Upload a file to Supabase Storage.
 
         Args:
@@ -267,10 +277,10 @@ class SupabaseService:
         if not client:
             return None
         try:
-            resp = client.storage.from_(bucket).upload(path, file_data, {"content-type": content_type})
+            client.storage.from_(bucket).upload(path, file_data, {"content-type": content_type})
             # Get public URL
             public_url = client.storage.from_(bucket).get_public_url(path)
-            return public_url  # type: ignore[return-value]
+            return public_url  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"Supabase upload failed: {e}")
             return None
