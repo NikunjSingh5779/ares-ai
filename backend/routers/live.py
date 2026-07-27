@@ -183,12 +183,22 @@ async def set_mode(body: SetModeRequest) -> dict[str, Any]:
         pr = await engine.paper_record()
         promo = pr["promotion"]
         if not promo["passed"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot switch to {new_mode.value} mode — paper record insufficient: "
+            detail = (
+                f"Cannot switch to {new_mode.value} mode — paper record insufficient: "
                 f"{promo['trades']['current']}/{promo['trades']['required']} trades, "
-                f"{promo['days']['current']}/{promo['days']['required']} days",
+                f"{promo['days']['current']}/{promo['days']['required']} days"
             )
+            risk = promo.get("risk", {})
+            if risk.get("max_drawdown_pct") is not None and risk["max_drawdown_pct"] > risk.get(
+                "max_drawdown_allowed_pct", float("inf")
+            ):
+                detail += (
+                    f"; max drawdown {risk['max_drawdown_pct']:.1f}% exceeds allowed "
+                    f"{risk['max_drawdown_allowed_pct']:.1f}%"
+                )
+            if risk.get("total_pnl") is not None and risk["total_pnl"] < 0:
+                detail += f"; paper record is net-losing (${risk['total_pnl']:,.2f})"
+            raise HTTPException(status_code=400, detail=detail)
 
     engine.mode_manager.set_mode(new_mode)
     logger.info("Trading mode changed to %s", new_mode.value)

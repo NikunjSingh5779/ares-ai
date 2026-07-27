@@ -279,12 +279,29 @@ def _compute_risk_score(
 def _parse_risk_response(
     response_text: str | None,
     fallback_result: dict[str, Any],
+    consensus_output: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Parse LLM response text into a RiskOutput-compatible dict.
     If parsing fails, returns the fallback result.
+
+    Safety note: the LLM's self-reported ``approved`` flag is NEVER trusted
+    on its own. Free-tier/small models can return an internally
+    inconsistent or hallucinated response (e.g. ``risk_score: 95`` with
+    ``approved: true``), and a model must never be able to override an
+    *explicit* upstream Consensus rejection. Both are enforced below
+    regardless of what the model claims.
     """
     if not response_text:
         return fallback_result
+
+    # An explicit upstream consensus rejection is a hard floor no LLM
+    # output can lift. Only fires when consensus_output was actually
+    # supplied and says not-approved — the *absence* of consensus context
+    # (e.g. a standalone call) is a different, ambiguous case and must not
+    # be treated as a rejection.
+    if consensus_output is not None and not consensus_output.get("approved", False):
+        return fallback_result
+
     text = response_text.strip()
     if text.startswith("```"):
         lines = text.split("\n")
@@ -318,6 +335,19 @@ def _parse_risk_response(
     if not isinstance(reasons, list):
         reasons = fallback_result.get("reasons", [])
     rationale = str(data.get("rationale", "")) or fallback_result.get("rationale", "")
+
+    # --- Internal-consistency backstop ---------------------------------
+    # An "approved" trade must be consistent with its own stated risk_score.
+    # Never let a model's bare claim of approval override the same
+    # deterministic threshold the rule-based fallback enforces.
+    if approved and risk_score > MAX_RISK_SCORE:
+        approved = False
+        reasons = [*reasons, f"Overridden: risk_score {risk_score:.1f} exceeds maximum {MAX_RISK_SCORE:.0f}"]
+        rationale = (
+            f"{rationale} [Overridden by Risk Agent: model reported approved=true but "
+            f"risk_score {risk_score:.1f} exceeds the {MAX_RISK_SCORE:.0f} threshold — rejecting.]"
+        ).strip()
+
     return {
         "approved": approved,
         "max_position_size": max_position_size,
@@ -456,4 +486,4 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
             consensus_output=inputs.consensus_output,
             portfolio_value=inputs.portfolio_value,
         )
-        return _parse_risk_response(response_text, fallback)
+        return _parse_risk_response(response_text, fallback, consensus_output=inputs.consensus_output)

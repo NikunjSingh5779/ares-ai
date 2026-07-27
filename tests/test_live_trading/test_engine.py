@@ -18,7 +18,8 @@ from live_trading import (
     PromotionGate,
     TradingMode,
 )
-from live_trading.exceptions import ExchangeConnectionError, PromotionGateError
+from live_trading.exceptions import ExchangeConnectionError, ModeError, PromotionGateError
+from live_trading.safety import SafetyCheckResult
 
 
 @pytest.fixture
@@ -183,3 +184,54 @@ class TestExecuteSignal:
         assert engine.auditor.count() == 1
         entry = engine.auditor.recent(1)[0]
         assert entry.order_result["status"] == "pending_approval"
+
+
+class TestRaiseIfBlockedTypedRouting:
+    """`_raise_if_blocked` must branch on SafetyCheckResult.code, not on
+    substrings of `reason`. These tests lock in that contract so a future
+    rewording of a reason message can never silently disable a gate.
+    """
+
+    def test_kill_switch_code_raises_kill_switch_error(self, engine) -> None:
+        with pytest.raises(KillSwitchTrippedError):
+            engine._raise_if_blocked([SafetyCheckResult(passed=False, reason="anything", code="kill_switch")])
+
+    def test_promotion_gate_code_raises_promotion_gate_error(self, engine) -> None:
+        with pytest.raises(PromotionGateError):
+            engine._raise_if_blocked([SafetyCheckResult(passed=False, reason="anything", code="promotion_gate")])
+
+    def test_exchange_code_raises_exchange_connection_error(self, engine) -> None:
+        with pytest.raises(ExchangeConnectionError):
+            engine._raise_if_blocked([SafetyCheckResult(passed=False, reason="anything", code="exchange")])
+
+    def test_mode_code_raises_mode_error(self, engine) -> None:
+        with pytest.raises(ModeError):
+            engine._raise_if_blocked([SafetyCheckResult(passed=False, reason="anything", code="mode")])
+
+    def test_reworded_reason_text_still_raises(self, engine) -> None:
+        """The core regression case: even if `reason` text is completely
+        reworded (no longer containing 'Kill switch' etc.), the gate must
+        still raise because it is keyed off `code`, not text.
+        """
+        with pytest.raises(KillSwitchTrippedError):
+            engine._raise_if_blocked(
+                [SafetyCheckResult(passed=False, reason="Trading halted (see incident #4471)", code="kill_switch")]
+            )
+
+    def test_unrecognized_code_fails_closed_not_silently_approved(self, engine) -> None:
+        """If a failing check ever carries a code with no mapped exception,
+        the engine must still raise (fail closed) rather than silently
+        falling through to order placement.
+        """
+        with pytest.raises(RuntimeError):
+            engine._raise_if_blocked([SafetyCheckResult(passed=False, reason="unmapped failure", code="ok")])
+
+    def test_passing_results_do_not_raise(self, engine) -> None:
+        engine._raise_if_blocked(
+            [
+                SafetyCheckResult(passed=True, code="kill_switch"),
+                SafetyCheckResult(passed=True, code="mode"),
+                SafetyCheckResult(passed=True, code="promotion_gate"),
+                SafetyCheckResult(passed=True, code="exchange"),
+            ]
+        )  # should not raise

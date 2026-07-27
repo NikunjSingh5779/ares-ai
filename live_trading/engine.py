@@ -99,14 +99,29 @@ class LiveTradingEngine:
         self,
         account_id: str | None = None,
         strategy_name: str | None = None,
-    ) -> tuple[int, int]:
-        """Query paper trading stats from the database.
+    ) -> dict[str, Any]:
+        """Query paper trading stats — including risk quality — from the database.
 
         Accepts optional ``account_id`` and ``strategy_name`` filters.
-        Returns (trades_count, days_count). Falls back to in-memory if no DB.
+        Returns a dict with keys ``trades``, ``days``, ``total_pnl``, and
+        ``max_drawdown_pct``. ``total_pnl``/``max_drawdown_pct`` are ``None``
+        when unavailable (no DB configured, or a DB error) — this is a
+        *degraded*, not a safer, mode: the ``PromotionGate`` skips risk-quality
+        checks it cannot evaluate, so callers should prefer the DB-backed path
+        whenever real promotion decisions are made.
+
+        Note: ``max_drawdown_pct`` reflects the paper account's overall
+        portfolio drawdown (from the ``portfolio`` table), not a strategy-only
+        drawdown — the schema does not track per-strategy equity curves. If
+        multiple strategies share one paper account, this is an approximation.
         """
         if not self._session_factory:
-            return self._paper_trades_count, self._paper_days_count
+            return {
+                "trades": self._paper_trades_count,
+                "days": self._paper_days_count,
+                "total_pnl": None,
+                "max_drawdown_pct": None,
+            }
 
         try:
             async with self._session_factory() as session:
@@ -146,10 +161,53 @@ class LiveTradingEngine:
                     )
                 ).scalar() or 0
 
-                return int(trades_count), int(days_count)
+                total_pnl_raw = (
+                    await session.execute(
+                        text(f"""
+                    SELECT COALESCE(SUM(th.pnl), 0) FROM trade_history th
+                    JOIN accounts a ON th.account_id = a.id
+                    WHERE a.exchange = 'paper' AND th.is_closed = true
+                    {filter_clause}
+                """),
+                        params,
+                    )
+                ).scalar()
+                total_pnl = float(total_pnl_raw) if total_pnl_raw is not None else 0.0
+
+                # Portfolio-level drawdown — not strategy-scoped (see docstring).
+                account_filter = ""
+                account_params: dict[str, Any] = {}
+                if account_id:
+                    account_filter = "AND a.id = :account_id"
+                    account_params["account_id"] = account_id
+
+                max_dd_raw = (
+                    await session.execute(
+                        text(f"""
+                    SELECT MAX(p.max_drawdown_pct) FROM portfolio p
+                    JOIN accounts a ON p.account_id = a.id
+                    WHERE a.exchange = 'paper'
+                    {account_filter}
+                """),
+                        account_params,
+                    )
+                ).scalar()
+                max_drawdown_pct = float(max_dd_raw) if max_dd_raw is not None else None
+
+                return {
+                    "trades": int(trades_count),
+                    "days": int(days_count),
+                    "total_pnl": total_pnl,
+                    "max_drawdown_pct": max_drawdown_pct,
+                }
         except Exception:
             logger.exception("Failed to query paper record from DB, falling back to in-memory")
-            return self._paper_trades_count, self._paper_days_count
+            return {
+                "trades": self._paper_trades_count,
+                "days": self._paper_days_count,
+                "total_pnl": None,
+                "max_drawdown_pct": None,
+            }
 
     async def paper_record(
         self,
@@ -162,11 +220,19 @@ class LiveTradingEngine:
         Falls back to in-memory values otherwise.
         Supports optional per-account and per-strategy isolation.
         """
-        trades, days = await self._query_paper_record_from_db(account_id, strategy_name)
+        record = await self._query_paper_record_from_db(account_id, strategy_name)
+        trades, days = record["trades"], record["days"]
         return {
             "trades": trades,
             "days": days,
-            "promotion": self.promotion_gate.progress(trades, days),
+            "total_pnl": record["total_pnl"],
+            "max_drawdown_pct": record["max_drawdown_pct"],
+            "promotion": self.promotion_gate.progress(
+                trades,
+                days,
+                total_pnl=record["total_pnl"],
+                max_drawdown_pct=record["max_drawdown_pct"],
+            ),
         }
 
     # ── Lifecycle ───────────────────────────────────────────────────
@@ -204,9 +270,16 @@ class LiveTradingEngine:
         # 2. Mode — check if approval is needed (doesn't block)
         results.append(self.mode_manager.check())
 
-        # 3. PromotionGate — DB-backed with per-account isolation
-        trades, days = await self._query_paper_record_from_db(account_id)
-        results.append(self.promotion_gate.check(trades, days))
+        # 3. PromotionGate — DB-backed with per-account isolation, including risk quality
+        record = await self._query_paper_record_from_db(account_id)
+        results.append(
+            self.promotion_gate.check(
+                record["trades"],
+                record["days"],
+                total_pnl=record["total_pnl"],
+                max_drawdown_pct=record["max_drawdown_pct"],
+            )
+        )
 
         # 4. Exchange connection
         if not self.exchange.is_connected:
@@ -214,26 +287,41 @@ class LiveTradingEngine:
                 SafetyCheckResult(
                     passed=False,
                     reason=f"Exchange {self.exchange.exchange_name} is not connected",
+                    code="exchange",
                 )
             )
         else:
-            results.append(SafetyCheckResult(passed=True))
+            results.append(SafetyCheckResult(passed=True, code="exchange"))
 
         return results
 
+    _CODE_TO_EXCEPTION: dict[str, type[Exception]] = {
+        "kill_switch": KillSwitchTrippedError,
+        "promotion_gate": PromotionGateError,
+        "exchange": ExchangeConnectionError,
+        "mode": ModeError,
+    }
+
     def _raise_if_blocked(self, results: list[SafetyCheckResult]) -> None:
-        """Raise the appropriate exception if any safety check fails."""
+        """Raise the appropriate exception if any safety check fails.
+
+        Branches on ``SafetyCheckResult.code`` — a stable, typed identifier —
+        rather than parsing ``reason`` text. This guarantees that a future
+        rewording of a reason message can never silently disable a gate and
+        let a blocked trade fall through to order placement (see AGENTS.md:
+        "No silent trade approval on agent failure"). Any failing result
+        with an unrecognized code still raises, fail-closed, rather than
+        being ignored.
+        """
         for r in results:
             if r.passed:
                 continue
-            if "Kill switch" in r.reason or "triggered by" in r.reason:
-                raise KillSwitchTrippedError(r.reason)
-            if "Paper record" in r.reason:
-                raise PromotionGateError(r.reason)
-            if "not connected" in r.reason:
-                raise ExchangeConnectionError(r.reason)
-            if "human_approval" in r.reason and "confirmation required" in r.reason:
-                raise ModeError(r.reason)
+            exc_type = self._CODE_TO_EXCEPTION.get(r.code)
+            if exc_type is not None:
+                raise exc_type(r.reason)
+            # Unknown/unmapped failure code — fail closed rather than
+            # silently allowing the order to proceed.
+            raise RuntimeError(f"Unrecognized safety check failure (code={r.code!r}): {r.reason}")
 
     # ── Order execution ─────────────────────────────────────────────
 
@@ -293,9 +381,7 @@ class LiveTradingEngine:
         # If approval_id is provided, filter out the mode check from safety results
         # since approval has been granted
         if approval_id:
-            safety_results = [
-                r for r in safety_results if not ("human_approval" in r.reason and "confirmation required" in r.reason)
-            ]
+            safety_results = [r for r in safety_results if not (r.code == "mode" and not r.passed)]
 
         self._raise_if_blocked(safety_results)
 

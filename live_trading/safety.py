@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 import redis
 
@@ -30,18 +30,34 @@ class TradingMode(StrEnum):
     AUTO = "auto"
 
 
-class SafetyCheckResult:
-    """Result of a single safety gate check."""
+SafetyCode = Literal["kill_switch", "mode", "promotion_gate", "exchange", "ok"]
+"""Machine-checkable identifier for which gate produced a result.
 
-    def __init__(self, passed: bool, reason: str = "") -> None:
+Callers (e.g. ``LiveTradingEngine._raise_if_blocked``) MUST branch on
+``SafetyCheckResult.code`` rather than parsing ``reason`` text. ``reason``
+is a human-readable audit string and may be reworded at any time without
+changing gate behavior; ``code`` is the stable contract.
+"""
+
+
+class SafetyCheckResult:
+    """Result of a single safety gate check.
+
+    ``code`` identifies which gate produced this result and is stable
+    across wording changes to ``reason`` — always branch on ``code``,
+    never on substrings of ``reason``.
+    """
+
+    def __init__(self, passed: bool, reason: str = "", code: SafetyCode = "ok") -> None:
         self.passed = passed
         self.reason = reason
+        self.code = code
 
     def __bool__(self) -> bool:
         return self.passed
 
     def __repr__(self) -> str:
-        return f"SafetyCheckResult(passed={self.passed}, reason={self.reason!r})"
+        return f"SafetyCheckResult(passed={self.passed}, code={self.code!r}, reason={self.reason!r})"
 
 
 class KillSwitch:
@@ -162,6 +178,7 @@ class KillSwitch:
             return SafetyCheckResult(
                 passed=False,
                 reason=f"Kill switch active — triggered by: {reason}",
+                code="kill_switch",
             )
         return SafetyCheckResult(passed=True)
 
@@ -205,50 +222,114 @@ class ModeManager:
             return SafetyCheckResult(
                 passed=False,
                 reason="Mode is human_approval — human confirmation required before order",
+                code="mode",
             )
-        return SafetyCheckResult(passed=True, reason=f"Mode is {self._mode.value}")
+        return SafetyCheckResult(passed=True, reason=f"Mode is {self._mode.value}", code="mode")
 
 
 class PromotionGate:
-    """Prevents a strategy from going live without a sufficient paper record.
+    """Prevents a strategy from going live without a sufficient *and healthy* paper record.
 
     Minimum requirements (configurable)::
 
-        min_paper_trades = 50   (default)
-        min_paper_days   = 30   (default)
+        min_paper_trades      = 50     (default)
+        min_paper_days        = 30     (default)
+        max_paper_drawdown_pct = 20.0  (default) — paper max drawdown must not exceed this
+        require_non_negative_pnl = True (default) — paper record must not be net-losing
 
-    The gate passes only when **both** thresholds are met or exceeded.
+    The gate passes only when **all** thresholds are met. Track record (trade
+    count / days) alone is not sufficient — a strategy that racked up enough
+    trades and days while bleeding money or blowing through drawdown limits
+    must still be blocked. This matches the "minimum paper-trading track
+    record ... meeting the Risk Agent's thresholds" requirement in AGENTS.md;
+    trade-count/day thresholds alone do not evaluate whether that record was
+    any good.
+
+    ``total_pnl`` and ``max_drawdown_pct`` are optional so existing callers
+    that only track counts keep working — but when they are omitted, the
+    risk-quality checks are skipped, which is a degraded (not a safer) mode.
+    Callers wired to the database (see ``LiveTradingEngine``) should always
+    supply them.
     """
 
     def __init__(
         self,
         min_paper_trades: int = 50,
         min_paper_days: int = 30,
+        max_paper_drawdown_pct: float = 20.0,
+        require_non_negative_pnl: bool = True,
     ) -> None:
         self.min_paper_trades = min_paper_trades
         self.min_paper_days = min_paper_days
+        self.max_paper_drawdown_pct = max_paper_drawdown_pct
+        self.require_non_negative_pnl = require_non_negative_pnl
 
-    def passed(self, paper_trades_count: int, paper_days_count: int) -> bool:
-        """Check if the paper record satisfies the promotion requirements."""
-        return paper_trades_count >= self.min_paper_trades and paper_days_count >= self.min_paper_days
+    def passed(
+        self,
+        paper_trades_count: int,
+        paper_days_count: int,
+        *,
+        total_pnl: float | None = None,
+        max_drawdown_pct: float | None = None,
+    ) -> bool:
+        """Check if the paper record satisfies all promotion requirements."""
+        return self._failure_reason(paper_trades_count, paper_days_count, total_pnl, max_drawdown_pct) is None
 
-    def check(self, paper_trades_count: int, paper_days_count: int) -> SafetyCheckResult:
-        """Safe-guard check: does the paper record meet promotion criteria?"""
-        if not self.passed(paper_trades_count, paper_days_count):
-            return SafetyCheckResult(
-                passed=False,
-                reason=(
-                    f"Paper record insufficient: "
-                    f"{paper_trades_count}/{self.min_paper_trades} trades, "
-                    f"{paper_days_count}/{self.min_paper_days} days"
-                ),
+    def _failure_reason(
+        self,
+        paper_trades_count: int,
+        paper_days_count: int,
+        total_pnl: float | None,
+        max_drawdown_pct: float | None,
+    ) -> str | None:
+        """Return the first failing reason, or ``None`` if all criteria pass."""
+        if paper_trades_count < self.min_paper_trades or paper_days_count < self.min_paper_days:
+            return (
+                f"Paper record insufficient: "
+                f"{paper_trades_count}/{self.min_paper_trades} trades, "
+                f"{paper_days_count}/{self.min_paper_days} days"
             )
-        return SafetyCheckResult(passed=True)
+        if max_drawdown_pct is not None and max_drawdown_pct > self.max_paper_drawdown_pct:
+            return (
+                f"Paper record fails risk threshold: max drawdown "
+                f"{max_drawdown_pct:.1f}% exceeds allowed {self.max_paper_drawdown_pct:.1f}%"
+            )
+        if self.require_non_negative_pnl and total_pnl is not None and total_pnl < 0:
+            return f"Paper record fails risk threshold: net paper PnL is negative (${total_pnl:,.2f})"
+        return None
 
-    def progress(self, paper_trades_count: int, paper_days_count: int) -> dict[str, Any]:
+    def check(
+        self,
+        paper_trades_count: int,
+        paper_days_count: int,
+        *,
+        total_pnl: float | None = None,
+        max_drawdown_pct: float | None = None,
+    ) -> SafetyCheckResult:
+        """Safe-guard check: does the paper record meet all promotion criteria?"""
+        failure = self._failure_reason(paper_trades_count, paper_days_count, total_pnl, max_drawdown_pct)
+        if failure is not None:
+            return SafetyCheckResult(passed=False, reason=failure, code="promotion_gate")
+        return SafetyCheckResult(passed=True, code="promotion_gate")
+
+    def progress(
+        self,
+        paper_trades_count: int,
+        paper_days_count: int,
+        *,
+        total_pnl: float | None = None,
+        max_drawdown_pct: float | None = None,
+    ) -> dict[str, Any]:
         """Return progress as a dict for the frontend."""
         return {
             "trades": {"current": paper_trades_count, "required": self.min_paper_trades},
             "days": {"current": paper_days_count, "required": self.min_paper_days},
-            "passed": self.passed(paper_trades_count, paper_days_count),
+            "risk": {
+                "total_pnl": total_pnl,
+                "max_drawdown_pct": max_drawdown_pct,
+                "max_drawdown_allowed_pct": self.max_paper_drawdown_pct,
+            },
+            "passed": self.passed(
+                paper_trades_count, paper_days_count, total_pnl=total_pnl, max_drawdown_pct=max_drawdown_pct
+            ),
         }

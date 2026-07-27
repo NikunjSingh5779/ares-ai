@@ -68,6 +68,7 @@ class TestKillSwitch:
         result = ks.check()
         assert not result.passed
         assert "Kill switch active" in result.reason
+        assert result.code == "kill_switch"
 
     def test_auto_trigger_already_active(self) -> None:
         ks = KillSwitch()
@@ -108,6 +109,7 @@ class TestModeManager:
         assert not result.passed
         assert "human_approval" in result.reason
         assert "confirmation required" in result.reason
+        assert result.code == "mode"
 
     def test_check_passes_in_auto_mode(self) -> None:
         mm = ModeManager(TradingMode.AUTO)
@@ -173,4 +175,54 @@ class TestPromotionGate:
         assert progress["trades"]["required"] == 50
         assert progress["days"]["current"] == 10
         assert progress["days"]["required"] == 30
+        assert not progress["passed"]
+
+    # --- Risk-quality thresholds -------------------------------------
+    # A strategy must not be promotable purely by racking up enough trades
+    # and days while carrying unacceptable risk (excessive drawdown) or a
+    # net-losing paper record. Track record alone is not sufficient.
+
+    def test_passed_ignores_risk_when_not_supplied(self) -> None:
+        """Backward compatible: omitting risk metrics skips those checks."""
+        pg = PromotionGate(min_paper_trades=10, min_paper_days=5)
+        assert pg.passed(10, 5)
+
+    def test_fails_when_drawdown_exceeds_allowed(self) -> None:
+        pg = PromotionGate(min_paper_trades=10, min_paper_days=5, max_paper_drawdown_pct=20.0)
+        assert not pg.passed(10, 5, max_drawdown_pct=25.0)
+
+    def test_passes_when_drawdown_within_allowed(self) -> None:
+        pg = PromotionGate(min_paper_trades=10, min_paper_days=5, max_paper_drawdown_pct=20.0)
+        assert pg.passed(10, 5, max_drawdown_pct=15.0)
+
+    def test_fails_when_paper_record_is_net_losing(self) -> None:
+        pg = PromotionGate(min_paper_trades=10, min_paper_days=5, require_non_negative_pnl=True)
+        assert not pg.passed(10, 5, total_pnl=-500.0)
+
+    def test_passes_when_paper_record_is_profitable(self) -> None:
+        pg = PromotionGate(min_paper_trades=10, min_paper_days=5, require_non_negative_pnl=True)
+        assert pg.passed(10, 5, total_pnl=500.0)
+
+    def test_count_and_days_still_gate_even_with_good_risk_metrics(self) -> None:
+        """Enough trades/days is necessary but no longer sufficient on its own,
+        and good risk metrics don't let a short/thin record skip the count/days
+        requirement either — both dimensions must hold."""
+        pg = PromotionGate(min_paper_trades=50, min_paper_days=30, max_paper_drawdown_pct=20.0)
+        assert not pg.passed(10, 5, total_pnl=1000.0, max_drawdown_pct=2.0)
+
+    def test_check_reason_reflects_risk_failure_not_count(self) -> None:
+        """Regression guard: when trades/days are satisfied but risk quality
+        isn't, the failure reason must describe the actual risk failure, not
+        misleadingly describe the count/days as insufficient."""
+        pg = PromotionGate(min_paper_trades=10, min_paper_days=5, max_paper_drawdown_pct=20.0)
+        result = pg.check(10, 5, max_drawdown_pct=30.0)
+        assert not result.passed
+        assert "drawdown" in result.reason.lower()
+        assert result.code == "promotion_gate"
+
+    def test_progress_includes_risk_section(self) -> None:
+        pg = PromotionGate(min_paper_trades=10, min_paper_days=5, max_paper_drawdown_pct=20.0)
+        progress = pg.progress(10, 5, total_pnl=-100.0, max_drawdown_pct=25.0)
+        assert progress["risk"]["total_pnl"] == -100.0
+        assert progress["risk"]["max_drawdown_pct"] == 25.0
         assert not progress["passed"]
