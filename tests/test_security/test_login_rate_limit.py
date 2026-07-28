@@ -248,6 +248,70 @@ class TestGetClientIP:
         ip = LoginRateLimiter.get_client_ip(req, trusted_proxies="10.0.0.1")
         assert ip == "10.0.0.1"
 
+    # --- Spoofing regression tests (Issue #1) -------------------------
+
+    def test_right_to_left_rejects_spoofed_leftmost_ip(self) -> None:
+        """Regression: attacker-supplied fake IP in leftmost position must
+        NOT be returned as the client IP.
+
+        With trusted_proxies="10.0.0.1" and a request whose
+        X-Forwarded-For header was forged by the attacker as
+        "203.0.113.99, 1.2.3.4" (where 1.2.3.4 is the real attacker IP
+        appended by the first proxy) and whose direct peer is the trusted
+        proxy at 10.0.0.1, the returned IP MUST be "1.2.3.4" — NOT the
+        attacker-supplied "203.0.113.99".
+        """
+        req = _make_request(
+            client_host="10.0.0.1",
+            x_forwarded_for="203.0.113.99, 1.2.3.4",
+        )
+        ip = LoginRateLimiter.get_client_ip(req, trusted_proxies="10.0.0.1")
+        assert ip == "1.2.3.4", (
+            f"Expected '1.2.3.4' (real IP behind the proxy), got {ip!r} — "
+            "attacker-supplied leftmost IP would have been returned"
+        )
+
+    def test_spoofing_ip_rotation_does_not_change_rate_limit_key(self) -> None:
+        """An attacker who rotates a fake leftmost IP on every request
+        must still be rate-limited to the real IP behind the trusted proxy.
+
+        The attacker cycles through fake X-Forwarded-For values while using
+        different email addresses, but the real IP (1.2.3.4) stays constant
+        behind the proxy.  The IP-only tier should block after the 3rd
+        attempt regardless of which email is tried.
+        """
+        # High email limit so the IP-only tier is what eventually blocks
+        limiter = _rate_limiter_for_test(email_limit=100, ip_limit=3)
+        limiter._trusted_proxies = "10.0.0.1"
+
+        # Each fake IP is a different spoofed value the attacker cycles through
+        fake_ips = ["203.0.113.1", "203.0.113.2", "203.0.113.3", "203.0.113.4", "203.0.113.5"]
+
+        for i, fake_ip in enumerate(fake_ips):
+            # Use a different email each time so we're testing IP-only blocking
+            email = f"victim{i}@example.com"
+
+            # Build a mock request simulating the proxy forwarding
+            req = _make_request(
+                client_host="10.0.0.1",
+                x_forwarded_for=f"{fake_ip}, 1.2.3.4",
+            )
+            client_ip = LoginRateLimiter.get_client_ip(req, trusted_proxies="10.0.0.1")
+            assert client_ip == "1.2.3.4", (
+                f"Iteration {i}: expected client_ip '1.2.3.4', got {client_ip!r} "
+                f"(fake IP {fake_ip} would have bypassed rate limiting)"
+            )
+
+            # All emails map to the same real IP bucket.
+            # After the 3rd attempt the IP-tier should block.
+            blocked = limiter.check_and_record(email, client_ip, now=100.0 + i * 10.0)
+            if i < 3:
+                assert blocked is None, f"Iteration {i}: should be allowed, got {blocked}"
+            else:
+                assert blocked == "ip_only", (
+                    f"Iteration {i}: attacker should be blocked by IP limit, got {blocked!r}"
+                )
+
 
 # ======================================================================
 # Integration: auth endpoint behaves correctly
@@ -538,6 +602,111 @@ class TestConstructorValidation:
         this (the runtime does), but the sliding window handles it."""
         limiter = _rate_limiter_for_test(email_limit=0)
         assert limiter.check_and_record("a@b.com", "1.2.3.4", now=100.0) is not None
+
+
+# ======================================================================
+# Bucket eviction tests (Issue #2)
+# ======================================================================
+
+
+class TestBucketEviction:
+    """Bounded eviction for rate-limiter bucket dicts."""
+
+    def make_limiter(self, max_email: int = 50_000, max_ip: int = 50_000) -> LoginRateLimiter:
+        settings = _FakeSettings()
+        settings.login_rate_limit_attempts = 3
+        settings.login_rate_limit_window_seconds = 60
+        settings.login_rate_limit_ip_attempts = 3
+        settings.login_rate_limit_ip_window_seconds = 60
+        return LoginRateLimiter(settings, max_email_buckets=max_email, max_ip_buckets=max_ip)
+
+    def test_empty_bucket_removed_after_window_expires(self) -> None:
+        """A bucket should be removed from the dict once its window fully expires.
+
+        Uses ``retry_after`` (which prunes without recording a new attempt)
+        for email buckets, and ``_sweep_empty_buckets`` for IP buckets.
+        """
+        limiter = self.make_limiter()
+        email = "test@example.com"
+        ip = "10.0.0.1"
+        hashed = LoginRateLimiter._hash_key(LoginRateLimiter._normalize_email(email), ip)
+
+        # Fill the bucket then let it expire
+        assert limiter.check_and_record(email, ip, now=100.0) is None
+        assert limiter.check_and_record(email, ip, now=101.0) is None
+        assert limiter.check_and_record(email, ip, now=102.0) is None
+
+        # Bucket still in dict (has active entries)
+        assert hashed in limiter._email_buckets
+        assert ip in limiter._ip_buckets
+
+        # retry_after prunes the expired window and removes the empty email bucket
+        assert limiter.retry_after(email, ip, now=200.0) == 0.0
+        assert hashed not in limiter._email_buckets, (
+            "Email bucket should be removed by retry_after after full expiry"
+        )
+
+        # _prune_and_sweep prunes expired entries then removes empty IP buckets
+        limiter._prune_and_sweep(200.0)
+        assert ip not in limiter._ip_buckets, (
+            "IP bucket should be removed by sweep after full expiry"
+        )
+
+    def test_cap_limits_email_bucket_growth(self) -> None:
+        """A burst of many unique keys should not grow past the cap."""
+        max_buckets = 10
+        limiter = self.make_limiter(max_email=max_buckets)
+
+        # Create many unique email+ip combinations
+        for i in range(100):
+            email = f"user{i}@example.com"
+            ip = f"10.0.0.{i % 255}"
+            limiter.check_and_record(email, ip, now=100.0)
+
+        # Should be bounded by the cap
+        assert len(limiter._email_buckets) <= max_buckets, (
+            f"Email buckets grew to {len(limiter._email_buckets)} (cap={max_buckets})"
+        )
+
+    def test_cap_limits_ip_bucket_growth(self) -> None:
+        """A burst of many unique IPs should not grow past the cap."""
+        max_buckets = 10
+        limiter = self.make_limiter(max_ip=max_buckets)
+
+        # Use the same email so we hit IP tier with many different IPs
+        email = "victim@example.com"
+        for i in range(100):
+            ip = f"10.0.0.{i}"
+            limiter.check_and_record(email, ip, now=100.0)
+
+        # Should be bounded by the cap
+        assert len(limiter._ip_buckets) <= max_buckets, (
+            f"IP buckets grew to {len(limiter._ip_buckets)} (cap={max_buckets})"
+        )
+
+    def test_lru_evicts_least_recently_used_first(self) -> None:
+        """The least recently used bucket should be evicted first when over cap."""
+        max_buckets = 3
+        limiter = self.make_limiter(max_email=max_buckets)
+
+        # Create 3 buckets (fill the cap)
+        limiter.check_and_record("a@example.com", "10.0.0.1", now=100.0)
+        limiter.check_and_record("b@example.com", "10.0.0.2", now=100.0)
+        limiter.check_and_record("c@example.com", "10.0.0.3", now=100.0)
+        assert len(limiter._email_buckets) == 3
+
+        # Re-access bucket 'a' to keep it warm, then add a new one
+        limiter.check_and_record("a@example.com", "10.0.0.1", now=101.0)
+        limiter.check_and_record("d@example.com", "10.0.0.4", now=102.0)
+
+        # Should still be at cap (3). The evicted entry should be one of
+        # the non-recently-used ones (b or c, not a or d).
+        assert len(limiter._email_buckets) <= max_buckets
+        # 'a' was recently accessed so should still be present
+        hashed_a = LoginRateLimiter._hash_key(LoginRateLimiter._normalize_email("a@example.com"), "10.0.0.1")
+        hashed_d = LoginRateLimiter._hash_key(LoginRateLimiter._normalize_email("d@example.com"), "10.0.0.4")
+        assert hashed_a in limiter._email_buckets, "Recently-used bucket 'a' should survive eviction"
+        assert hashed_d in limiter._email_buckets, "Newly-added bucket 'd' should be present"
 
 
 # ======================================================================

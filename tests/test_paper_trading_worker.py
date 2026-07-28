@@ -1,5 +1,7 @@
 """Tests for the PaperTradingWorker."""
 
+from __future__ import annotations
+
 import asyncio
 from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock
@@ -102,7 +104,7 @@ class _MockDBSession:
         self.commit = AsyncMock()
         self.rollback = AsyncMock()
 
-    async def __aenter__(self) -> _MockDBSession:
+    async def __aenter__(self):
         return self
 
     async def __aexit__(self, *args: object) -> None:
@@ -112,7 +114,7 @@ class _MockDBSession:
 class _FailingDBSession:
     """Simulates a DB session that raises on __aenter__."""
 
-    async def __aenter__(self) -> _FailingDBSession:
+    async def __aenter__(self):
         raise RuntimeError("DB is down")
 
     async def __aexit__(self, *args: object) -> None:
@@ -174,7 +176,7 @@ class TestWorkerEdgeCases:
     @pytest.mark.asyncio
     async def test_persist_no_account_found(self, engine, ingestor):
         """_persist_closed_trades warns and returns when no paper account (lines 129-130)."""
-        from datetime import datetime, timezone
+        from datetime import datetime
         from unittest.mock import patch
 
         session = _MockDBSession()
@@ -188,7 +190,7 @@ class TestWorkerEdgeCases:
         trade = ClosedTrade(
             symbol="BTC-USD", side="long", quantity=1.0,
             entry_price=50000.0, exit_price=55000.0,
-            entry_at=datetime.now(timezone.utc), exit_at=datetime.now(timezone.utc),
+            entry_at=datetime.now(UTC), exit_at=datetime.now(UTC),
             pnl=5000.0, pnl_pct=10.0, exit_reason="take_profit",
         )
         with patch("paper_trading.worker.logger") as mock_logger:
@@ -196,50 +198,9 @@ class TestWorkerEdgeCases:
             mock_logger.warning.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_persist_no_portfolio_found(self, engine, ingestor):
-        """_persist_closed_trades returns early when no portfolio (line 140)."""
-        from datetime import datetime, timezone
-
-        mock_account_result = MagicMock()
-        mock_account_result.scalar.return_value = 1
-
-        mock_portfolio_result = MagicMock()
-        mock_portfolio_result.scalar.return_value = None
-
-        session = _MockDBSession()
-        session.execute.side_effect = [mock_account_result, mock_portfolio_result]
-
-        worker = PaperTradingWorker(engine, ingestor, lambda: session)  # type: ignore[arg-type]
-        trade = ClosedTrade(
-            symbol="BTC-USD", side="long", quantity=1.0,
-            entry_price=50000.0, exit_price=55000.0,
-            entry_at=datetime.now(timezone.utc), exit_at=datetime.now(timezone.utc),
-            pnl=5000.0, pnl_pct=10.0, exit_reason="take_profit",
-        )
-        await worker._persist_closed_trades([trade])
-        assert session.execute.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_persist_exception_logged(self, engine, ingestor):
-        """_persist_closed_trades catches and logs DB exceptions (lines 210-211)."""
-        from datetime import datetime, timezone
-        from unittest.mock import patch
-
-        worker = PaperTradingWorker(engine, ingestor, _FailingDBSession)  # type: ignore[arg-type]
-        trade = ClosedTrade(
-            symbol="BTC-USD", side="long", quantity=1.0,
-            entry_price=50000.0, exit_price=55000.0,
-            entry_at=datetime.now(timezone.utc), exit_at=datetime.now(timezone.utc),
-            pnl=5000.0, pnl_pct=10.0, exit_reason="take_profit",
-        )
-        with patch("paper_trading.worker.logger") as mock_logger:
-            await worker._persist_closed_trades([trade])
-            mock_logger.error.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_persist_no_portfolio_found(self, engine, ingestor, session_factory):
         """_persist_closed_trades returns early when no portfolio (line 140)."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         mock_result_account = MagicMock()
         mock_result_account.scalar.return_value = 1
@@ -254,7 +215,7 @@ class TestWorkerEdgeCases:
         trade = ClosedTrade(
             symbol="BTC-USD", side="long", quantity=1.0,
             entry_price=50000.0, exit_price=55000.0,
-            entry_at=datetime.now(timezone.utc), exit_at=datetime.now(timezone.utc),
+            entry_at=datetime.now(UTC), exit_at=datetime.now(UTC),
             pnl=5000.0, pnl_pct=10.0, exit_reason="take_profit",
         )
         await worker._persist_closed_trades([trade])
@@ -262,7 +223,7 @@ class TestWorkerEdgeCases:
     @pytest.mark.asyncio
     async def test_persist_exception_logged(self, engine, ingestor, session_factory):
         """_persist_closed_trades catches and logs DB exceptions (lines 210-211)."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Make the session __aenter__ raise an exception
         session_factory.return_value.__aenter__.side_effect = RuntimeError("DB is down")
@@ -271,7 +232,7 @@ class TestWorkerEdgeCases:
         trade = ClosedTrade(
             symbol="BTC-USD", side="long", quantity=1.0,
             entry_price=50000.0, exit_price=55000.0,
-            entry_at=datetime.now(timezone.utc), exit_at=datetime.now(timezone.utc),
+            entry_at=datetime.now(UTC), exit_at=datetime.now(UTC),
             pnl=5000.0, pnl_pct=10.0, exit_reason="take_profit",
         )
         # Should not raise — exception is caught and logged

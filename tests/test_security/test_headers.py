@@ -168,3 +168,52 @@ def test_permissions_policy() -> None:
         assert "camera=()" in pp
         assert "microphone=()" in pp
         assert "geolocation=()" in pp
+
+
+# ======================================================================
+# CSP per-request settings test (Issue #7)
+# ======================================================================
+
+
+def test_csp_reflects_settings_change_mid_test(monkeypatch) -> None:
+    """A monkey-patch of ``settings.csp_connect_src`` must be reflected
+    in the CSP header on the very next request.  This proves the header
+    is built per-request from current settings, not baked once at
+    import time.
+    """
+    from fastapi import FastAPI
+
+    from backend.core.security import SecurityHeadersMiddleware
+    from configs.settings import settings
+
+    app = FastAPI()
+
+    @app.get("/test-csp-dynamic")
+    async def test_endpoint():
+        return {"ok": True}
+
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    # Capture the original value so we don't assume any specific default
+    original_connect_src = settings.csp_connect_src
+
+    with TestClient(app) as client:
+        resp = client.get("/test-csp-dynamic")
+        csp_before = resp.headers.get("content-security-policy", "")
+        assert original_connect_src in csp_before, (
+            f"Original connect-src {original_connect_src!r} should appear in CSP"
+        )
+
+    # Change the setting mid-test
+    monkeypatch.setattr(settings, "csp_connect_src", "wss://custom.example.com")
+
+    with TestClient(app) as client:
+        resp = client.get("/test-csp-dynamic")
+        csp_after = resp.headers.get("content-security-policy", "")
+        assert "wss://custom.example.com" in csp_after, (
+            "CSP should reflect the updated csp_connect_src"
+        )
+        # The old value should no longer be present
+        assert original_connect_src not in csp_after, (
+            "CSP should NOT contain the original connect-src after it was changed"
+        )
