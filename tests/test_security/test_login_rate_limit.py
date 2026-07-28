@@ -216,7 +216,11 @@ class TestGetClientIP:
         assert ip == "10.0.0.1"
 
     def test_proxy_trusted_header(self) -> None:
-        """With trusted proxies, the leftmost unknown IP is returned."""
+        """With trusted proxies, the untrusted IP is returned (right-to-left parsing).
+
+        See TestGetClientIP's spoofing regression tests for cases where
+        direction matters.
+        """
         req = _make_request(client_host="192.168.1.1", x_forwarded_for="203.0.113.5, 192.168.1.1")
         ip = LoginRateLimiter.get_client_ip(req, trusted_proxies="192.168.1.1")
         assert ip == "203.0.113.5"

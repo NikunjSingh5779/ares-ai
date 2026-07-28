@@ -144,7 +144,10 @@ class WebCollectorAgent(BaseAgent[WebCollectorInput, WebCollectorOutput]):
                 }
 
             # Create the browser agent
-            agent = BrowserAgent(
+            # NB: browser_use.Agent is a generic class; mypy cannot fully infer
+            # the type parameters inside the guarded import block, so annotate
+            # explicitly with Any to satisfy `mypy --strict` `var-annotated`.
+            agent: Any = BrowserAgent(
                 task=inputs.task,
                 llm=llm,
                 use_vision=False,
@@ -159,9 +162,13 @@ class WebCollectorAgent(BaseAgent[WebCollectorInput, WebCollectorOutput]):
             all_data: list[Any] = []
             steps = 0
 
+            # AgentHistoryList.history is the actual list[AgentHistory];
+            # iterating AgentHistoryList directly would yield pydantic
+            # (field-name, field-value) tuples (BaseModel.__iter__),
+            # so use `.history` to get the AgentHistory items.
             if history:
-                steps = len(history)
-                for step in history:
+                steps = len(history)  # AgentHistoryList defines __len__
+                for step in history.history:
                     if hasattr(step, "result") and step.result:
                         result = step.result
                         all_text.append(str(result))
