@@ -156,3 +156,108 @@ class TestConsensusEngine:
         quant = {"direction": "long", "confidence": 79.5, "rationale": "Close"}
         result = ConsensusEngine.evaluate("BTC-USD", ma, quant)
         assert result["approved"] is False
+
+    # ------------------------------------------------------------------ #
+    # Vision advisory nudge tests                                        #
+    # ------------------------------------------------------------------ #
+
+    def test_vision_none_backward_compatible(
+        self,
+        valid_ma_long: dict[str, Any],
+        valid_quant_long: dict[str, Any],
+    ) -> None:
+        """No vision parameter → identical result to pre-vision call."""
+        result = ConsensusEngine.evaluate("BTC-USD", valid_ma_long, valid_quant_long)
+        assert result["approved"] is True
+        assert result["composite_confidence"] == 87.5
+        assert result["agreement_metrics"].get("vision_available") is False
+        assert result["agreement_metrics"].get("vision_agreement") is None
+
+    def test_vision_none_explicit(
+        self,
+        valid_ma_long: dict[str, Any],
+        valid_quant_long: dict[str, Any],
+    ) -> None:
+        """vision_output=None → no nudge."""
+        result = ConsensusEngine.evaluate("BTC-USD", valid_ma_long, valid_quant_long, vision_output=None)
+        assert result["approved"] is True
+        assert result["composite_confidence"] == 87.5
+        assert result["agreement_metrics"].get("vision_available") is False
+        assert result["agreement_metrics"].get("vision_agreement") is None
+
+    def test_vision_unavailable(
+        self,
+        valid_ma_long: dict[str, Any],
+        valid_quant_long: dict[str, Any],
+    ) -> None:
+        """Vision available=False → no nudge."""
+        vision = {"available": False, "confidence": 80.0, "chart_pattern": "uptrend"}
+        result = ConsensusEngine.evaluate("BTC-USD", valid_ma_long, valid_quant_long, vision_output=vision)
+        assert result["approved"] is True
+        assert result["composite_confidence"] == 87.5
+        assert result["agreement_metrics"]["vision_available"] is False
+        assert result["agreement_metrics"]["vision_agreement"] is None
+
+    def test_vision_low_confidence(
+        self,
+        valid_ma_long: dict[str, Any],
+        valid_quant_long: dict[str, Any],
+    ) -> None:
+        """Vision available but confidence below threshold → no nudge."""
+        vision = {"available": True, "confidence": 50.0, "chart_pattern": "uptrend"}
+        result = ConsensusEngine.evaluate("BTC-USD", valid_ma_long, valid_quant_long, vision_output=vision)
+        assert result["approved"] is True
+        assert result["composite_confidence"] == 87.5
+        assert result["agreement_metrics"]["vision_available"] is True
+        assert result["agreement_metrics"]["vision_agreement"] is None
+
+    def test_vision_agrees_long(
+        self,
+        valid_ma_long: dict[str, Any],
+        valid_quant_long: dict[str, Any],
+    ) -> None:
+        """Vision uptrend agrees with long → positive nudge."""
+        vision = {"available": True, "confidence": 80.0, "chart_pattern": "uptrend"}
+        result = ConsensusEngine.evaluate("BTC-USD", valid_ma_long, valid_quant_long, vision_output=vision)
+        assert result["approved"] is True
+        # composite_confidence = (85+90)/2 + 3 nudge = 90.5
+        assert result["composite_confidence"] == 90.5
+        assert result["agreement_metrics"]["vision_available"] is True
+        assert result["agreement_metrics"]["vision_agreement"] is True
+
+    def test_vision_disagrees_short_against_long(
+        self,
+        valid_ma_long: dict[str, Any],
+        valid_quant_long: dict[str, Any],
+    ) -> None:
+        """Vision downtrend disagrees with long → negative nudge."""
+        vision = {"available": True, "confidence": 80.0, "chart_pattern": "downtrend"}
+        result = ConsensusEngine.evaluate("BTC-USD", valid_ma_long, valid_quant_long, vision_output=vision)
+        assert result["approved"] is True
+        # composite_confidence = (85+90)/2 - 3 nudge = 84.5
+        assert result["composite_confidence"] == 84.5
+        assert result["agreement_metrics"]["vision_available"] is True
+        assert result["agreement_metrics"]["vision_agreement"] is False
+
+    def test_vision_flat_pattern_no_nudge(
+        self,
+        valid_ma_long: dict[str, Any],
+        valid_quant_long: dict[str, Any],
+    ) -> None:
+        """Vision consolidation pattern → no nudge (flat maps to no direction)."""
+        vision = {"available": True, "confidence": 80.0, "chart_pattern": "consolidation"}
+        result = ConsensusEngine.evaluate("BTC-USD", valid_ma_long, valid_quant_long, vision_output=vision)
+        assert result["approved"] is True
+        assert result["composite_confidence"] == 87.5  # unchanged
+        assert result["agreement_metrics"]["vision_agreement"] is None
+
+    def test_vision_does_not_flip_rejection(
+        self,
+        valid_quant_long: dict[str, Any],
+    ) -> None:
+        """Vision agreement does NOT flip a rejection to approval."""
+        ma = {"direction": "long", "confidence": 70.0, "rationale": "Low conf"}
+        vision = {"available": True, "confidence": 90.0, "chart_pattern": "uptrend"}
+        result = ConsensusEngine.evaluate("BTC-USD", ma, valid_quant_long, vision_output=vision)
+        assert result["approved"] is False  # still rejected without confident MA
+        assert "vision" not in result["rationale"].lower()  # no nudge was applied (already rejected)

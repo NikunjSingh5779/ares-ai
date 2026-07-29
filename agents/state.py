@@ -165,6 +165,34 @@ class PipelineStatus(BaseModel):
         return len(self.failed_nodes) == 0 and len(self.completed_nodes) > 0
 
 
+def _merge_pipeline_status(a: PipelineStatus, b: PipelineStatus) -> PipelineStatus:
+    """Merge concurrent PipelineStatus updates from parallel graph branches.
+
+    During fan-out (e.g. market_analyst and vision running in parallel),
+    both nodes may return a pipeline_status update in the same super-step.
+    This reducer merges them safely by combining completed/failed/skipped
+    lists and taking the latest current_node.
+    """
+    return PipelineStatus(
+        current_node=b.current_node or a.current_node,
+        completed_nodes=list(set(a.completed_nodes + b.completed_nodes)),
+        failed_nodes=list(set(a.failed_nodes + b.failed_nodes)),
+        skipped_nodes=list(set(a.skipped_nodes + b.skipped_nodes)),
+        start_time=a.start_time or b.start_time,
+        end_time=b.end_time or a.end_time,
+    )
+
+
+def _merge_dicts(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    """Merge two dicts from parallel graph branches (shallow merge, b wins on conflict)."""
+    return {**a, **b}
+
+
+def _merge_lists(a: list[Any], b: list[Any]) -> list[Any]:
+    """Concatenate two lists from parallel graph branches."""
+    return a + b
+
+
 class AgentState(BaseModel):
     """Shared state for the LangGraph agent pipeline.
 

@@ -1,15 +1,18 @@
 """Analysis API router — market analysis and trading signals.
 
 Endpoints:
-    POST /api/v1/analyze — Run the full Supervisor pipeline and return state
-    POST /api/v1/signal  — Run the pipeline, return the execution result
+    POST /api/v1/analyze     — Run the full Supervisor pipeline and return state
+    POST /api/v1/signal      — Run the pipeline, return the execution result
+    GET  /api/v1/analyze/stream — SSE stream of incremental pipeline state updates
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 
 from agents.circuit_breaker import CircuitBreakerRegistry
@@ -233,6 +236,42 @@ async def analyze(body: dict[str, Any], background_tasks: BackgroundTasks) -> di
 
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+async def _stream_analysis_events(symbol: str, request_text: str):
+    """Async generator yielding SSE-formatted pipeline state updates."""
+    supervisor = _get_supervisor()
+    async for state_update in supervisor.stream_analysis(symbol=symbol, request=request_text):
+        data = json.dumps(_state_to_dict(state_update), default=str)
+        yield f"data: {data}\n\n"
+
+
+@router.get("/analyze/stream")
+async def analyze_stream(symbol: str = "", request: str = "Analyze") -> StreamingResponse:
+    """Stream incremental pipeline state updates via Server-Sent Events.
+
+    This endpoint runs the full Supervisor pipeline and pushes each
+    incremental AgentState update to the client as a JSON-encoded SSE
+    event as it happens, instead of requiring the client to poll.
+
+    Query parameters:
+        symbol:  Ticker symbol to analyze (required).
+        request: Analysis prompt text (default "Analyze").
+
+    Returns:
+        StreamingResponse with media_type text/event-stream.
+    """
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol is required")
+
+    return StreamingResponse(
+        _stream_analysis_events(symbol, request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/signal")

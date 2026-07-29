@@ -13,6 +13,7 @@ Per RELIABILITY section:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -396,12 +397,14 @@ async def _consensus_node_fn(state: AgentState) -> dict[str, Any]:
 
     Replaces the generic LLM node for consensus. Evaluates Market Analyst
     and Quant outputs against confidence thresholds without an LLM call.
+    Optionally considers Vision output as an advisory nudge.
     """
     from agents.consensus import ConsensusEngine
 
     ma = state.market_analyst.model_dump() if state.market_analyst else None
     q = state.quant.model_dump() if state.quant else None
-    result = ConsensusEngine.evaluate(state.symbol, ma, q)
+    vision = state.vision.model_dump() if state.vision else None
+    result = ConsensusEngine.evaluate(state.symbol, ma, q, vision_output=vision)
 
     return {
         "consensus": ConsensusOutput(**result),
@@ -412,28 +415,37 @@ async def _consensus_node_fn(state: AgentState) -> dict[str, Any]:
 async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
     """Deterministic vision analysis node.
 
-    Runs rule-based chart pattern detection on available data.
+    Runs rule-based chart pattern detection on available OHLCV data.
     Advisory/non-blocking — never causes pipeline failure.
     Always produces a VisionOutput even when data is sparse.
+
+    Data source: uses state.candles (real OHLCV data from pipeline
+    input or upstream fetchers), NOT market_analyst indicators, making
+    this node independent of the market_analyst → quant → news chain.
     """
     from agents.vision import VisionAgent, VisionInput
 
-    # Build synthetic candles from market_analyst indicators if available
+    # Use real OHLCV data from state.candles if available, falling
+    # back to an empty list (VisionAgent gracefully degrades).
     candles: list[dict[str, Any]] = []
-    if state.market_analyst and state.market_analyst.indicators:
-        indicators = state.market_analyst.indicators
-        # Create synthetic data points from indicator values
-        # for pattern detection
-        for name, value in indicators.items():
+    if state.candles:
+        for c in state.candles:
+            if isinstance(c, dict):
+                d = c
+            elif hasattr(c, "model_dump"):
+                d = c.model_dump()
+            else:
+                continue
             candles.append(
                 {
-                    "open": float(value),
-                    "high": float(value) * 1.01,
-                    "low": float(value) * 0.99,
-                    "close": float(value),
-                    "volume": 0,
+                    "open": float(d.get("open", 0)),
+                    "high": float(d.get("high", 0)),
+                    "low": float(d.get("low", 0)),
+                    "close": float(d.get("close", 0)),
+                    "volume": float(d.get("volume", 0)),
                 }
             )
+
 
     agent = VisionAgent()
 
@@ -609,6 +621,52 @@ async def _execute_agent_impl(
         return update
 
 
+async def _analysis_and_vision_node(state: AgentState) -> dict[str, Any]:
+    """Run market_analyst analysis and vision analysis concurrently.
+
+    Both agents execute in parallel via asyncio.gather within a single
+    LangGraph node, avoiding multi-branch state-merge complexity while
+    providing genuine concurrent execution.  The merged output contains
+    both ``market_analyst`` and ``vision`` state keys so downstream
+    nodes (quant, consensus, etc.) can consume them transparently.
+    """
+    context = _get_agent_context(state)
+    router = context["router"]
+    registry = context.get("registry")
+    ma_config = context["agent_configs"].get("market_analyst")
+
+    async def _run_ma():
+        if registry and registry.has_agent("market_analyst"):
+            reg = registry.get("market_analyst")
+            if reg.agent is not None and not reg.agent.__class__.__name__.startswith("Stub"):
+                return await _execute_agent_impl("market_analyst", state, reg.agent, ma_config, router)
+        return await _execute_agent_node("market_analyst", state, router, ma_config)
+
+    ma_result, vision_result = await asyncio.gather(
+        _run_ma(),
+        _vision_node_fn(state),
+    )
+
+    # Merge — MA fields take priority for shared keys; vision is separate
+    merged: dict[str, Any] = dict(ma_result)
+    merged["vision"] = vision_result.get("vision")
+
+    # Merge pipeline_status from both
+    ma_ps = ma_result.get("pipeline_status")
+    vis_ps = vision_result.get("pipeline_status")
+    if ma_ps is not None and vis_ps is not None and ma_ps is not vis_ps:
+        merged["pipeline_status"] = PipelineStatus(
+            current_node=ma_ps.current_node or vis_ps.current_node,
+            completed_nodes=list(set(ma_ps.completed_nodes + vis_ps.completed_nodes)),
+            failed_nodes=list(set(ma_ps.failed_nodes + vis_ps.failed_nodes)),
+            skipped_nodes=list(set(ma_ps.skipped_nodes + vis_ps.skipped_nodes)),
+            start_time=ma_ps.start_time or vis_ps.start_time,
+            end_time=vis_ps.end_time or ma_ps.end_time,
+        )
+
+    return merged
+
+
 # ---------------------------------------------------------------------------
 # Node factory: creates all nodes with routing based on pipeline order
 # ---------------------------------------------------------------------------
@@ -624,29 +682,26 @@ def _build_pipeline_nodes(graph: StateGraph[AgentState]) -> None:
     graph.add_node("supervisor", supervisor_node)
     graph.add_edge(START, "supervisor")
 
-    # Add agent nodes
+    # Add the combined analysis+vision node (runs both concurrently
+    # via asyncio.gather) — replaces the old sequential market_analyst
+    # and vision nodes.
+    graph.add_node("analysis_and_vision", _analysis_and_vision_node)
+    graph.add_edge("supervisor", "analysis_and_vision")
+
+    # Add remaining pipeline nodes (skip market_analyst and vision
+    # since they are handled inside analysis_and_vision).
     for agent_name in PIPELINE_ORDER:
+        if agent_name in ("market_analyst", "vision"):
+            continue
         if agent_name == "consensus":
-            # Consensus is deterministic — use a custom node, not the LLM path
             graph.add_node("consensus", _consensus_node_fn)
-        elif agent_name == "vision":
-            # Vision is advisory/deterministic — never blocks pipeline
-            graph.add_node("vision", _vision_node_fn)
         else:
             graph.add_node(agent_name, _make_node_fn(agent_name))
 
-    # Add edges with routing
-    graph.add_conditional_edges(
-        "supervisor",
-        _route_from_supervisor,
-        {agent: agent for agent in PIPELINE_ORDER},
-    )
-
-    # Standard edges between consecutive agents
-    graph.add_edge("market_analyst", "quant")
+    # Sequential edges from the combined node through the rest of the pipeline
+    graph.add_edge("analysis_and_vision", "quant")
     graph.add_edge("quant", "news")
-    graph.add_edge("news", "vision")
-    graph.add_edge("vision", "consensus")
+    graph.add_edge("news", "consensus")
 
     # Consensus → risk or journal
     graph.add_conditional_edges(
