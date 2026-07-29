@@ -58,7 +58,7 @@ services:
     container_name: ares-chromadb
     restart: unless-stopped
     ports:
-      - "${CHROMA_PORT:-8000}:8000"
+      - "${CHROMA_PORT:-8001}:8000"
     environment:
       - IS_PERSISTENT=TRUE
       - PERSIST_DIRECTORY=/chroma/chroma-data

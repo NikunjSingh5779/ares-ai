@@ -102,6 +102,9 @@ agents:
 
   vision:
     # Needs Vision (VL) capabilities for chart/image processing
+    # Fallbacks: no reliable free VL models currently available on OpenRouter.
+    # VisionAgent's built-in rule-based fallback (chart pattern detection from
+    # OHLCV data) is the real fallback — works without any model at all.
     primary: open_router/nvidia/nemotron-nano-12b-v2-vl:free
     fallbacks: []
     timeout_seconds: 30

@@ -126,6 +126,59 @@ Requires PostgreSQL and ChromaDB to be running (``docker compose -f docker/docke
 
 ---
 
+## 💰 Free-Tier Setup
+
+ARES AI is designed to run entirely on free-tier AI models. No paid API keys required.
+
+### Getting Free API Keys
+
+1. **OpenRouter**: Sign up at [openrouter.ai](https://openrouter.ai/keys) — free credits on signup, plus access to dozens of free models.
+2. **OpenCode** (optional fallback): Sign up at [opencode.ai](https://opencode.ai) — generous free tier.
+
+Add them to `.env`:
+```
+OPENROUTER_API_KEY=sk-or-...
+OPENCODE_API_KEY=sk-oc-...
+```
+
+### Minimal Setup
+
+```powershell
+# 1. Infrastructure (only PostgreSQL + Redis + ChromaDB, no backend containers)
+docker compose -f docker/docker-compose.dev.yml up -d
+
+# 2. Python dependencies
+uv sync --locked --all-extras --dev
+
+# 3. Verify pipeline wiring (no API keys needed — uses mock data)
+uv run python scripts/simulate_pipeline.py
+
+# 4. Check that your free models actually work
+uv run python scripts/test_free_models.py           # full check (requires API keys)
+uv run python scripts/test_free_models.py --dry-run  # list only, no network calls
+```
+
+### Safety Default
+
+The pipeline starts in `human_approval` mode — no trades execute without explicit
+human confirmation. Verify this in your `.env`:
+```
+DEFAULT_TRADING_MODE=human_approval
+```
+
+### When a Free Model Goes Stale
+
+Free models come and go. Run `test_free_models.py` periodically — it fetches
+OpenRouter's live free-model list and cross-references every agent's configured
+models. If a critical agent's entire chain (primary + all fallbacks) is dead,
+the script exits non-zero.
+
+Replace dead model IDs in `configs/models.yaml` with working ones from the
+OpenRouter free list. This is a periodic manual task — there is no automated
+model-discovery mechanism.
+
+---
+
 ## 🧪 Testing & Validation
 
 Run the full pytest suite to verify no regressions in the agent graph, endpoints, or DB layer:
