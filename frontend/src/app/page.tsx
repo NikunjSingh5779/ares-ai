@@ -6,32 +6,53 @@ import { MetricCard } from "@/components/MetricCard";
 import { DataTable, type Column } from "@/components/DataTable";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PipelineFlow } from "@/components/PipelineFlow";
-import { getPortfolio, getAgentStatus, getOrders, analyze } from "@/lib/api";
+import { getPortfolio, getOrders, analyze } from "@/lib/api";
+import { usePipelinePolling } from "@/lib/usePipelinePolling";
 import type {
   PortfolioSummary,
-  AgentStatusResponse,
   ClosedTrade,
 } from "@/types/api";
 
 export default function DashboardPage() {
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
-  const [agentStatus, setAgentStatus] = useState<AgentStatusResponse | null>(null);
   const [orders, setOrders] = useState<ClosedTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
 
+  // Shared polling hook — updates status while pipeline runs
+  const { status: agentStatus, timedOut } = usePipelinePolling(running, (s) => {
+    // Check if pipeline just finished
+    const completed = s.pipeline_status?.completed_nodes ?? [];
+    const failed = s.pipeline_status?.failed_nodes ?? [];
+    const skipped = s.pipeline_status?.skipped_nodes ?? [];
+    if (
+      completed.includes("memory") ||
+      failed.includes("memory") ||
+      skipped.includes("memory") ||
+      (s.pipeline_status?.current_node === "" && s.has_run)
+    ) {
+      setRunning(false);
+      // Refresh portfolio and orders now that we are done
+      Promise.all([
+        getPortfolio().catch(() => null),
+        getOrders().catch(() => []),
+      ]).then(([p, o]) => {
+        setPortfolio(p);
+        setOrders(Array.isArray(o) ? o : []);
+      });
+    }
+  });
+
   async function loadData() {
     setLoading(true);
     setError(null);
     try {
-      const [p, a, o] = await Promise.all([
+      const [p, o] = await Promise.all([
         getPortfolio().catch(() => null),
-        getAgentStatus().catch(() => null),
         getOrders().catch(() => []),
       ]);
       setPortfolio(p);
-      setAgentStatus(a);
       setOrders(Array.isArray(o) ? o : []);
     } catch {
       setError("Could not connect to backend");
@@ -44,49 +65,12 @@ export default function DashboardPage() {
     loadData();
   }, []);
 
-  // Polling mechanism
-  useEffect(() => {
-    if (!running) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const status = await getAgentStatus();
-        setAgentStatus(status);
-
-        // Check if pipeline is finished
-        const completed = status.pipeline_status.completed_nodes;
-        const failed = status.pipeline_status.failed_nodes;
-        const skipped = status.pipeline_status.skipped_nodes;
-        
-        // Memory is the last node
-        if (completed.includes("memory") || failed.includes("memory") || skipped.includes("memory") || 
-            (status.pipeline_status.current_node === "" && status.has_run)) {
-          setRunning(false);
-          // Refresh portfolio and orders now that we are done
-          const [p, o] = await Promise.all([
-            getPortfolio().catch(() => null),
-            getOrders().catch(() => []),
-          ]);
-          setPortfolio(p);
-          setOrders(Array.isArray(o) ? o : []);
-        }
-      } catch (err) {
-        console.error("Polling error", err);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [running]);
-
   async function handleRunAnalysis() {
     if (running) return;
     setRunning(true);
     setError(null);
     try {
       await analyze("BTC-USD", "Quick dashboard analysis");
-      // Initial ping to immediately show "pending" pipeline 
-      const initialStatus = await getAgentStatus();
-      setAgentStatus(initialStatus);
     } catch {
       setError("Analysis request failed");
       setRunning(false);
@@ -177,6 +161,14 @@ export default function DashboardPage() {
           </span>
         </div>
       )}
+      {timedOut && (
+        <div className="flex items-center gap-2 rounded-xl border border-[rgba(255,159,28,0.2)] bg-[rgba(255,159,28,0.08)] px-4 py-3">
+          <AlertTriangle size={14} className="text-[#ff9f1c]" />
+          <span className="font-mono text-xs text-[#ff9f1c]">
+            Pipeline timed out after 60 seconds. The analysis may still be running — check the backend logs.
+          </span>
+        </div>
+      )}
 
       {/* Portfolio Summary */}
       {portfolio ? (
@@ -217,7 +209,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <PipelineFlow status={agentStatus?.pipeline_status ?? null} />
 
-        {agentStatus?.has_run && agentStatus.pipeline_status.completed_nodes.length > 0 && !running && (
+        {agentStatus?.has_run && (agentStatus?.pipeline_status?.completed_nodes?.length ?? 0) > 0 && !running && (
           <div className="card-glass">
             <p className="text-label mb-3">
               Latest Signal Status

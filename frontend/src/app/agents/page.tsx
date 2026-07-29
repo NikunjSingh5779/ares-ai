@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw, Cpu } from "lucide-react";
+import { RefreshCw, Cpu, AlertTriangle } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PipelineFlow } from "@/components/PipelineFlow";
 import { PriceTicker } from "@/components/PriceTicker";
-import { getAgentStatus, analyze } from "@/lib/api";
-import type { AgentStatusResponse, AgentState } from "@/types/api";
+import { analyze } from "@/lib/api";
+import { usePipelinePolling } from "@/lib/usePipelinePolling";
+import type { AgentState, AgentStatusResponse } from "@/types/api";
 
 const AGENT_NAMES = [
   "market_analyst",
@@ -31,23 +32,22 @@ const agentLabels: Record<string, string> = {
 };
 
 export default function AgentsPage() {
-  const [status, setStatus] = useState<AgentStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+
+  // Shared polling hook — auto-updates after analysis is triggered
+  const { status, timedOut } = usePipelinePolling(running);
 
   async function loadData() {
     setLoading(true);
     setError(null);
     try {
-      const s = await getAgentStatus().catch(() => null);
-      setStatus(s);
-
-      // Run a quick analysis to get full state if none exists
-      if (!s?.has_run) {
+      // Trigger a full analysis so the pipeline has completed state
+      if (!status?.has_run) {
+        setRunning(true);
         await analyze("BTC-USD", "Agent status check").catch(() => null);
-        // We do not await getAgentStatus immediately since it's a background task. 
-        // Just let the user refresh manually or it will be picked up next refresh.
       }
     } catch {
       setError("Could not fetch agent data");
@@ -57,7 +57,10 @@ export default function AgentsPage() {
   }
 
   useEffect(() => {
-    loadData();
+    if (!status?.has_run && !running) {
+      loadData();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pipelineStatus = status?.pipeline_status ?? null;

@@ -1,33 +1,33 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RefreshCw, TrendingUp } from "lucide-react";
+import { RefreshCw, TrendingUp, AlertTriangle } from "lucide-react";
 import type { IChartApi, ISeriesApi, CandlestickData } from "lightweight-charts";
-import { analyze, getAgentStatus } from "@/lib/api";
-import type { AgentStatusResponse } from "@/types/api";
+import { analyze } from "@/lib/api";
+import { usePipelinePolling } from "@/lib/usePipelinePolling";
 
 const SYMBOLS = ["BTC-USD", "ETH-USD", "SOL-USD", "AAPL", "TSLA", "MSFT"];
 
 export default function MarketsPage() {
   const [symbol, setSymbol] = useState("BTC-USD");
-  const [analysis, setAnalysis] = useState<AgentStatusResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
+  // Shared polling hook — auto-updates after analysis is triggered
+  const { status: analysis, timedOut } = usePipelinePolling(running);
+  const loading = running;
+
   async function runAnalysis() {
-    setLoading(true);
     setError(null);
+    setRunning(true);
     try {
       await analyze(symbol);
-      const s = await getAgentStatus();
-      setAnalysis(s);
     } catch {
       setError(`Analysis failed for ${symbol}`);
-    } finally {
-      setLoading(false);
+      setRunning(false);
     }
   }
 
