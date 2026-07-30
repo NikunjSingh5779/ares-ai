@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RefreshCw, TrendingUp, AlertTriangle } from "lucide-react";
 import { MetricCard } from "@/components/MetricCard";
 import { DataTable, type Column } from "@/components/DataTable";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PipelineFlow } from "@/components/PipelineFlow";
-import { getPortfolio, getOrders, analyze } from "@/lib/api";
+import { getPortfolio, getOrders } from "@/lib/api";
 import { usePipelinePolling } from "@/lib/usePipelinePolling";
 import type {
   PortfolioSummary,
@@ -17,23 +17,17 @@ export default function DashboardPage() {
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [orders, setOrders] = useState<ClosedTrade[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Shared polling hook — updates status while pipeline runs
-  const { status: agentStatus, timedOut } = usePipelinePolling(running, (s) => {
-    // Check if pipeline just finished
-    const completed = s.pipeline_status?.completed_nodes ?? [];
-    const failed = s.pipeline_status?.failed_nodes ?? [];
-    const skipped = s.pipeline_status?.skipped_nodes ?? [];
-    if (
-      completed.includes("memory") ||
-      failed.includes("memory") ||
-      skipped.includes("memory") ||
-      (s.pipeline_status?.current_node === "" && s.has_run)
-    ) {
-      setRunning(false);
-      // Refresh portfolio and orders now that we are done
+  // Pipeline hook owns the full lifecycle internally.
+  const { status: agentStatus, running, error: runError, timedOut, runAnalysis } = usePipelinePolling();
+
+  // Track when the most recent analysis run finishes so we can refresh
+  // portfolio/orders once per completion.
+  const prevRunningRef = useRef(running);
+  useEffect(() => {
+    if (prevRunningRef.current && !running) {
+      // Pipeline just finished → refresh derived data
       Promise.all([
         getPortfolio().catch(() => null),
         getOrders().catch(() => []),
@@ -42,11 +36,12 @@ export default function DashboardPage() {
         setOrders(Array.isArray(o) ? o : []);
       });
     }
-  });
+    prevRunningRef.current = running;
+  }, [running]);
 
   async function loadData() {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
     try {
       const [p, o] = await Promise.all([
         getPortfolio().catch(() => null),
@@ -55,7 +50,7 @@ export default function DashboardPage() {
       setPortfolio(p);
       setOrders(Array.isArray(o) ? o : []);
     } catch {
-      setError("Could not connect to backend");
+      setLoadError("Could not connect to backend");
     } finally {
       setLoading(false);
     }
@@ -67,15 +62,10 @@ export default function DashboardPage() {
 
   async function handleRunAnalysis() {
     if (running) return;
-    setRunning(true);
-    setError(null);
-    try {
-      await analyze("BTC-USD", "Quick dashboard analysis");
-    } catch {
-      setError("Analysis request failed");
-      setRunning(false);
-    }
+    await runAnalysis("BTC-USD", "Quick dashboard analysis");
   }
+
+  const error = loadError || runError;
 
   const orderColumns: Column<ClosedTrade>[] = [
     { key: "symbol", label: "Symbol", className: "font-medium" },

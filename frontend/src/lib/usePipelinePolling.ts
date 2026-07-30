@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAgentStatus } from "@/lib/api";
+import { analyze, getAgentStatus } from "@/lib/api";
 import type { AgentStatusResponse } from "@/types/api";
 
 /** Default polling interval in ms. */
@@ -11,22 +11,38 @@ const POLL_INTERVAL_MS = 1000;
 const SAFETY_TIMEOUT_MS = 60_000;
 
 /**
- * Hook that polls the backend pipeline status while an analysis is running.
+ * Hook that owns the full trigger → poll → complete lifecycle for
+ * pipeline analysis.
  *
- * Calls `onUpdate(status)` on each successful poll tick so the caller can
- * respond to intermediate results (e.g. update a PipelineFlow chart).
+ * Call `runAnalysis(symbol, requestText)` to trigger a new analysis.
+ * The hook internally:
+ *   - Calls the POST /api/v1/analyze endpoint
+ *   - Polls the backend status every second
+ *   - Detects pipeline completion (when the "memory" node is done)
+ *   - Resets `running` to false on completion or on a 60s safety timeout
  *
- * Stops polling when:
- *   1. the pipeline completes (memory node is done)
- *   2. the safety timeout elapses (60 s)
- *   3. `running` becomes false
+ * Pages that use this hook no longer manage their own `running` state
+ * or call `analyze()` directly.
  */
-export function usePipelinePolling(
-  running: boolean,
-  onUpdate?: (status: AgentStatusResponse) => void,
-) {
+export function usePipelinePolling() {
   const [status, setStatus] = useState<AgentStatusResponse | null>(null);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
+
+  /** Trigger a pipeline analysis.  Returns immediately; polling picks up
+   *  the result asynchronously. */
+  async function runAnalysis(symbol: string, requestText: string) {
+    setError(null);
+    setTimedOut(false);
+    setRunning(true);
+    try {
+      await analyze(symbol, requestText);
+    } catch {
+      setError(`Analysis failed for ${symbol}`);
+      setRunning(false);
+    }
+  }
 
   useEffect(() => {
     if (!running) return;
@@ -35,10 +51,11 @@ export function usePipelinePolling(
     const startTime = Date.now();
 
     const interval = setInterval(async () => {
-      // Safety timeout
+      // Safety timeout — stop polling and surface the error
       if (Date.now() - startTime > SAFETY_TIMEOUT_MS) {
         clearInterval(interval);
         setTimedOut(true);
+        setRunning(false);
         return;
       }
 
@@ -47,7 +64,6 @@ export function usePipelinePolling(
         if (cancelled) return;
 
         setStatus(s);
-        onUpdate?.(s);
 
         // Check if pipeline is finished (memory is the last node)
         const completed = s.pipeline_status?.completed_nodes ?? [];
@@ -61,6 +77,7 @@ export function usePipelinePolling(
           (s.pipeline_status?.current_node === "" && s.has_run)
         ) {
           clearInterval(interval);
+          setRunning(false);
         }
       } catch {
         // Ignore transient polling errors
@@ -71,7 +88,7 @@ export function usePipelinePolling(
       cancelled = true;
       clearInterval(interval);
     };
-  }, [running, onUpdate]);
+  }, [running]);
 
-  return { status, timedOut };
+  return { status, running, error, timedOut, runAnalysis };
 }

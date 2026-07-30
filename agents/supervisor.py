@@ -327,18 +327,40 @@ def _merge_pipeline_status(
     completed: list[str] | None = None,
     failed: list[str] | None = None,
     skipped: list[str] | None = None,
+    *,
+    auto_skip_prior: bool = True,
 ) -> PipelineStatus:
-    """Merge new status entries into existing pipeline status."""
+    """Merge new status entries into existing pipeline status.
+
+    Args:
+        state: Current agent state.
+        completed: Nodes that finished successfully.
+        failed: Nodes that failed.
+        skipped: Nodes explicitly marked as skipped.
+        auto_skip_prior: When True (default for sequential pipelines),
+            infer that any node in PIPELINE_ORDER before the last
+            completed/failed node and not yet accounted for was skipped.
+            Pass False when the caller runs in a concurrent context
+            where positional inference is invalid (e.g. vision running
+            alongside market_analyst).
+    """
     new_comp = state.pipeline_status.completed_nodes + (completed or [])
     new_fail = state.pipeline_status.failed_nodes + (failed or [])
     new_skip = list(state.pipeline_status.skipped_nodes + (skipped or []))
 
-    current_node = (completed or failed or [""])[-1]
-    if current_node in PIPELINE_ORDER:
-        idx = PIPELINE_ORDER.index(current_node)
-        for prev_agent in PIPELINE_ORDER[:idx]:
-            if prev_agent not in new_comp and prev_agent not in new_fail and prev_agent not in new_skip:
-                new_skip.append(prev_agent)
+    if auto_skip_prior:
+        current_node = (completed or failed or [""])[-1]
+        if current_node in PIPELINE_ORDER:
+            idx = PIPELINE_ORDER.index(current_node)
+            for prev_agent in PIPELINE_ORDER[:idx]:
+                if prev_agent not in new_comp and prev_agent not in new_fail and prev_agent not in new_skip:
+                    new_skip.append(prev_agent)
+
+    # Invariant: a node can never be in both completed/failed AND skipped.
+    # This is enforced both here and explicitly in callers that merge
+    # concurrent results.
+    completed_set = set(new_comp + new_fail)
+    new_skip = [n for n in new_skip if n not in completed_set]
 
     return PipelineStatus(
         current_node="",
@@ -352,11 +374,6 @@ def _merge_pipeline_status(
 # ---------------------------------------------------------------------------
 # Router functions
 # ---------------------------------------------------------------------------
-
-
-def _route_from_supervisor(state: AgentState) -> str:
-    """Route from supervisor to the first pipeline agent."""
-    return "market_analyst"
 
 
 def _route_from_consensus(state: AgentState) -> str:
@@ -373,23 +390,6 @@ def _route_from_risk(state: AgentState) -> str:
         return "execution"
     # Rejected — skip execution, go to journal
     return "journal"
-
-
-def _route_after_agent(state: AgentState, current: str) -> str:
-    """Determine the next agent after `current` in the pipeline."""
-    pipeline = PIPELINE_ORDER
-    try:
-        idx = pipeline.index(current)
-    except ValueError:
-        return END
-
-    # Find the next non-skipped agent
-    for next_agent in pipeline[idx + 1 :]:
-        # Skip vision if it has no fallback and we detect it's unavailable
-        # (Handled by the node itself — just route normally)
-        return next_agent
-
-    return END
 
 
 async def _consensus_node_fn(state: AgentState) -> dict[str, Any]:
@@ -480,7 +480,7 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
         result["available"] = model_available
         return {
             "vision": VisionOutput(**result),
-            "pipeline_status": _merge_pipeline_status(state, completed=["vision"]),
+            "pipeline_status": _merge_pipeline_status(state, completed=["vision"], auto_skip_prior=False),
         }
     except Exception as e:
         logger.error(f"Unhandled exception: {e}", exc_info=True)
@@ -495,7 +495,7 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
                 fallback_model=fallback_model,
                 rationale=f"Vision analysis unavailable: {e}",
             ),
-            "pipeline_status": _merge_pipeline_status(state, failed=["vision"]),
+            "pipeline_status": _merge_pipeline_status(state, failed=["vision"], auto_skip_prior=False),
         }
 
 
@@ -655,11 +655,15 @@ async def _analysis_and_vision_node(state: AgentState) -> dict[str, Any]:
     ma_ps = ma_result.get("pipeline_status")
     vis_ps = vision_result.get("pipeline_status")
     if ma_ps is not None and vis_ps is not None and ma_ps is not vis_ps:
+        completed_set = set(ma_ps.completed_nodes + vis_ps.completed_nodes)
+        failed_set = set(ma_ps.failed_nodes + vis_ps.failed_nodes)
         merged["pipeline_status"] = PipelineStatus(
             current_node=ma_ps.current_node or vis_ps.current_node,
-            completed_nodes=list(set(ma_ps.completed_nodes + vis_ps.completed_nodes)),
-            failed_nodes=list(set(ma_ps.failed_nodes + vis_ps.failed_nodes)),
-            skipped_nodes=list(set(ma_ps.skipped_nodes + vis_ps.skipped_nodes)),
+            completed_nodes=list(completed_set),
+            failed_nodes=list(failed_set),
+            skipped_nodes=list(
+                set(ma_ps.skipped_nodes + vis_ps.skipped_nodes) - completed_set - failed_set,
+            ),
             start_time=ma_ps.start_time or vis_ps.start_time,
             end_time=vis_ps.end_time or ma_ps.end_time,
         )

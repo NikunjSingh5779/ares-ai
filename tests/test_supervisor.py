@@ -481,3 +481,75 @@ class TestSupervisorRouting:
             ),
         )
         assert _route_from_risk(state) == "journal"
+
+
+class TestPipelineStatusInvariants:
+    """Verify pipeline_status invariants: no node in completed+skipped simultaneously."""
+
+    def test_merge_pipeline_status_no_double_count_sequential(self) -> None:
+        """Sequential completion should never produce overlapping sets."""
+        from agents.supervisor import PIPELINE_ORDER, _merge_pipeline_status
+
+        state = AgentState(symbol="BTC-USD", request="test")
+        # Simulate a sequential run — supervisor → ma → quant → news
+        state.pipeline_status = _merge_pipeline_status(state, completed=["supervisor"])
+        state.pipeline_status = _merge_pipeline_status(state, completed=["market_analyst"])
+        state.pipeline_status = _merge_pipeline_status(state, completed=["quant"])
+        state.pipeline_status = _merge_pipeline_status(state, completed=["news"])
+
+        for node in PIPELINE_ORDER:
+            in_comp = node in state.pipeline_status.completed_nodes
+            in_fail = node in state.pipeline_status.failed_nodes
+            in_skip = node in state.pipeline_status.skipped_nodes
+            categories = sum([in_comp, in_fail, in_skip])
+            assert categories <= 1, (
+                f"Node '{node}' appears in {categories} categories "
+                f"(completed={in_comp}, failed={in_fail}, skipped={in_skip})"
+            )
+
+    def test_merge_pipeline_status_no_double_count_concurrent(self) -> None:
+        """Concurrent vision+ma merge should never produce overlapping sets."""
+        from agents.supervisor import PIPELINE_ORDER, _merge_pipeline_status
+
+        state = AgentState(symbol="BTC-USD", request="test")
+        state.pipeline_status = _merge_pipeline_status(state, completed=["supervisor"])
+
+        # Simulate the concurrent analysis_and_vision node:
+        # market_analyst completes (via _execute_agent_node).
+        # vision also completes (via _vision_node_fn with auto_skip_prior=False).
+        ma_ps = _merge_pipeline_status(state, completed=["market_analyst"])
+        vis_ps = _merge_pipeline_status(state, completed=["vision"], auto_skip_prior=False)
+
+        # Merge the two concurrent results (same logic as _analysis_and_vision_node)
+        completed_set = set(ma_ps.completed_nodes + vis_ps.completed_nodes)
+        failed_set = set(ma_ps.failed_nodes + vis_ps.failed_nodes)
+        merged_completed = list(completed_set)
+        merged_skipped = list(
+            set(ma_ps.skipped_nodes + vis_ps.skipped_nodes) - completed_set - failed_set,
+        )
+        merged_failed = list(failed_set)
+
+        for node in PIPELINE_ORDER:
+            in_comp = node in merged_completed
+            in_fail = node in merged_failed
+            in_skip = node in merged_skipped
+            categories = sum([in_comp, in_fail, in_skip])
+            assert categories <= 1, (
+                f"Node '{node}' appears in {categories} categories "
+                f"(completed={in_comp}, failed={in_fail}, skipped={in_skip})"
+            )
+
+    def test_auto_skip_prior_false_does_not_infer_skips(self) -> None:
+        """auto_skip_prior=False must not inject inferred skip entries."""
+        from agents.supervisor import _merge_pipeline_status
+
+        state = AgentState(symbol="BTC-USD", request="test")
+        state.pipeline_status = _merge_pipeline_status(state, completed=["supervisor"])
+
+        # Vision completes with auto_skip_prior=False — must NOT mark
+        # market_analyst, quant, or news as skipped even though they
+        # appear before "vision" in PIPELINE_ORDER.
+        vis_ps = _merge_pipeline_status(state, completed=["vision"], auto_skip_prior=False)
+        assert "market_analyst" not in vis_ps.skipped_nodes, (
+            "auto_skip_prior=False caused market_analyst to be marked skipped"
+        )
