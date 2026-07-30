@@ -79,7 +79,7 @@ class TestAnalyzeStream:
             # Use StreamingResponse directly
             from backend.routers.analysis import analyze_stream
 
-            response = await analyze_stream(symbol="BTC-USD", request="test")
+            response = await analyze_stream(symbol="BTC-USD", x_analysis_prompt="test")
             assert response is not None
 
             # Collect events from the streaming response

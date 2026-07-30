@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 
@@ -247,7 +247,10 @@ async def _stream_analysis_events(symbol: str, request_text: str):
 
 
 @router.get("/analyze/stream")
-async def analyze_stream(symbol: str = "", request: str = "Analyze") -> StreamingResponse:
+async def analyze_stream(
+    symbol: str = "",
+    x_analysis_prompt: str = Header(default="Analyze"),
+) -> StreamingResponse:
     """Stream incremental pipeline state updates via Server-Sent Events.
 
     This endpoint runs the full Supervisor pipeline and pushes each
@@ -255,8 +258,11 @@ async def analyze_stream(symbol: str = "", request: str = "Analyze") -> Streamin
     event as it happens, instead of requiring the client to poll.
 
     Query parameters:
-        symbol:  Ticker symbol to analyze (required).
-        request: Analysis prompt text (default "Analyze").
+        symbol: Ticker symbol to analyse (required).
+
+    The analysis prompt defaults to ``"Analyze"`` and can be overridden
+    via the ``X-Analysis-Prompt`` HTTP header.  Prompt text is accepted
+    via header so it does not appear in server access logs.
 
     Returns:
         StreamingResponse with media_type text/event-stream.
@@ -265,7 +271,7 @@ async def analyze_stream(symbol: str = "", request: str = "Analyze") -> Streamin
         raise HTTPException(status_code=400, detail="symbol is required")
 
     return StreamingResponse(
-        _stream_analysis_events(symbol, request),
+        _stream_analysis_events(symbol, x_analysis_prompt),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
