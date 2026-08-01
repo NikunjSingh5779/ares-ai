@@ -141,9 +141,7 @@ class ConsensusEngine:
                     "vision_available": bool(vision_output.get("available")) if vision_output else False,
                     "vision_agreement": None,
                 },
-                "rationale": (
-                    f"Consensus rejected: {', '.join(missing)} agent(s) produced no output for {symbol}"
-                ),
+                "rationale": (f"Consensus rejected: {', '.join(missing)} agent(s) produced no output for {symbol}"),
             }
 
         # Extract fields

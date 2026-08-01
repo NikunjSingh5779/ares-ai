@@ -46,9 +46,7 @@ async def kronos_predict(
     from database.connection import async_session_factory
 
     try:
-        ingestor = MarketDataIngestor(
-            repository=MarketDataRepository(session_factory=async_session_factory)
-        )
+        ingestor = MarketDataIngestor(repository=MarketDataRepository(session_factory=async_session_factory))
         agent = KronosPredictorAgent(ingestor=ingestor)
 
         result = await agent.run(

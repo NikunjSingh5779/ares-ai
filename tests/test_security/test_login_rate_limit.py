@@ -312,9 +312,7 @@ class TestGetClientIP:
             if i < 3:
                 assert blocked is None, f"Iteration {i}: should be allowed, got {blocked}"
             else:
-                assert blocked == "ip_only", (
-                    f"Iteration {i}: attacker should be blocked by IP limit, got {blocked!r}"
-                )
+                assert blocked == "ip_only", f"Iteration {i}: attacker should be blocked by IP limit, got {blocked!r}"
 
 
 # ======================================================================
@@ -646,15 +644,11 @@ class TestBucketEviction:
 
         # retry_after prunes the expired window and removes the empty email bucket
         assert limiter.retry_after(email, ip, now=200.0) == 0.0
-        assert hashed not in limiter._email_buckets, (
-            "Email bucket should be removed by retry_after after full expiry"
-        )
+        assert hashed not in limiter._email_buckets, "Email bucket should be removed by retry_after after full expiry"
 
         # _prune_and_sweep prunes expired entries then removes empty IP buckets
         limiter._prune_and_sweep(200.0)
-        assert ip not in limiter._ip_buckets, (
-            "IP bucket should be removed by sweep after full expiry"
-        )
+        assert ip not in limiter._ip_buckets, "IP bucket should be removed by sweep after full expiry"
 
     def test_cap_limits_email_bucket_growth(self) -> None:
         """A burst of many unique keys should not grow past the cap."""

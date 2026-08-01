@@ -278,24 +278,28 @@ async def main() -> int:  # noqa: PLR0915
         if provider in client.providers:
             provider_key = client.providers[provider].get("api_key") or client.providers[provider].get("api_key", "")
         if not provider_key or not client._is_valid_key(provider_key):
-            results.append({
-                "agent": agent_name,
-                "role": role,
-                "model": model_id,
-                "status": "NO_KEY",
-            })
+            results.append(
+                {
+                    "agent": agent_name,
+                    "role": role,
+                    "model": model_id,
+                    "status": "NO_KEY",
+                }
+            )
             continue
 
         # Check if the model is on OpenRouter's free list before probing
         if free_ids is not None and "open_router" in provider:
             or_id = model_id.replace("open_router/", "", 1) if model_id.startswith("open_router/") else model_id
             if or_id not in free_ids:
-                results.append({
-                    "agent": agent_name,
-                    "role": role,
-                    "model": model_id,
-                    "status": "NOT_FREE",
-                })
+                results.append(
+                    {
+                        "agent": agent_name,
+                        "role": role,
+                        "model": model_id,
+                        "status": "NOT_FREE",
+                    }
+                )
                 continue
 
         # Probe
@@ -303,12 +307,14 @@ async def main() -> int:  # noqa: PLR0915
         sys.stdout.flush()
 
         status = await probe_model(client, model_id)
-        results.append({
-            "agent": agent_name,
-            "role": role,
-            "model": model_id,
-            "status": status["status"],
-        })
+        results.append(
+            {
+                "agent": agent_name,
+                "role": role,
+                "model": model_id,
+                "status": status["status"],
+            }
+        )
 
         print(status["status"])
         sys.stdout.flush()

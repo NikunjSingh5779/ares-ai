@@ -61,6 +61,7 @@ class KronosPredictorInput(BaseModel):
 # Model wrapper (lazy-loaded singleton)
 # ---------------------------------------------------------------------------
 
+
 class _KronosModel:
     """Lazy singleton wrapper around the Kronos model.
 
@@ -106,8 +107,9 @@ class _KronosModel:
             kronos_paths = [
                 os.path.join(os.path.dirname(__file__), "..", "kronos_model"),
                 os.path.join(os.path.dirname(__file__), "..", "Kronos"),
-                os.path.join(os.path.dirname(__file__), "..", "..", "..", "..",
-                             "OneDrive", "Desktop", "Kronos", "model"),
+                os.path.join(
+                    os.path.dirname(__file__), "..", "..", "..", "..", "OneDrive", "Desktop", "Kronos", "model"
+                ),
             ]
             for kp in kronos_paths:
                 kp = os.path.abspath(kp)
@@ -154,6 +156,7 @@ class _KronosModel:
 # ---------------------------------------------------------------------------
 # Prediction logic
 # ---------------------------------------------------------------------------
+
 
 def _prepare_dataframe(candles: list[OHLCVData]) -> Any:
     """Convert OHLCV candles to the pandas DataFrame format Kronos expects."""

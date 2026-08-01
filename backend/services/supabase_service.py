@@ -60,9 +60,7 @@ class SupabaseService:
             key = os.getenv("SUPABASE_KEY", "")
             self._available = bool(url and key)
             if not self._available:
-                logger.info(
-                    "Supabase not configured: set SUPABASE_URL and SUPABASE_KEY env vars"
-                )
+                logger.info("Supabase not configured: set SUPABASE_URL and SUPABASE_KEY env vars")
         except ImportError:
             self._available = False
             logger.debug("supabase-py not installed")
@@ -289,6 +287,7 @@ class SupabaseService:
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
+
 
 def get_supabase_service() -> SupabaseService | None:
     """Get the Supabase service if available, otherwise None."""

@@ -446,7 +446,6 @@ async def _vision_node_fn(state: AgentState) -> dict[str, Any]:
                 }
             )
 
-
     agent = VisionAgent()
 
     # Check available models from config for fallback tracking

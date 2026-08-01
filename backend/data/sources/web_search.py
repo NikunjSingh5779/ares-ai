@@ -23,9 +23,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/120.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
 DEFAULT_TIMEOUT = 15  # seconds
@@ -34,6 +32,7 @@ DEFAULT_TIMEOUT = 15  # seconds
 # ---------------------------------------------------------------------------
 # Search Result Model
 # ---------------------------------------------------------------------------
+
 
 class SearchResult:
     """A single web search result."""
@@ -62,6 +61,7 @@ class SearchResult:
 # ---------------------------------------------------------------------------
 # DuckDuckGo Web Search
 # ---------------------------------------------------------------------------
+
 
 class DuckDuckGoSearcher:
     """Financial web search via DuckDuckGo.
@@ -259,6 +259,7 @@ class DuckDuckGoSearcher:
 # ---------------------------------------------------------------------------
 # WebSearchSource (composable with the existing data source registry)
 # ---------------------------------------------------------------------------
+
 
 class WebSearchProvider:
     """Web search provider integrated into ARES data pipeline.

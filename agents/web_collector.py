@@ -52,6 +52,7 @@ class WebCollectorOutput(BaseModel):
 # Web Collector Agent
 # ---------------------------------------------------------------------------
 
+
 class WebCollectorAgent(BaseAgent[WebCollectorInput, WebCollectorOutput]):
     """Agent for web data collection using browser automation.
 
@@ -203,6 +204,7 @@ class WebCollectorAgent(BaseAgent[WebCollectorInput, WebCollectorOutput]):
 # ---------------------------------------------------------------------------
 # Simplified HTTP-based data collector (no browser needed)
 # ---------------------------------------------------------------------------
+
 
 class SimpleDataCollector:
     """Lightweight HTTP-based data collector for simple scraping tasks.

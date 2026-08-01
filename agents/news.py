@@ -139,9 +139,7 @@ and return your sentiment analysis as valid JSON matching the specified schema."
                 from backend.data.sources.web_search import get_web_search_provider
 
                 provider = get_web_search_provider()
-                web_results = await provider.searcher.search_financial_news(
-                    inputs.symbol, max_results=5
-                )
+                web_results = await provider.searcher.search_financial_news(inputs.symbol, max_results=5)
                 if web_results:
                     news_items = [
                         {

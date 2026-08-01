@@ -168,17 +168,11 @@ class LiveTradingEngine:
                     "strategy_name": strategy_name,
                 }
 
-                trades_count = (
-                    await session.execute(_TRADES_COUNT_SQL, params)
-                ).scalar() or 0
+                trades_count = (await session.execute(_TRADES_COUNT_SQL, params)).scalar() or 0
 
-                days_count = (
-                    await session.execute(_DAYS_COUNT_SQL, params)
-                ).scalar() or 0
+                days_count = (await session.execute(_DAYS_COUNT_SQL, params)).scalar() or 0
 
-                total_pnl_raw = (
-                    await session.execute(_TOTAL_PNL_SQL, params)
-                ).scalar()
+                total_pnl_raw = (await session.execute(_TOTAL_PNL_SQL, params)).scalar()
                 total_pnl = float(total_pnl_raw) if total_pnl_raw is not None else 0.0
 
                 # Portfolio-level drawdown — not strategy-scoped (see docstring).

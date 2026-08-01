@@ -188,10 +188,16 @@ class TestWorkerEdgeCases:
 
         worker = PaperTradingWorker(engine, ingestor, lambda: session)  # type: ignore[arg-type]
         trade = ClosedTrade(
-            symbol="BTC-USD", side="long", quantity=1.0,
-            entry_price=50000.0, exit_price=55000.0,
-            entry_at=datetime.now(UTC), exit_at=datetime.now(UTC),
-            pnl=5000.0, pnl_pct=10.0, exit_reason="take_profit",
+            symbol="BTC-USD",
+            side="long",
+            quantity=1.0,
+            entry_price=50000.0,
+            exit_price=55000.0,
+            entry_at=datetime.now(UTC),
+            exit_at=datetime.now(UTC),
+            pnl=5000.0,
+            pnl_pct=10.0,
+            exit_reason="take_profit",
         )
         with patch("paper_trading.worker.logger") as mock_logger:
             await worker._persist_closed_trades([trade])
@@ -213,10 +219,16 @@ class TestWorkerEdgeCases:
 
         worker = PaperTradingWorker(engine, ingestor, session_factory)
         trade = ClosedTrade(
-            symbol="BTC-USD", side="long", quantity=1.0,
-            entry_price=50000.0, exit_price=55000.0,
-            entry_at=datetime.now(UTC), exit_at=datetime.now(UTC),
-            pnl=5000.0, pnl_pct=10.0, exit_reason="take_profit",
+            symbol="BTC-USD",
+            side="long",
+            quantity=1.0,
+            entry_price=50000.0,
+            exit_price=55000.0,
+            entry_at=datetime.now(UTC),
+            exit_at=datetime.now(UTC),
+            pnl=5000.0,
+            pnl_pct=10.0,
+            exit_reason="take_profit",
         )
         await worker._persist_closed_trades([trade])
 
@@ -230,10 +242,16 @@ class TestWorkerEdgeCases:
 
         worker = PaperTradingWorker(engine, ingestor, session_factory)
         trade = ClosedTrade(
-            symbol="BTC-USD", side="long", quantity=1.0,
-            entry_price=50000.0, exit_price=55000.0,
-            entry_at=datetime.now(UTC), exit_at=datetime.now(UTC),
-            pnl=5000.0, pnl_pct=10.0, exit_reason="take_profit",
+            symbol="BTC-USD",
+            side="long",
+            quantity=1.0,
+            entry_price=50000.0,
+            exit_price=55000.0,
+            entry_at=datetime.now(UTC),
+            exit_at=datetime.now(UTC),
+            pnl=5000.0,
+            pnl_pct=10.0,
+            exit_reason="take_profit",
         )
         # Should not raise — exception is caught and logged
         await worker._persist_closed_trades([trade])

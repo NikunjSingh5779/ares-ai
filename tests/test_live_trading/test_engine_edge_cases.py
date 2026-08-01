@@ -25,9 +25,7 @@ def mock_exchange():
     exchange.is_connected = True
     exchange.connect = AsyncMock(return_value=True)
     exchange.disconnect = AsyncMock()
-    exchange.get_balance = AsyncMock(
-        return_value=MagicMock(total={"BTC": 0.1, "USD": 50000.0})
-    )
+    exchange.get_balance = AsyncMock(return_value=MagicMock(total={"BTC": 0.1, "USD": 50000.0}))
     exchange.cancel_order = AsyncMock(return_value=True)
     exchange.cancel_all_orders = AsyncMock()
     return exchange
@@ -115,10 +113,10 @@ class TestEngineQueryPaperRecord:
 
         mock_session = AsyncMock()
         mock_session.execute.side_effect = [
-            mock_result,    # trades count → 15
-            mock_result,    # days count → 15
+            mock_result,  # trades count → 15
+            mock_result,  # days count → 15
             mock_result_pnl,  # total_pnl → 250.50
-            mock_result_dd,   # max_drawdown → 8.5
+            mock_result_dd,  # max_drawdown → 8.5
         ]
         mock_session.__aenter__.return_value = mock_session
 
@@ -145,10 +143,10 @@ class TestEngineQueryPaperRecord:
 
         mock_session = AsyncMock()
         mock_session.execute.side_effect = [
-            mock_result,   # trades count → 5
-            mock_result,   # days count → 5
-            mock_null,     # total_pnl → None
-            mock_null,     # max_drawdown → None
+            mock_result,  # trades count → 5
+            mock_result,  # days count → 5
+            mock_null,  # total_pnl → None
+            mock_null,  # max_drawdown → None
         ]
         mock_session.__aenter__.return_value = mock_session
 

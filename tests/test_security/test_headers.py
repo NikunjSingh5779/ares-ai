@@ -200,9 +200,7 @@ def test_csp_reflects_settings_change_mid_test(monkeypatch) -> None:
     with TestClient(app) as client:
         resp = client.get("/test-csp-dynamic")
         csp_before = resp.headers.get("content-security-policy", "")
-        assert original_connect_src in csp_before, (
-            f"Original connect-src {original_connect_src!r} should appear in CSP"
-        )
+        assert original_connect_src in csp_before, f"Original connect-src {original_connect_src!r} should appear in CSP"
 
     # Change the setting mid-test
     monkeypatch.setattr(settings, "csp_connect_src", "wss://custom.example.com")
@@ -210,9 +208,7 @@ def test_csp_reflects_settings_change_mid_test(monkeypatch) -> None:
     with TestClient(app) as client:
         resp = client.get("/test-csp-dynamic")
         csp_after = resp.headers.get("content-security-policy", "")
-        assert "wss://custom.example.com" in csp_after, (
-            "CSP should reflect the updated csp_connect_src"
-        )
+        assert "wss://custom.example.com" in csp_after, "CSP should reflect the updated csp_connect_src"
         # The old value should no longer be present
         assert original_connect_src not in csp_after, (
             "CSP should NOT contain the original connect-src after it was changed"
