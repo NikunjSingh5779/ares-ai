@@ -133,6 +133,23 @@ class VisionOutput(BaseModel):
     rationale: str = Field(...)
 
 
+class KronosOutput(BaseModel):
+    """Output from the Kronos Market Predictor Agent.
+
+    Provides ML-powered OHLCV price predictions using the Kronos foundation model.
+    """
+
+    confidence: float = Field(..., ge=0, le=100, description="Confidence score (0-100)")
+    direction: str = Field(default="flat", pattern="^(long|short|flat)$")
+    bias: str = Field(default="neutral", pattern="^(bullish|bearish|neutral)$", description="Predicted trend bias")
+    predicted_prices: list[float] = Field(default_factory=list, description="Predicted future close prices")
+    predicted_change_pct: float = Field(default=0.0, description="Predicted price change percentage")
+    predicted_range_pct: float = Field(default=0.0, description="Predicted price range as % of current price")
+    current_price: float = Field(default=0.0, description="Current/recent price")
+    model_used: str = Field(default="", description="Model identifier or 'trend_fallback'/'none'")
+    rationale: str = Field(default="", description="Explanation of the prediction")
+
+
 class PipelineStatus(BaseModel):
     """Tracks which agents have been executed and their results."""
 
@@ -146,6 +163,34 @@ class PipelineStatus(BaseModel):
     @property
     def all_completed(self) -> bool:
         return len(self.failed_nodes) == 0 and len(self.completed_nodes) > 0
+
+
+def _merge_pipeline_status(a: PipelineStatus, b: PipelineStatus) -> PipelineStatus:
+    """Merge concurrent PipelineStatus updates from parallel graph branches.
+
+    During fan-out (e.g. market_analyst and vision running in parallel),
+    both nodes may return a pipeline_status update in the same super-step.
+    This reducer merges them safely by combining completed/failed/skipped
+    lists and taking the latest current_node.
+    """
+    return PipelineStatus(
+        current_node=b.current_node or a.current_node,
+        completed_nodes=list(set(a.completed_nodes + b.completed_nodes)),
+        failed_nodes=list(set(a.failed_nodes + b.failed_nodes)),
+        skipped_nodes=list(set(a.skipped_nodes + b.skipped_nodes)),
+        start_time=a.start_time or b.start_time,
+        end_time=b.end_time or a.end_time,
+    )
+
+
+def _merge_dicts(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    """Merge two dicts from parallel graph branches (shallow merge, b wins on conflict)."""
+    return {**a, **b}
+
+
+def _merge_lists(a: list[Any], b: list[Any]) -> list[Any]:
+    """Concatenate two lists from parallel graph branches."""
+    return a + b
 
 
 class AgentState(BaseModel):
@@ -174,6 +219,7 @@ class AgentState(BaseModel):
     journal: JournalOutput | None = None
     reflection: ReflectionOutput | None = None
     memory: MemoryOutput | None = None
+    kronos: KronosOutput | None = None
 
     # Pipeline metadata
     pipeline_status: PipelineStatus = Field(default_factory=PipelineStatus)

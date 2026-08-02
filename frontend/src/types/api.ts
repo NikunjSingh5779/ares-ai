@@ -8,8 +8,17 @@
 export interface MarketAnalystOutput {
   confidence: number;
   direction: "long" | "short" | "flat";
-  indicators: Record<string, number>;
+  bias: "bullish" | "bearish" | "neutral";
+  setup: string;
+  entry_zone: string;
+  stop_loss: string;
+  targets: string[];
+  invalidation: string;
+  confluence: string;
+  indicators: Record<string, number | string>;
   rationale: string;
+  used_fallback?: boolean;
+  fallback_reason?: string | null;
 }
 
 export interface QuantOutput {

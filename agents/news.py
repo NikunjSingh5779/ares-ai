@@ -130,17 +130,41 @@ and return your sentiment analysis as valid JSON matching the specified schema."
         """Execute the news agent logic."""
         logger.info(f"Running NewsAgent for {inputs.symbol}")
 
-        # 1. Fetch News
+        # 1. Fetch News (try Yahoo first, then web search fallback)
         news_items = await self.fetch_news(inputs.symbol, count=15)
 
         if not news_items:
-            # Fast-path fallback if no news is available
+            # Try web search as fallback
+            try:
+                from backend.data.sources.web_search import get_web_search_provider
+
+                provider = get_web_search_provider()
+                web_results = await provider.searcher.search_financial_news(inputs.symbol, max_results=5)
+                if web_results:
+                    news_items = [
+                        {
+                            "title": r.get("title", ""),
+                            "publisher": r.get("source", "Web"),
+                            "link": r.get("url", ""),
+                        }
+                        for r in web_results
+                        if r.get("title")
+                    ]
+                    logger.info(
+                        "Using web search fallback for news",
+                        extra={"symbol": inputs.symbol, "count": len(news_items)},
+                    )
+            except Exception as e:
+                logger.debug(f"Web search news fallback failed: {e}")
+
+        if not news_items:
+            # Fast-path fallback if no news is available from any source
             return NewsOutput(
                 sentiment=0.0,
                 key_events=["No recent news found"],
                 impact_scores={},
                 sources=[],
-                rationale="No news was returned by the provider.",
+                rationale="No news was returned by any provider (Yahoo Finance + web search).",
             )
 
         # 2. Build prompt

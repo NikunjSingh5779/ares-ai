@@ -148,6 +148,10 @@ class TestMarketDataRequest:
         with pytest.raises(ValidationError):
             MarketDataRequest(symbol="BTC-USD", interval="10m")
 
+    def test_invalid_source_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            MarketDataRequest(symbol="BTC-USD", source="unknown_source")
+
 
 class TestMarketDataResult:
     def test_defaults(self) -> None:

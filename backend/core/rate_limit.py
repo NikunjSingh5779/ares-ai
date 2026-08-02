@@ -4,6 +4,23 @@ Uses a simple token-bucket algorithm per endpoint.
 Configured via ``settings.api_rate_limit_per_minute``.
 
 POST endpoints get the default limit; GET endpoints get 2x.
+
+.. caution::
+
+    Buckets are keyed by ``{method}:{path}`` **only** — they are shared
+    across *all* clients.  This is **aggregate-only** protection that
+    prevents a burst from overwhelming a single endpoint, but it does
+    **not** provide per-client isolation:
+
+    * A burst of legitimate traffic from many different users can exhaust
+      an endpoint's shared quota and lock out other users.
+    * A single abusive client on a low-traffic endpoint is not
+      distinguished from legitimate users of that same endpoint.
+
+    For per-client rate limiting (e.g. login brute-force protection), use
+    :class:`backend.core.login_rate_limit.LoginRateLimiter` instead,
+    which extracts the real client IP from ``X-Forwarded-For`` with
+    trusted-proxy awareness and keys buckets by (email, IP) and by IP.
 """
 
 from __future__ import annotations

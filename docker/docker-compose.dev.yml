@@ -1,0 +1,83 @@
+# =============================================================================
+# ARES AI — Infrastructure-only Docker Compose (development)
+# =============================================================================
+# Starts only Postgres, Redis, and ChromaDB — no backend/frontend containers.
+# Use this when running the backend natively on your host machine while
+# relying on dockerized infra services.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.dev.yml up -d
+#   docker compose -f docker/docker-compose.dev.yml down
+# =============================================================================
+
+name: ares-ai-infra
+
+services:
+  # ---- Database ----
+  postgres:
+    image: postgres:16-alpine
+    container_name: ares-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ares}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+      POSTGRES_DB: ${POSTGRES_DB:-ares_ai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ares} -d ${POSTGRES_DB:-ares_ai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ares-network
+
+  # ---- Cache ----
+  redis:
+    image: redis:7-alpine
+    container_name: ares-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ares-network
+
+  # ---- Vector Database ----
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: ares-chromadb
+    restart: unless-stopped
+    ports:
+      - "${CHROMA_PORT:-8001}:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma-data
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - chromadb_data:/chroma/chroma-data
+    healthcheck:
+      disable: true
+    networks:
+      - ares-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  chromadb_data:
+    driver: local
+
+networks:
+  ares-network:
+    driver: bridge

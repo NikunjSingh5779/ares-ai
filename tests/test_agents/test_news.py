@@ -1,4 +1,5 @@
 import json
+import unittest
 from unittest.mock import AsyncMock
 
 import pytest
@@ -82,7 +83,12 @@ async def test_news_agent_json_fallback(news_agent, mock_router):
 async def test_news_agent_no_news_fallback(news_agent, mock_router):
     news_agent.fetch_news = AsyncMock(return_value=[])
 
-    result = await news_agent.process(NewsInput(symbol="BTC-USD"))
+    # Also mock web search fallback to ensure we test the no-news path
+    with unittest.mock.patch(
+        "backend.data.sources.web_search.DuckDuckGoSearcher.search_financial_news",
+        new=AsyncMock(return_value=[]),
+    ):
+        result = await news_agent.process(NewsInput(symbol="BTC-USD"))
 
     # Should short-circuit without calling router
     mock_router.execute.assert_not_called()

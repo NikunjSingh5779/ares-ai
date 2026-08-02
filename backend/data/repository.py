@@ -104,11 +104,13 @@ class MarketDataRepository:
         params = [c.model_dump_for_db() for c in candles]
         for p in params:
             # Ensure valid interval (schema constraint)
-            assert p["interval"] in ("1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w", "1mo"), (
-                f"Invalid interval: {p['interval']}"
-            )
+            valid_intervals = ("1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w", "1mo")
+            if p["interval"] not in valid_intervals:
+                raise ValueError(f"Invalid interval: {p['interval']}")
             # Ensure valid source
-            assert p["source"] in ("yahoo", "coingecko", "binance"), f"Invalid source: {p['source']}"
+            valid_sources = ("yahoo", "coingecko", "binance")
+            if p["source"] not in valid_sources:
+                raise ValueError(f"Invalid source: {p['source']}")
 
         await session.execute(self.INSERT_SQL, params)
         return len(candles)

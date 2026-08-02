@@ -152,8 +152,24 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         max_position_size = inputs.risk_output.get("max_position_size")
         stop_loss = inputs.risk_output.get("stop_loss")
         strategy_name = inputs.market_analyst_output.get("strategy_name", "")
-        # Use risk's max_position_size, or default to 1 unit
-        quantity = float(max_position_size) if max_position_size else 1.0
+        # A missing/zero position size is a hard reject, never a fallback
+        # quantity: silently defaulting to "1 unit" here would ignore the
+        # 2%-of-portfolio sizing rule entirely and could send an outsized
+        # order (e.g. 1 full BTC) for whatever the Risk Agent approved
+        # without properly sizing.
+        try:
+            quantity = float(max_position_size) if max_position_size is not None else 0.0
+        except (TypeError, ValueError):
+            quantity = 0.0
+        if quantity <= 0:
+            return ExecutionOutput(
+                executed=False,
+                rationale=(
+                    f"Risk Agent approved {inputs.symbol} but provided no valid position size "
+                    f"(max_position_size={max_position_size!r}) — rejecting trade rather than "
+                    "guessing a quantity"
+                ),
+            )
         # --- Execution Routing ---
         parts = []
         is_live_auto = False
@@ -193,114 +209,150 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                     fill_price=fill_price,
                     rationale=f"Live trade exception: {str(e)}",
                 )
-        else:
-            # PAPER EXECUTION
-            result = self.engine.execute_signal(
-                symbol=inputs.symbol,
-                side=direction,
-                quantity=quantity,
-                entry_price=fill_price,
-                stop_loss=stop_loss,
-                take_profit=None,
-                strategy_name=strategy_name,
+        # PAPER EXECUTION (the live-execution branch above always returns,
+        # so control only reaches here for paper trades — but the block is
+        # scoped explicitly rather than relying on that as an invariant.)
+        result = self.engine.execute_signal(
+            symbol=inputs.symbol,
+            side=direction,
+            quantity=quantity,
+            entry_price=fill_price,
+            stop_loss=stop_loss,
+            take_profit=None,
+            strategy_name=strategy_name,
+        )
+        if not result.get("accepted", False):
+            return ExecutionOutput(
+                executed=False,
+                fill_price=fill_price,
+                rationale=f"Paper trade not accepted: {result.get('reason', 'unknown')}",
             )
-            if not result.get("accepted", False):
-                return ExecutionOutput(
-                    executed=False,
-                    fill_price=fill_price,
-                    rationale=f"Paper trade not accepted: {result.get('reason', 'unknown')}",
-                )
-            position_id = result.get("position_id")
-            closed_trade = result.get("closed_trade")
-            parts.append(f"PAPER EXECUTED {direction} position for {inputs.symbol} at ${fill_price:.2f}")
-            if result.get("reversal"):
-                parts.append("(reversal — closed existing opposite position)")
-            if closed_trade:
-                pnl = closed_trade.get("pnl", 0)
-                parts.append(f"Closed previous trade with PnL=${pnl:.2f}")
-            # --- Persist to DB ---
-        session_factory = getattr(self, "session_factory", None)
-        if session_factory is not None and position_id:
-            try:
-                async with session_factory() as session:
-                    ids = await self._get_default_ids(session)
-                    if ids:
-                        account_id, portfolio_id = ids
-                        # Handle reversal
-                        if result.get("reversal") and closed_trade:
-                            await session.execute(
-                                text("""
-                                UPDATE positions
-                                SET is_open = false, closed_at = NOW()
-                                WHERE symbol = :symbol
-                                  AND is_open = true
-                                  AND portfolio_id = :portfolio_id
-                            """),
-                                {"symbol": inputs.symbol, "portfolio_id": portfolio_id},
-                            )
-                            await session.execute(
-                                text("""
-                                INSERT INTO trade_history
-                                (
-                                    account_id, symbol, side, quantity, entry_price,
-                                    exit_price, entry_at, exit_at, pnl, pnl_pct,
-                                    is_closed, strategy_name
-                                )
-                                VALUES
-                                (
-                                    :account_id, :symbol, :side, :quantity, :entry_price,
-                                    :exit_price, :entry_at, NOW(), :pnl, :pnl_pct,
-                                    true, :strategy_name
-                                )
-                            """),
-                                {
-                                    "account_id": account_id,
-                                    "symbol": closed_trade.get("symbol"),
-                                    "side": closed_trade.get("side"),
-                                    "quantity": closed_trade.get("quantity"),
-                                    "entry_price": closed_trade.get("entry_price"),
-                                    "exit_price": closed_trade.get("exit_price"),
-                                    "entry_at": closed_trade.get("entry_at"),
-                                    "pnl": closed_trade.get("pnl"),
-                                    "pnl_pct": closed_trade.get("pnl_pct"),
-                                    "strategy_name": closed_trade.get("strategy_name", ""),
-                                },
-                            )
-                        # Insert new position
-                        await session.execute(
-                            text("""
-                            INSERT INTO positions
-                            (
-                                id, portfolio_id, symbol, asset_type, quantity,
-                                entry_price, current_price, market_value, stop_loss,
-                                take_profit, strategy_name
-                            )
-                            VALUES
-                            (
-                                :id, :portfolio_id, :symbol, 'crypto', :quantity,
-                                :entry_price, :entry_price, :market_value, :stop_loss,
-                                :take_profit, :strategy_name
-                            )
-                        """),
-                            {
-                                "id": position_id,
-                                "portfolio_id": portfolio_id,
-                                "symbol": inputs.symbol,
-                                "quantity": quantity,
-                                "entry_price": fill_price,
-                                "market_value": quantity * fill_price,
-                                "stop_loss": stop_loss,
-                                "take_profit": None,
-                                "strategy_name": strategy_name,
-                            },
-                        )
-                        await session.commit()
-            except Exception as e:
-                logger.error(f"Unhandled exception: {e}", exc_info=True)
-                parts.append(f"(DB persistence failed: {str(e)})")
+        position_id = result.get("position_id")
+        closed_trade = result.get("closed_trade")
+        parts.append(f"PAPER EXECUTED {direction} position for {inputs.symbol} at ${fill_price:.2f}")
+        if result.get("reversal"):
+            parts.append("(reversal — closed existing opposite position)")
+        if closed_trade:
+            pnl = closed_trade.get("pnl", 0)
+            parts.append(f"Closed previous trade with PnL=${pnl:.2f}")
+
+        # --- Persist to DB ---
+        await self._persist_paper_trade(
+            inputs=inputs,
+            position_id=position_id,
+            quantity=quantity,
+            fill_price=fill_price,
+            stop_loss=stop_loss,
+            strategy_name=strategy_name,
+            reversal=bool(result.get("reversal")),
+            closed_trade=closed_trade,
+            parts=parts,
+        )
+
         return ExecutionOutput(
             executed=True,
             order_id=position_id,
             fill_price=fill_price,
             rationale=". ".join(parts),
         )
+
+    async def _persist_paper_trade(
+        self,
+        *,
+        inputs: ExecutionInput,
+        position_id: str | None,
+        quantity: float,
+        fill_price: float,
+        stop_loss: float | None,
+        strategy_name: str,
+        reversal: bool,
+        closed_trade: dict[str, Any] | None,
+        parts: list[str],
+    ) -> None:
+        """Persist a paper trade's new position (and any closed reversal leg) to the DB.
+
+        Best-effort: a persistence failure is logged and appended to
+        ``parts`` for the audit rationale, but never raised — the in-memory
+        paper trade has already been accepted at this point.
+        """
+        session_factory = getattr(self, "session_factory", None)
+        if session_factory is None or not position_id:
+            return
+        try:
+            async with session_factory() as session:
+                ids = await self._get_default_ids(session)
+                if not ids:
+                    return
+                account_id, portfolio_id = ids
+                # Handle reversal
+                if reversal and closed_trade:
+                    await session.execute(
+                        text("""
+                        UPDATE positions
+                        SET is_open = false, closed_at = NOW()
+                        WHERE symbol = :symbol
+                          AND is_open = true
+                          AND portfolio_id = :portfolio_id
+                    """),
+                        {"symbol": inputs.symbol, "portfolio_id": portfolio_id},
+                    )
+                    await session.execute(
+                        text("""
+                        INSERT INTO trade_history
+                        (
+                            account_id, symbol, side, quantity, entry_price,
+                            exit_price, entry_at, exit_at, pnl, pnl_pct,
+                            is_closed, strategy_name
+                        )
+                        VALUES
+                        (
+                            :account_id, :symbol, :side, :quantity, :entry_price,
+                            :exit_price, :entry_at, NOW(), :pnl, :pnl_pct,
+                            true, :strategy_name
+                        )
+                    """),
+                        {
+                            "account_id": account_id,
+                            "symbol": closed_trade.get("symbol"),
+                            "side": closed_trade.get("side"),
+                            "quantity": closed_trade.get("quantity"),
+                            "entry_price": closed_trade.get("entry_price"),
+                            "exit_price": closed_trade.get("exit_price"),
+                            "entry_at": closed_trade.get("entry_at"),
+                            "pnl": closed_trade.get("pnl"),
+                            "pnl_pct": closed_trade.get("pnl_pct"),
+                            "strategy_name": closed_trade.get("strategy_name", ""),
+                        },
+                    )
+                # Insert new position
+                await session.execute(
+                    text("""
+                    INSERT INTO positions
+                    (
+                        id, portfolio_id, symbol, asset_type, quantity,
+                        entry_price, current_price, market_value, stop_loss,
+                        take_profit, strategy_name
+                    )
+                    VALUES
+                    (
+                        :id, :portfolio_id, :symbol, 'crypto', :quantity,
+                        :entry_price, :entry_price, :market_value, :stop_loss,
+                        :take_profit, :strategy_name
+                    )
+                """),
+                    {
+                        "id": position_id,
+                        "portfolio_id": portfolio_id,
+                        "symbol": inputs.symbol,
+                        "quantity": quantity,
+                        "entry_price": fill_price,
+                        "market_value": quantity * fill_price,
+                        "stop_loss": stop_loss,
+                        "take_profit": None,
+                        "strategy_name": strategy_name,
+                    },
+                )
+                await session.commit()
+        except Exception as e:
+            logger.error(f"Unhandled exception: {e}", exc_info=True)
+            parts.append(f"(DB persistence failed: {str(e)})")

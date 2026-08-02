@@ -48,9 +48,31 @@ dependencies = [
     # Data Science & Time Series
     "pandas>=2.0.0",
     "statsmodels>=0.14.0",
+
+    # Web Search (DuckDuckGo)
+    "duckduckgo-search>=4.1.1",
+
+    # Web Data Collection (browser-use - optional, installed on demand)
+    # "browser-use>=0.1.0",
+
+    # Supabase client (optional backend)
+    # "supabase>=2.0.0",
 ]
 
 [project.optional-dependencies]
+ml = [
+    "torch>=2.0.0",
+    "huggingface_hub>=0.33.0",
+    "safetensors>=0.6.0",
+    "einops>=0.8.0",
+]
+web-automation = [
+    "browser-use>=0.1.0",
+    "playwright>=1.40.0",
+]
+supabase = [
+    "supabase>=2.0.0",
+]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",

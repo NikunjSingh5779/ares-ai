@@ -1,19 +1,19 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import "@fontsource/space-grotesk/400.css";
+import "@fontsource/space-grotesk/500.css";
+import "@fontsource/space-grotesk/600.css";
+import "@fontsource/space-grotesk/700.css";
+import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource/jetbrains-mono/500.css";
+import "@fontsource/jetbrains-mono/600.css";
+import "@fontsource/jetbrains-mono/700.css";
 import { Sidebar } from "@/components/Sidebar";
 import "./globals.css";
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-space-grotesk",
-  display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-  display: "swap",
-});
+const style = {
+  "--font-space-grotesk": "Space Grotesk",
+  "--font-jetbrains-mono": "JetBrains Mono",
+} as React.CSSProperties;
 
 export const metadata: Metadata = {
   title: "ARES AI — Trading Dashboard",
@@ -29,7 +29,8 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
+      className="dark"
+      style={style}
       suppressHydrationWarning
     >
       <body className="flex h-screen overflow-hidden bg-[var(--color-bg)]" suppressHydrationWarning>

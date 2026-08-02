@@ -148,6 +148,49 @@ class TestExecutionAgent:
         assert result.filled_quantity in (1.5, None)  # from risk max_position_size
         assert "EXECUTED" in result.rationale.upper()
 
+    async def test_rejects_when_approved_but_no_position_size(self, mock_live_engine) -> None:
+        """Regression guard: if the Risk Agent approves a trade but supplies
+        no valid position size (e.g. price data was missing when it ran),
+        the executor must reject the trade rather than silently defaulting
+        to a hardcoded 1.0-unit quantity — which for an asset like BTC could
+        be an enormous, un-sized order.
+        """
+        engine = PaperTradingEngine()
+        agent = ExecutionAgent(engine=engine, live_engine=mock_live_engine)
+
+        risk_output = approved_risk_output()
+        risk_output["max_position_size"] = None
+
+        result = await agent.process(
+            ExecutionInput(
+                symbol="BTC-USD",
+                candles=default_candles(),
+                market_analyst_output=long_market_analyst(),
+                risk_output=risk_output,
+            )
+        )
+        assert result.executed is False
+        assert result.order_id is None
+        assert "no valid position size" in result.rationale.lower()
+
+    async def test_rejects_when_approved_but_zero_position_size(self, mock_live_engine) -> None:
+        """Same as above, but for an explicit 0 rather than None."""
+        engine = PaperTradingEngine()
+        agent = ExecutionAgent(engine=engine, live_engine=mock_live_engine)
+
+        risk_output = approved_risk_output()
+        risk_output["max_position_size"] = 0
+
+        result = await agent.process(
+            ExecutionInput(
+                symbol="BTC-USD",
+                candles=default_candles(),
+                market_analyst_output=long_market_analyst(),
+                risk_output=risk_output,
+            )
+        )
+        assert result.executed is False
+
     async def test_executed_false_no_risk_output(self, mock_live_engine) -> None:
         """executed=False when no risk output provided."""
         engine = PaperTradingEngine()

@@ -50,22 +50,17 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add security headers to every response."""
+    """Add security headers to every response.
 
-    CSP_DEFAULT = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data: https:; "
-        "font-src 'self' data:; "
-        f"connect-src 'self' {settings.csp_connect_src}; "
-        "frame-src 'none'; "
-        "object-src 'none'; "
-        "base-uri 'self'"
-    )
+    ``Content-Security-Policy`` is built per-request from
+    ``settings.csp_connect_src`` so that configuration changes are
+    reflected immediately and the component is testable via
+    monkey-patching.  All other headers are static.
+    """
 
-    HEADERS = {
-        "Content-Security-Policy": CSP_DEFAULT,
+    # Static headers — built once at class body time since they
+    # don't depend on runtime settings.
+    _STATIC_HEADERS: dict[str, str] = {
         "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
@@ -73,8 +68,29 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     }
 
+    @staticmethod
+    def _build_csp_header() -> str:
+        """Build the Content-Security-Policy value from current settings.
+
+        Called on every request so that a settings change (e.g. a test
+        monkey-patch or a future dynamic-config mechanism) is reflected
+        immediately.
+        """
+        return (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' data:; "
+            f"connect-src 'self' {settings.csp_connect_src}; "
+            "frame-src 'none'; "
+            "object-src 'none'; "
+            "base-uri 'self'"
+        )
+
     async def dispatch(self, request: Request, call_next: Callable[..., Any]) -> Response:
         response = await call_next(request)
-        for header, value in self.HEADERS.items():
+        response.headers["Content-Security-Policy"] = self._build_csp_header()
+        for header, value in self._STATIC_HEADERS.items():
             response.headers[header] = value
         return response  # type: ignore[no-any-return]

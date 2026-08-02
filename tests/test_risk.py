@@ -343,6 +343,93 @@ class TestParseRiskResponse:
         result = _parse_risk_response(None, fallback)
         assert result == fallback
 
+    # --- Safety backstop: LLM output is never trusted verbatim ----------
+
+    def test_llm_approval_overridden_when_risk_score_exceeds_max(self) -> None:
+        """An internally inconsistent LLM response (approved=true despite a
+        risk_score above MAX_RISK_SCORE) must be overridden to rejected —
+        the model's bare 'approved' claim is not a deterministic guarantee.
+        """
+        response = (
+            '{"approved": true, "max_position_size": 50.0, "stop_loss": 90.0, '
+            '"risk_score": 95.0, "reasons": ["Looks fine"], '
+            '"rationale": "Model claims low risk"}'
+        )
+        fallback: dict[str, Any] = {
+            "approved": True,
+            "max_position_size": 10.0,
+            "stop_loss": 90.0,
+            "risk_score": 50.0,
+            "reasons": [],
+            "rationale": "fb",
+        }
+        result = _parse_risk_response(response, fallback)
+        assert result["approved"] is False
+        assert result["risk_score"] == 95.0
+        assert any("Overridden" in r for r in result["reasons"])
+
+    def test_llm_approval_honored_when_risk_score_within_max(self) -> None:
+        """Sanity check: a consistent, genuinely low-risk LLM response is
+        still honored — the backstop only fires on inconsistency."""
+        response = (
+            '{"approved": true, "max_position_size": 25.0, "stop_loss": 95.0, '
+            '"risk_score": 40.0, "reasons": ["Low volatility"], '
+            '"rationale": "Risk approved"}'
+        )
+        fallback: dict[str, Any] = {
+            "approved": False,
+            "max_position_size": None,
+            "stop_loss": None,
+            "risk_score": 100.0,
+            "reasons": [],
+            "rationale": "fb",
+        }
+        result = _parse_risk_response(response, fallback)
+        assert result["approved"] is True
+        assert result["risk_score"] == 40.0
+
+    def test_llm_cannot_override_explicit_consensus_rejection(self) -> None:
+        """A model must never be able to approve a trade that Consensus
+        explicitly rejected, no matter what it returns."""
+        response = (
+            '{"approved": true, "max_position_size": 50.0, "stop_loss": 90.0, '
+            '"risk_score": 10.0, "reasons": ["Looks great"], '
+            '"rationale": "Model insists this is fine"}'
+        )
+        fallback: dict[str, Any] = {
+            "approved": False,
+            "max_position_size": None,
+            "stop_loss": None,
+            "risk_score": 100.0,
+            "reasons": ["Consensus not approved"],
+            "rationale": "Risk rejected: upstream signals did not pass consensus",
+        }
+        result = _parse_risk_response(response, fallback, consensus_output={"approved": False})
+        assert result == fallback
+        assert result["approved"] is False
+
+    def test_missing_consensus_context_does_not_force_rejection(self) -> None:
+        """Regression guard: when consensus_output simply isn't supplied to
+        this call (e.g. a standalone unit test or caller), that must not be
+        conflated with an explicit rejection — the LLM's valid, consistent
+        output should still be honored.
+        """
+        response = (
+            '{"approved": true, "max_position_size": 20.0, "stop_loss": 95.0, '
+            '"risk_score": 35.0, "reasons": ["Good setup"], '
+            '"rationale": "Risk within acceptable range"}'
+        )
+        fallback: dict[str, Any] = {
+            "approved": False,
+            "max_position_size": None,
+            "stop_loss": None,
+            "risk_score": 100.0,
+            "reasons": ["Consensus not approved"],
+            "rationale": "fb",
+        }
+        result = _parse_risk_response(response, fallback, consensus_output=None)
+        assert result["approved"] is True
+
 
 # ---------------------------------------------------------------------------
 # RiskAgent Integration Tests

@@ -75,7 +75,7 @@ class TestMarketDataRepository:
             volume=0,
         )
 
-        with pytest.raises(AssertionError, match="Invalid interval"):
+        with pytest.raises(ValueError, match="Invalid interval"):
             await repo._do_insert(mock_session, [bad_candle])
 
     async def test_insert_validates_sources(self) -> None:
@@ -93,7 +93,7 @@ class TestMarketDataRepository:
             volume=0,
         )
 
-        with pytest.raises(AssertionError, match="Invalid source"):
+        with pytest.raises(ValueError, match="Invalid source"):
             await repo._do_insert(mock_session, [bad_candle])
 
     async def test_query_with_session(self) -> None:

@@ -23,6 +23,7 @@ from agents.improvement import (
     reset_engine,
 )
 from agents.journal import JournalAgent, JournalInput
+from agents.kronos_predictor import KronosPredictorAgent, KronosPredictorInput
 from agents.log import AgentLogger
 from agents.market_analyst import MarketAnalystAgent, MarketAnalystInput
 from agents.memory import MemoryAgent, MemoryInput
@@ -113,4 +114,7 @@ __all__ = [
     "VisionOutput",
     "PipelineStatus",
     "Supervisor",
+    "KronosPredictorAgent",
+    "KronosPredictorInput",
+    "KronosOutput",
 ]

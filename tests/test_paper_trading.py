@@ -356,3 +356,23 @@ class TestMultiSymbol:
 
         summary = engine.get_summary()
         assert summary.open_positions == 2
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestEdgeCases:
+    def test_insufficient_cash(self) -> None:
+        """submit_order with entry_price=0 yields 0 quantity → insufficient cash (line 154)."""
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        result = engine.execute_signal("BTC-USD", "long", 1.0, 0.0)
+        assert result["accepted"] is False
+
+    def test_check_sltp_skips_other_symbol(self, engine: PaperTradingEngine) -> None:
+        """check_sl_tp should skip positions for other symbols (line 242)."""
+        engine.execute_signal("ETH-USD", "long", 1.0, 2000.0)
+        closed = engine.check_sl_tp("BTC-USD", high=100000.0, low=0.0)
+        assert closed == []
+        assert len(engine._positions) == 1
