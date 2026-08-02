@@ -587,13 +587,20 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
             strategy_hint=inputs.strategy,
             market_analyst_result=inputs.market_analyst_result,
         )
-        # Step 4: Fall back to rule-based if needed
+        # Step 4: On LLM chain exhaustion return explicit UNAVAILABLE output.
+        # A rule-based fallback must never produce trade-eligible confidence —
+        # consensus sees confidence 0.0 / flat and rejects (item 9, no trade).
         if llm_result is None:
-            llm_result = _rule_based_quant(
-                inputs.symbol,
-                indicators,
-                strategy_hint=inputs.strategy,
-            )
+            return {
+                "confidence": 0.0,
+                "direction": "flat",
+                "expected_return": None,
+                "strategy_name": "neutral",
+                "params": {},
+                "rationale": f"Quant LLM chain exhausted for {inputs.symbol} — no trade.",
+                "used_fallback": True,
+                "fallback_reason": "llm_chain_exhausted",
+            }
         return llm_result
 
     async def _get_candles(self, inputs: QuantInput) -> list[OHLCVData]:
@@ -646,13 +653,17 @@ class QuantAgent(BaseAgent[QuantInput, QuantOutput]):
             max_tokens = 1024
         if not model_chain:
             return None
-        # Execute via model router
+        # Execute via model router, enforcing JSON Schema structured output and
+        # the per-model limits carried in AgentContext.model_preferences.
         router_result: RouterResult = await self.router.execute(
             model_chain=model_chain,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
             rpm=rpm,
+            schema_type=self.output_schema,
+            breaker_threshold=self.context.model_preferences.get("breaker_threshold", 3),
+            breaker_reset_seconds=self.context.model_preferences.get("breaker_reset_seconds", 300),
         )
         if router_result.fallback_used:
             primary_model = model_chain[0] if model_chain else "unknown"
