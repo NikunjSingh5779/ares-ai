@@ -404,16 +404,18 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
             indicators,
             inputs,
         )
-        # Step 3: Fall back to rule-based if needed
+        # Step 3: On LLM chain exhaustion return explicit REJECTED (unavailable).
+        # Risk never approves on exhaustion — a rejected output ensures the
+        # pipeline routes to journal/no-trade (item 9).
         if llm_result is None:
-            llm_result = _rule_based_risk(
-                inputs.symbol,
-                indicators,
-                market_analyst_output=inputs.market_analyst_output,
-                quant_output=inputs.quant_output,
-                consensus_output=inputs.consensus_output,
-                portfolio_value=inputs.portfolio_value,
-            )
+            return {
+                "approved": False,
+                "max_position_size": None,
+                "stop_loss": None,
+                "risk_score": 100.0,
+                "reasons": ["Risk LLM chain exhausted — no trade."],
+                "rationale": f"Risk LLM chain exhausted for {inputs.symbol} — trade rejected.",
+            }
         return llm_result
 
     async def _get_candles(self, inputs: RiskInput) -> list[OHLCVData]:
@@ -460,12 +462,16 @@ class RiskAgent(BaseAgent[RiskInput, RiskOutput]):
             model_chain = []
         if not model_chain:
             return None
+        # Enforce JSON Schema structured output and per-model limits.
         router_result: RouterResult = await self.router.execute(
             model_chain=model_chain,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
             rpm=rpm,
+            schema_type=self.output_schema,
+            breaker_threshold=self.context.model_preferences.get("breaker_threshold", 3),
+            breaker_reset_seconds=self.context.model_preferences.get("breaker_reset_seconds", 300),
         )
         if router_result.fallback_used:
             primary_model = model_chain[0] if model_chain else "unknown"

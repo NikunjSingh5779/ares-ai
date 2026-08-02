@@ -32,6 +32,12 @@ class RouterResult:
         self.fallback_used: bool = False
         self.degraded: bool = False
         self.errors: list[dict[str, Any]] = []
+        # Number of corrective (schema-violation) retries issued to the SAME
+        # model — item 11 requires this to be auditable/logged.
+        self.schema_corrections: int = 0
+        # When a ``schema_type`` is supplied, the validated Pydantic object (or
+        # None) goes here; ``response`` still holds the raw provider payload.
+        self.parsed: Any | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -41,6 +47,7 @@ class RouterResult:
             "total_latency_ms": self.total_latency_ms,
             "fallback_used": self.fallback_used,
             "degraded": self.degraded,
+            "schema_corrections": self.schema_corrections,
             "errors": self.errors,
         }
 
@@ -75,19 +82,33 @@ class ModelRouter:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         rpm: int = 20,
+        schema_type: type[Any] | None = None,
+        breaker_threshold: int = 3,
+        breaker_reset_seconds: float = 300.0,
     ) -> RouterResult:
         """Execute across the fallback chain.
+
         Args:
             model_chain: Ordered list of model IDs. First is primary.
             messages: Chat messages to send.
             temperature: Sampling temperature.
             max_tokens: Max tokens in response.
             rpm: Rate limit for each model.
+            schema_type: Optional Pydantic model used for JSON Schema structured
+                output. When provided, a single corrective (JSON-only) retry is
+                issued to the SAME model on an invalid parse, then the next
+                fallback is used.
+            breaker_threshold: per-model consecutive-failure threshold (honours
+                ``configs/models.yaml`` ``circuit_breaker_threshold``).
+            breaker_reset_seconds: breaker reset window (honours
+                ``circuit_breaker_reset_seconds``).
+
         Returns:
             RouterResult with success/failure, response, model used, etc.
         """
         result = RouterResult()
         start = time.monotonic()
+        json_schema = schema_type.model_json_schema() if schema_type is not None else None
         for i, model_id in enumerate(model_chain):
             is_fallback = i > 0
             attempt_info: dict[str, Any] = {
@@ -99,8 +120,8 @@ class ModelRouter:
             }
             model_start = time.monotonic()
             try:
-                # Get or create circuit breaker for this model
-                breaker = self.breakers.get(model_id)
+                # Get or create circuit breaker honouring per-model limits.
+                breaker = self.breakers.get_or_register(model_id, breaker_threshold, breaker_reset_seconds)
                 # Get or create rate-limit queue
                 queue = self.queues.get(model_id, rpm=rpm)
                 # Check circuit breaker first
@@ -128,6 +149,7 @@ class ModelRouter:
                             messages=messages,
                             temperature=temperature,
                             max_tokens=max_tokens,
+                            json_schema=json_schema,
                         ),
                         config=self.retry_config,
                         breaker=breaker,
@@ -136,9 +158,45 @@ class ModelRouter:
                     await queue.release()
                 attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
                 if retry_result.success:
+                    parsed_out: Any = None
+                    if schema_type is not None:
+                        content = self._extract_content(retry_result.result or {})
+                        parsed_out = self._validate_content(content, schema_type)
+                        if parsed_out is None:
+                            # One corrective JSON-only retry to the SAME model.
+                            result.schema_corrections += 1
+                            corrective_messages = [
+                                *messages,
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "Your previous output did not conform to the required JSON schema. "
+                                        "Correct it and return ONLY valid JSON matching the schema."
+                                    ),
+                                },
+                            ]
+                            try:
+                                corr_resp = await self.client.chat_completion(
+                                    model=model_id,
+                                    messages=corrective_messages,
+                                    temperature=temperature,
+                                    max_tokens=max_tokens,
+                                    json_schema=json_schema,
+                                )
+                                parsed_out = self._validate_content(self._extract_content(corr_resp), schema_type)
+                            except Exception as exc:  # noqa: BLE001 - fail to next fallback
+                                logger.error("Corrective retry failed for %s: %s", model_id, exc)
+                                parsed_out = None
+                            if parsed_out is None:
+                                attempt_info["error"] = "Invalid JSON/schema output after one corrective retry"
+                                attempt_info["error_type"] = "schema_error"
+                                attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
+                                result.errors.append(attempt_info)
+                                continue  # Try next model
                     elapsed = int((time.monotonic() - start) * 1000)
                     result.success = True
                     result.response = retry_result.result
+                    result.parsed = parsed_out
                     result.model_used = model_id
                     result.attempts = retry_result.attempts
                     result.total_latency_ms = elapsed
@@ -168,3 +226,21 @@ class ModelRouter:
             "usage": {"total_tokens": 0},
         }
         return result
+
+    @staticmethod
+    def _extract_content(response: dict[str, Any]) -> str | None:
+        """Extract the text content from an OpenAI-style chat payload."""
+        try:
+            return response["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    @staticmethod
+    def _validate_content(content: str | None, schema_type: type[Any]) -> Any | None:
+        """Validate raw JSON text against a Pydantic model (JSON Schema)."""
+        if not content:
+            return None
+        try:
+            return schema_type.model_validate_json(content)  # type: ignore[union-attr]
+        except Exception:
+            return None

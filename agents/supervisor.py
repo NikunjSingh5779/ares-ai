@@ -202,13 +202,17 @@ async def _execute_agent_node(
     # Build messages for this agent
     messages = _build_agent_messages(agent_name, state, model_config)
 
-    # Execute via model router
+    # Execute via model router, enforcing JSON Schema structured output and the
+    # per-model circuit-breaker limits from configs/models.yaml.
     router_result = await router.execute(
         model_chain=model_config.model_chain,
         messages=messages,
         temperature=model_config.temperature,
         max_tokens=model_config.max_tokens,
         rpm=model_config.rpm,
+        schema_type=AGENT_OUTPUT_SCHEMAS.get(agent_name),
+        breaker_threshold=model_config.breaker_threshold,
+        breaker_reset_seconds=model_config.breaker_reset_seconds,
     )
 
     # Record model fallback metric
@@ -239,8 +243,12 @@ async def _execute_agent_node(
 
     # Parse response if successful
     if router_result.success and router_result.response:
-        response_text = router_result.response.get("choices", [{}])[0].get("message", {}).get("content", "")
-        parsed, parse_error = _try_parse_output(response_text, schema, agent_name)
+        # Prefer the router's already schema-validated structured output.
+        parsed = router_result.parsed
+        parse_error: str | None = None
+        if parsed is None:
+            response_text = router_result.response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            parsed, parse_error = _try_parse_output(response_text, schema, agent_name)
 
         if parsed is not None:
             # Success — set the output
@@ -292,6 +300,22 @@ def _make_node_fn(agent_name: str):
         router = context["router"]
         registry = context.get("registry")
 
+        # Deterministic agents carry NO LLM model configuration (item 3). A
+        # registered real implementation (execution, journal, reflection,
+        # memory, news, market_analyst, quant, risk) must therefore run even
+        # when ``model_config`` is None — the LLM router is only required for
+        # the four LLM-powered agents.
+        if registry and registry.has_agent(agent_name):
+            reg = registry.get(agent_name)
+            if reg.agent is not None and not reg.agent.__class__.__name__.startswith("Stub"):
+                return await _execute_agent_impl(
+                    agent_name,
+                    state,
+                    reg.agent,
+                    model_config,
+                    router,
+                )
+
         if model_config is None:
             return {
                 "pipeline_status": _merge_pipeline_status(state, failed=[agent_name]),
@@ -304,18 +328,6 @@ def _make_node_fn(agent_name: str):
                     }
                 ],
             }
-
-        # Check for registered agent implementation
-        if registry and registry.has_agent(agent_name):
-            reg = registry.get(agent_name)
-            if reg.agent is not None and not reg.agent.__class__.__name__.startswith("Stub"):
-                return await _execute_agent_impl(
-                    agent_name,
-                    state,
-                    reg.agent,
-                    model_config,
-                    router,
-                )
 
         return await _execute_agent_node(agent_name, state, router, model_config)
 
@@ -544,17 +556,23 @@ async def _execute_agent_impl(
     update["pipeline_status"] = _merge_pipeline_status(state, completed=[agent_name])
     update["pipeline_status"].current_node = agent_name
 
-    # Build AgentContext for this call
-    agent_ctx = AgentCtx(
-        session_id=state.session_id,
-        request_id=state.request_id,
-        symbol=state.symbol,
-        model_preferences={
+    # Build AgentContext for this call. Deterministic agents have no LLM
+    # model config, so model_preferences is empty when model_config is None.
+    model_preferences = (
+        {
             "model_chain": model_config.model_chain,
             "rpm": model_config.rpm,
             "temperature": model_config.temperature,
             "max_tokens": model_config.max_tokens,
-        },
+        }
+        if model_config is not None
+        else {}
+    )
+    agent_ctx = AgentCtx(
+        session_id=state.session_id,
+        request_id=state.request_id,
+        symbol=state.symbol,
+        model_preferences=model_preferences,
     )
 
     # Build input from state — include previous agent outputs for downstream agents

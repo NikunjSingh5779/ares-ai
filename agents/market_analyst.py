@@ -401,9 +401,25 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
         indicators = compute_all_indicators(candles)
         # Step 3: Try LLM analysis
         llm_result = await self._llm_analysis(inputs.symbol, indicators, candles)
-        # Step 4: Fall back to rule-based if needed
+        # Step 4: On LLM chain exhaustion return explicit UNAVAILABLE output.
+        # A rule-based fallback must never produce trade-eligible confidence —
+        # consensus sees confidence 0.0 / flat and rejects (item 9, no trade).
         if llm_result is None:
-            llm_result = _rule_based_analysis(inputs.symbol, indicators)
+            return {
+                "confidence": 0.0,
+                "direction": "flat",
+                "bias": "neutral",
+                "setup": "unavailable",
+                "entry_zone": "N/A",
+                "stop_loss": "N/A",
+                "targets": [],
+                "invalidation": "N/A",
+                "confluence": "N/A",
+                "indicators": {},
+                "rationale": f"Market Analyst LLM chain exhausted for {inputs.symbol} — no trade.",
+                "used_fallback": True,
+                "fallback_reason": "llm_chain_exhausted",
+            }
         return llm_result
 
     async def _get_candles(self, inputs: MarketAnalystInput) -> list[OHLCVData]:
@@ -448,13 +464,17 @@ class MarketAnalystAgent(BaseAgent[MarketAnalystInput, MarketAnalystOutput]):
             max_tokens = 1024
         if not model_chain:
             return None
-        # Execute via model router
+        # Execute via model router, enforcing JSON Schema structured output and
+        # the per-model limits carried in AgentContext.model_preferences.
         router_result: RouterResult = await self.router.execute(
             model_chain=model_chain,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
             rpm=rpm,
+            schema_type=self.output_schema,
+            breaker_threshold=self.context.model_preferences.get("breaker_threshold", 3),
+            breaker_reset_seconds=self.context.model_preferences.get("breaker_reset_seconds", 300),
         )
         if router_result.fallback_used:
             primary_model = model_chain[0] if model_chain else "unknown"

@@ -75,11 +75,11 @@ class LLMClient:
         return True
 
     def _populate_from_env(self) -> None:
+        # Free-only OpenRouter runtime: ONLY the OpenRouter provider is ever
+        # configured. OpenCode / Gemini / Mistral are intentionally absent so
+        # a paid or third-party request can never be sent.
         env_map = {
             "open_router": ("OPENROUTER_API_KEY", "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-            "opencode": ("OPENCODE_API_KEY", "OPENCODE_BASE_URL", "https://api.opencode.ai/v1"),
-            "google": ("GEMINI_API_KEY", "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"),
-            "mistral": ("MISTRAL_API_KEY", "MISTRAL_BASE_URL", "https://api.mistral.ai/v1"),
         }
         for provider, (key_env, url_env, default_url) in env_map.items():
             if provider not in self.providers:
@@ -148,18 +148,17 @@ class LLMClient:
         if clean_model.startswith("open_router/"):
             clean_model = clean_model.replace("open_router/", "", 1)
             provider = "open_router"
-        elif clean_model.startswith("opencode/"):
-            clean_model = clean_model.replace("opencode/", "", 1)
-            provider = "opencode"
-        elif clean_model.startswith("google/"):
-            clean_model = clean_model.replace("google/", "", 1)
-            provider = "google"
-        elif clean_model.startswith("mistral/"):
-            clean_model = clean_model.replace("mistral/", "", 1)
-            provider = "mistral"
+        elif clean_model.startswith(("opencode/", "google/", "mistral/")):
+            # Free-only OpenRouter runtime: a non-OpenRouter model must never
+            # reach the wire. Fail closed instead of sending a paid request.
+            raise ValueError(f"Provider not allowed in free-only OpenRouter runtime: {clean_model}")
 
         self._check_circuit_breaker(model)
         client = self._get_client(provider)
+
+        # Structured output: if the caller supplies a JSON Schema dict, request
+        # a guaranteed-JSON response via OpenRouter's response_format.
+        structured_schema = kwargs.pop("json_schema", None)
 
         payload: dict[str, Any] = {
             "model": clean_model,
@@ -168,6 +167,25 @@ class LLMClient:
             "max_tokens": max_tokens,
             **kwargs,
         }
+
+        if provider == "open_router":
+            # Hard zero-price bound — OpenRouter rejects with 402 if the chosen
+            # model would cost more than this, guaranteeing a free-only request.
+            payload["max_price"] = {
+                "prompt": 0,
+                "completion": 0,
+                "request": 0,
+                "image": 0,
+            }
+            if structured_schema is not None:
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "structured_output",
+                        "strict": True,
+                        "schema": structured_schema,
+                    },
+                }
 
         try:
             response = await client.post(
@@ -322,8 +340,19 @@ def _is_valid_key(key: str | None) -> bool:
 
 
 def create_llm_client() -> LLMClient | NoOpLLMClient:
-    """Create the appropriate LLM client based on available configuration."""
+    """Create the appropriate LLM client based on available configuration.
+
+    Enforces the free-only OpenRouter runtime:
+        - OpenRouter is the ONLY provider that may be selected.
+        - ``llm_free_only`` and ``llm_paper_only`` are hard operating bounds.
+    """
     from backend.core.config import settings
+
+    if settings.llm_free_only and settings.llm_provider != "openrouter":
+        raise RuntimeError(
+            "llm_free_only=true but llm_provider != 'openrouter'. "
+            "The free-only OpenRouter paper-trading runtime refuses other providers."
+        )
 
     providers = {}
     if _is_valid_key(settings.openrouter_api_key):
@@ -331,23 +360,12 @@ def create_llm_client() -> LLMClient | NoOpLLMClient:
             "api_key": settings.openrouter_api_key.strip(),
             "base_url": settings.openrouter_base_url,
         }
-    if _is_valid_key(settings.opencode_api_key):
-        providers["opencode"] = {"api_key": settings.opencode_api_key.strip(), "base_url": settings.opencode_base_url}
-    if _is_valid_key(getattr(settings, "gemini_api_key", "")):
-        providers["google"] = {
-            "api_key": getattr(settings, "gemini_api_key").strip(),
-            "base_url": settings.gemini_base_url,
-        }
-    if _is_valid_key(getattr(settings, "mistral_api_key", "")):
-        providers["mistral"] = {
-            "api_key": getattr(settings, "mistral_api_key").strip(),
-            "base_url": settings.mistral_base_url,
-        }
 
     if providers:
         return LLMClient(providers=providers)
 
-    # Fallback to env lookup via LLMClient default init
+    # No OpenRouter key configured (offline/dev). Fall back to env lookup via
+    # LLMClient default init; otherwise degrade to NoOp (never a paid request).
     client = LLMClient()
     if client.providers:
         return client
