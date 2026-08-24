@@ -231,7 +231,8 @@ class ModelRouter:
     def _extract_content(response: dict[str, Any]) -> str | None:
         """Extract the text content from an OpenAI-style chat payload."""
         try:
-            return response["choices"][0]["message"]["content"]
+            content: Any = response["choices"][0]["message"]["content"]
+            return content if isinstance(content, str) else None
         except (KeyError, IndexError, TypeError):
             return None
 
@@ -241,6 +242,6 @@ class ModelRouter:
         if not content:
             return None
         try:
-            return schema_type.model_validate_json(content)  # type: ignore[union-attr]
+            return schema_type.model_validate_json(content)
         except Exception:
             return None
