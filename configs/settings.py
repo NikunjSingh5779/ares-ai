@@ -47,21 +47,34 @@ class Settings(BaseSettings):
     chroma_port: int = 8000
     chroma_collection: str = "ares_memories"
 
-    # OpenRouter
+    # ── LLM runtime (Free-only OpenRouter) ────────────────────────────
+    # OpenRouter is the ONLY LLM provider in the paper-trading runtime.
+    # No other provider keys (OpenCode / Gemini / Mistral) are consulted;
+    # sending a paid or non-OpenRouter request is a hard failure.
+    llm_provider: str = "openrouter"
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
-    # OpenCode (fallback)
-    opencode_api_key: str = ""
-    opencode_base_url: str = "https://api.opencode.ai/v1"
+    # Hard operating bounds — a paid/live/non-paper request must never leave.
+    llm_free_only: bool = True
+    llm_paper_only: bool = True
 
-    # Google AI Studio (Gemini)
+    # Zero price ceilings. OpenRouter sources earlier (prompt, completion,
+    # request, image) at > 0 make a chain ineligible and it fails closed.
+    openrouter_max_price_prompt: float = 0.0
+    openrouter_max_price_completion: float = 0.0
+    openrouter_max_price_request: float = 0.0
+    openrouter_max_price_image: float = 0.0
+
+    structured_output_max_corrections: int = 1
+
+    # Legacy / reserved — NOT part of the free-only OpenRouter runtime
+    # selection. ``create_llm_client`` is OpenRouter-only and never selects
+    # these. Kept so non-trading helpers (e.g. ``agents/web_collector.py``)
+    # that still reference them typecheck; a trading-signal call can never use
+    # them. Use of Gemini for a trading-signal chain would be a hard violation.
     gemini_api_key: str = ""
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
-
-    # Mistral AI
-    mistral_api_key: str = ""
-    mistral_base_url: str = "https://api.mistral.ai/v1"
 
     # API
     api_host: str = "0.0.0.0"

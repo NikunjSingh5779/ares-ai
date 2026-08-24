@@ -167,7 +167,7 @@ class TestEngineQueryPaperRecord:
         def failing_factory():
             raise RuntimeError("DB connection failed")
 
-        engine._session_factory = failing_factory  # type: ignore[assignment]
+        engine._session_factory = failing_factory
         record = await engine._query_paper_record_from_db()
         assert record["trades"] == 5
         assert record["days"] == 3
