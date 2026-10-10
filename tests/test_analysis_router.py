@@ -84,7 +84,7 @@ class TestAnalyzeStream:
 
             # Collect events from the streaming response
             events = []
-            async for chunk in response.body_iterator:  # type: ignore[union-attr]
+            async for chunk in response.body_iterator:
                 events.append(chunk)
 
             # Should have at least some content
