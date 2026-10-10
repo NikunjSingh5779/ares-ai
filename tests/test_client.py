@@ -123,9 +123,7 @@ class TestCreateLLMClient:
         )
         monkeypatch.setattr(client, "_get_client", lambda provider: mock_http)
 
-        response = await client.chat_completion(
-            model="local/auto", messages=[{"role": "user", "content": "hello"}]
-        )
+        response = await client.chat_completion(model="local/auto", messages=[{"role": "user", "content": "hello"}])
 
         assert response["choices"][0]["message"]["content"] == "ok"
         mock_http.get.assert_awaited_once()
