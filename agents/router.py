@@ -88,6 +88,12 @@ class ModelRouter:
         """
         result = RouterResult()
         start = time.monotonic()
+        # If a local OpenAI-compatible provider is configured, try its currently
+        # loaded model first. The roster's hosted fallbacks remain the recovery path.
+        providers = getattr(self.client, "providers", {})
+        if model_chain and isinstance(providers, dict) and "local" in providers:
+            if not any(model_id.startswith("local/") for model_id in model_chain):
+                model_chain = ["local/auto", *model_chain]
         for i, model_id in enumerate(model_chain):
             is_fallback = i > 0
             attempt_info: dict[str, Any] = {
