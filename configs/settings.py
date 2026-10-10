@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     chroma_port: int = 8000
     chroma_collection: str = "ares_memories"
 
+    # Local OpenAI-compatible inference (llama.cpp, Ollama OpenAI-compatible API, etc.)
+    # Empty disables local-first routing; set to the server's /v1 base URL to enable it.
+    local_llm_base_url: str = ""
+    local_llm_api_key: str = ""
+
     # OpenRouter
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
