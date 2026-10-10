@@ -250,7 +250,9 @@ class TestRecordLiveOrderIntegration:
         ks = KillSwitch(max_drawdown_pct=15.0)
         mm = ModeManager(TradingMode.SEMI)
         pg = PromotionGate(min_paper_trades=10, min_paper_days=5)
-        eng = LiveTradingEngine(exchange, ks, mm, pg)
+        # This integration test exercises the exchange-order metrics path only.
+        # Explicit opt-in is test-local; production defaults remain paper-only.
+        eng = LiveTradingEngine(exchange, ks, mm, pg, live_order_placement_enabled=True)
         eng.set_paper_record(10, 5)
         return eng
 
