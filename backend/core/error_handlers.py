@@ -4,8 +4,13 @@ from fastapi.responses import JSONResponse
 from backend.core.exceptions import AresError, AuthenticationError, ConfigurationError, RateLimitError
 
 
-async def ares_error_handler(request: Request, exc: AresError) -> JSONResponse:
+async def ares_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """Global exception handler for ARES AI domain errors."""
+    if not isinstance(exc, AresError):
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "error_type": type(exc).__name__},
+        )
     status_code = 400
     if isinstance(exc, AuthenticationError):
         status_code = 401
