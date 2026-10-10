@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from unittest.mock import AsyncMock
 
 from agents.client import LLMClient, NoOpLLMClient, create_llm_client
 
@@ -126,6 +127,7 @@ class TestCreateLLMClient:
 
         assert response["choices"][0]["message"]["content"] == "ok"
         mock_http.get.assert_awaited_once()
+        assert mock_http.post.await_args is not None
         assert mock_http.post.await_args.kwargs["json"]["model"] == "Qwen/Qwen3.8-local"
 
     @pytest.mark.asyncio
