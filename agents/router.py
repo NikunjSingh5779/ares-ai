@@ -142,9 +142,19 @@ class ModelRouter:
                     await queue.release()
                 attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
                 if retry_result.success:
+                    response = retry_result.result
+                    if response is None or self.client.is_error_response(response):
+                        attempt_info["error"] = (
+                            str(response.get("error_type", "error_response"))
+                            if isinstance(response, dict)
+                            else "empty_model_response"
+                        )
+                        attempt_info["error_type"] = "error_response"
+                        result.errors.append(attempt_info)
+                        continue
                     elapsed = int((time.monotonic() - start) * 1000)
                     result.success = True
-                    result.response = retry_result.result
+                    result.response = response
                     result.model_used = model_id
                     result.attempts = retry_result.attempts
                     result.total_latency_ms = elapsed
