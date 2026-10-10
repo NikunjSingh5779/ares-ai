@@ -117,7 +117,7 @@ class TestKillSwitchRedisBytes:
     def test_triggered_at_with_raw_bytes_in_memory(self) -> None:
         """Line 134 coverage: _get returns raw bytes from in-memory fallback."""
         ks = KillSwitch()
-        ks._mem["ares:kill_switch:timestamp"] = b"2024-01-01T00:00:00+00:00"
+        ks._mem["ares:kill_switch:timestamp"] = b"2024-01-01T00:00:00+00:00"  # type: ignore[assignment]
         # _get returns the raw value from _mem (bytes) without decoding
         ts = ks._get("ares:kill_switch:timestamp")
         assert isinstance(ts, bytes)
