@@ -179,6 +179,14 @@ class LLMClient:
             raise ValueError(f"Direct {provider} models are not enabled by the free-only model policy: {model}")
         if provider == "local" and "local" not in self.providers:
             raise ValueError("Local inference was requested but LOCAL_LLM_BASE_URL is not configured")
+        if provider in {"open_router", "opencode"}:
+            provider_config = self.providers.get(provider)
+            if not provider_config or not self._is_valid_key(provider_config.get("api_key")):
+                raise ValueError(f"Hosted provider '{provider}' is not configured with an API key")
+        if provider == "default":
+            default_config = self.providers.get("default")
+            if not default_config or not self._is_valid_key(default_config.get("api_key")):
+                raise ValueError("No default hosted provider is configured with an API key")
 
         self._check_circuit_breaker(model)
         client = self._get_client(provider)
