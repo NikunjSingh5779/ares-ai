@@ -35,13 +35,13 @@ def sample_roster() -> dict[str, Any]:
 
 
 class TestFlattenAgentModels:
-    def test_flatten_returns_all_entries(self, sample_roster: dict) -> None:
+    def test_flatten_returns_all_entries(self, sample_roster: dict[str, Any]) -> None:
         entries = flatten_agent_models(sample_roster)
         assert len(entries) == 6  # 3 primaries + 2 fallbacks + 1 with 0 fallbacks
         assert sum(1 for e in entries if e["role"] == "primary") == 3
         assert sum(1 for e in entries if e["role"] == "fallback") == 3
 
-    def test_flatten_includes_agent_names(self, sample_roster: dict) -> None:
+    def test_flatten_includes_agent_names(self, sample_roster: dict[str, Any]) -> None:
         entries = flatten_agent_models(sample_roster)
         agents = {e["agent"] for e in entries}
         assert agents == {"market_analyst", "vision", "consensus"}
