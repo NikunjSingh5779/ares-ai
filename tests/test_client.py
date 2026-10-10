@@ -67,9 +67,7 @@ class TestNoOpLLMClient:
 
 
 class TestCreateLLMClient:
-    def test_creates_noop_without_api_key(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_creates_noop_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without env vars or settings, create_llm_client returns NoOpLLMClient."""
         # Unset env vars
         for k in [
@@ -95,9 +93,7 @@ class TestCreateLLMClient:
         client = create_llm_client()
         assert isinstance(client, NoOpLLMClient)
 
-    def test_creates_local_client_without_api_key(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_creates_local_client_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from backend.core.config import settings
 
         monkeypatch.setattr(settings, "local_llm_base_url", "http://127.0.0.1:1919/v1")
@@ -112,12 +108,8 @@ class TestCreateLLMClient:
         assert client.providers["local"]["base_url"] == "http://127.0.0.1:1919/v1"
 
     @pytest.mark.asyncio
-    async def test_local_auto_discovers_current_model(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        client = LLMClient(
-            providers={"local": {"api_key": "", "base_url": "http://local.test/v1"}}
-        )
+    async def test_local_auto_discovers_current_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = LLMClient(providers={"local": {"api_key": "", "base_url": "http://local.test/v1"}})
         mock_http = AsyncMock()
         mock_http.get.return_value = httpx.Response(
             200,
@@ -145,8 +137,7 @@ class TestCreateLLMClient:
         client = LLMClient(api_key="sk-test-key")
         with pytest.raises(ValueError, match="free-only policy"):
             await client.chat_completion(
-                model="open_router/openai/gpt-4o",
-                messages=[{"role": "user", "content": "hello"}],
+                model="open_router/openai/gpt-4o", messages=[{"role": "user", "content": "hello"}]
             )
         assert client._clients == {}
 
@@ -158,9 +149,9 @@ class TestFreeOnlyModelRoster:
             for model_id in roster.get(agent_name).model_chain:
                 if model_id.startswith("open_router/"):
                     hosted_id = model_id.removeprefix("open_router/")
-                    assert (
-                        hosted_id.endswith(":free") or hosted_id == "openrouter/free"
-                    ), f"{agent_name} uses an unverified model: {model_id}"
+                    assert hosted_id.endswith(":free") or hosted_id == "openrouter/free", (
+                        f"{agent_name} uses an unverified model: {model_id}"
+                    )
                 elif model_id.startswith("opencode/"):
                     assert model_id.endswith("-free"), (
                         f"{agent_name} uses an unverified OpenCode model: {model_id}"
