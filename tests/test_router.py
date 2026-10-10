@@ -175,6 +175,7 @@ class TestModelRouterMocked:
             }
         )
         mock_client.is_error_response.return_value = False
+        mock_client.providers = {"local": {"api_key": "", "base_url": "http://local.test/v1"}}
 
         router = ModelRouter(
             llm_client=mock_client,
@@ -192,6 +193,13 @@ class TestModelRouterMocked:
         assert result.model_used == "model-a"
         assert result.degraded is False
         assert result.fallback_used is False
+        assert result.model_used == "local/auto"
+        mock_client.chat_completion.assert_awaited_once_with(
+            model="local/auto",
+            messages=[{"role": "user", "content": "test"}],
+            temperature=0.7,
+            max_tokens=4096,
+        )
 
     @pytest.mark.asyncio
     async def test_fallback_on_failure(self) -> None:
