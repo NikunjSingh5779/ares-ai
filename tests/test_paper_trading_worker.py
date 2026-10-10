@@ -157,7 +157,7 @@ class TestWorkerEdgeCases:
     @pytest.mark.asyncio
     async def test_loop_logs_exception(self, engine, ingestor, session_factory):
         """_loop catches generic exceptions and logs them (lines 76-77)."""
-        worker = PaperTradingWorker(engine, ingestor, session_factory, poll_interval_seconds=0.01)
+        worker = PaperTradingWorker(engine, ingestor, session_factory, poll_interval_seconds=1)
         worker._tick = AsyncMock(side_effect=ValueError("test error"))  # type: ignore[method-assign]
         worker.start()
         await asyncio.sleep(0.05)
