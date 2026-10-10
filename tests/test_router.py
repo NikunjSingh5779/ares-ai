@@ -201,6 +201,42 @@ class TestModelRouterMocked:
         )
 
     @pytest.mark.asyncio
+    async def test_vision_chain_skips_text_only_local_first_route(self) -> None:
+        from agents.client import LLMClient
+
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.providers = {"local": {"api_key": "", "base_url": "http://local.test/v1"}}
+        mock_client.chat_completion = AsyncMock(
+            return_value={
+                "choices": [{"message": {"content": "vision result"}}],
+                "model": "vision-free-model",
+                "usage": {"total_tokens": 5},
+            }
+        )
+        mock_client.is_error_response.return_value = False
+        router = ModelRouter(
+            llm_client=mock_client,
+            breaker_registry=CircuitBreakerRegistry(),
+            queue_registry=QueueRegistry(),
+            retry_config=RetryConfig(max_retries=0, base_delay=0.01),
+        )
+        vision_model = "open_router/nvidia/nemotron-nano-12b-v2-vl:free"
+
+        result = await router.execute(
+            model_chain=[vision_model],
+            messages=[{"role": "user", "content": "Analyze this chart"}],
+        )
+
+        assert result.success is True
+        assert result.model_used == vision_model
+        mock_client.chat_completion.assert_awaited_once_with(
+            model=vision_model,
+            messages=[{"role": "user", "content": "Analyze this chart"}],
+            temperature=0.7,
+            max_tokens=4096,
+        )
+
+    @pytest.mark.asyncio
     async def test_local_failure_falls_back_to_free_hosted_model(self) -> None:
         from agents.client import LLMClient
 
