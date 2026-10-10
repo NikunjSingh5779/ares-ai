@@ -141,7 +141,9 @@ class TestExecuteSignal:
         assert "paper-only" in result["reason"].lower()
         mock_exchange.create_order.assert_not_awaited()
         assert paper_only_engine.auditor.count() == 1
-        assert paper_only_engine.auditor.recent(1)[0].order_result["status"] == "blocked_paper_only"
+        audit_entry = paper_only_engine.auditor.recent(1)[0]
+        assert audit_entry.order_result is not None
+        assert audit_entry.order_result["status"] == "blocked_paper_only"
 
     async def test_execute_signal_success(self, engine) -> None:
         await engine.start()
