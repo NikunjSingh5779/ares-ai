@@ -146,12 +146,16 @@ class ModelRouter:
                 if retry_result.success:
                     response = retry_result.result
                     if response is None or self.client.is_error_response(response):
-                        attempt_info["error"] = (
-                            str(response.get("error_type", "error_response"))
-                            if isinstance(response, dict)
-                            else "empty_model_response"
-                        )
+                        if response is None:
+                            attempt_info["error"] = "empty_model_response"
+                        elif isinstance(response, dict):
+                            attempt_info["error"] = str(
+                                response.get("error_type", response.get("error", "error_response"))
+                            )
+                        else:
+                            attempt_info["error"] = "invalid_model_response"
                         attempt_info["error_type"] = "error_response"
+                        breaker.record_failure()
                         result.errors.append(attempt_info)
                         continue
                     elapsed = int((time.monotonic() - start) * 1000)
