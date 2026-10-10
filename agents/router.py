@@ -88,6 +88,14 @@ class ModelRouter:
         """
         result = RouterResult()
         start = time.monotonic()
+        # If a local OpenAI-compatible provider is configured, try its currently
+        # loaded model first. The roster's hosted fallbacks remain the recovery path.
+        providers = getattr(self.client, "providers", {})
+        primary_model = model_chain[0].lower() if model_chain else ""
+        requires_vision = any(token in primary_model for token in ("-vl", "_vl", "vision"))
+        if model_chain and isinstance(providers, dict) and "local" in providers and not requires_vision:
+            if not any(model_id.startswith("local/") for model_id in model_chain):
+                model_chain = ["local/auto", *model_chain]
         for i, model_id in enumerate(model_chain):
             is_fallback = i > 0
             attempt_info: dict[str, Any] = {
@@ -136,9 +144,23 @@ class ModelRouter:
                     await queue.release()
                 attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
                 if retry_result.success:
+                    response = retry_result.result
+                    if response is None or self.client.is_error_response(response):
+                        if response is None:
+                            attempt_info["error"] = "empty_model_response"
+                        elif isinstance(response, dict):
+                            attempt_info["error"] = str(
+                                response.get("error_type", response.get("error", "error_response"))
+                            )
+                        else:
+                            attempt_info["error"] = "invalid_model_response"
+                        attempt_info["error_type"] = "error_response"
+                        breaker.record_failure()
+                        result.errors.append(attempt_info)
+                        continue
                     elapsed = int((time.monotonic() - start) * 1000)
                     result.success = True
-                    result.response = retry_result.result
+                    result.response = response
                     result.model_used = model_id
                     result.attempts = retry_result.attempts
                     result.total_latency_ms = elapsed

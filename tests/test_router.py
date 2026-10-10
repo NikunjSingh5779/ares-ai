@@ -61,28 +61,28 @@ class TestModelRouter:
         assert len(result.errors) == 0  # nothing to try
 
     @pytest.mark.asyncio
-    async def test_single_model_success(self, router: ModelRouter) -> None:
-        """NoOpLLMClient returns a response without raising — router sees success."""
+    async def test_single_model_error_envelope_degrades(self, router: ModelRouter) -> None:
+        """An error envelope from the no-op client must not count as success."""
         result = await router.execute(
             model_chain=["test-model"],
             messages=[{"role": "user", "content": "test"}],
         )
-        # NoOpLLMClient returns an error dict without raising, so router reports success
-        assert result.success is True
-        assert result.model_used == "test-model"
-        assert result.degraded is False
+        assert result.success is False
+        assert result.degraded is True
+        assert result.model_used == ""
+        assert len(result.errors) == 1
 
     @pytest.mark.asyncio
     async def test_all_fallbacks_exhausted(self, router: ModelRouter) -> None:
-        """All models return responses — router sees success for each."""
+        """Error envelopes from every candidate result in graceful degradation."""
         result = await router.execute(
             model_chain=["model-a", "model-b", "model-c"],
             messages=[{"role": "user", "content": "test"}],
         )
-        # Each model returns without raising, so the first one "succeeds"
-        assert result.success is True
-        assert result.model_used == "model-a"  # first model "succeeds"
-        assert len(result.errors) == 0
+        assert result.success is False
+        assert result.degraded is True
+        assert result.model_used == ""
+        assert len(result.errors) == 3
 
     @pytest.mark.asyncio
     async def test_circuit_breaker_skips_model(self, router: ModelRouter) -> None:
@@ -175,6 +175,7 @@ class TestModelRouterMocked:
             }
         )
         mock_client.is_error_response.return_value = False
+        mock_client.providers = {"local": {"api_key": "", "base_url": "http://local.test/v1"}}
 
         router = ModelRouter(
             llm_client=mock_client,
@@ -189,9 +190,89 @@ class TestModelRouterMocked:
         )
 
         assert result.success is True
-        assert result.model_used == "model-a"
+        assert result.model_used == "local/auto"
         assert result.degraded is False
         assert result.fallback_used is False
+        mock_client.chat_completion.assert_awaited_once_with(
+            model="local/auto",
+            messages=[{"role": "user", "content": "test"}],
+            temperature=0.7,
+            max_tokens=4096,
+        )
+
+    @pytest.mark.asyncio
+    async def test_vision_chain_skips_text_only_local_first_route(self) -> None:
+        from agents.client import LLMClient
+
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.providers = {"local": {"api_key": "", "base_url": "http://local.test/v1"}}
+        mock_client.chat_completion = AsyncMock(
+            return_value={
+                "choices": [{"message": {"content": "vision result"}}],
+                "model": "vision-free-model",
+                "usage": {"total_tokens": 5},
+            }
+        )
+        mock_client.is_error_response.return_value = False
+        router = ModelRouter(
+            llm_client=mock_client,
+            breaker_registry=CircuitBreakerRegistry(),
+            queue_registry=QueueRegistry(),
+            retry_config=RetryConfig(max_retries=0, base_delay=0.01),
+        )
+        vision_model = "open_router/nvidia/nemotron-nano-12b-v2-vl:free"
+
+        result = await router.execute(
+            model_chain=[vision_model],
+            messages=[{"role": "user", "content": "Analyze this chart"}],
+        )
+
+        assert result.success is True
+        assert result.model_used == vision_model
+        mock_client.chat_completion.assert_awaited_once_with(
+            model=vision_model,
+            messages=[{"role": "user", "content": "Analyze this chart"}],
+            temperature=0.7,
+            max_tokens=4096,
+        )
+
+    @pytest.mark.asyncio
+    async def test_local_failure_falls_back_to_free_hosted_model(self) -> None:
+        from agents.client import LLMClient
+
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.providers = {"local": {"api_key": "", "base_url": "http://local.test/v1"}}
+        called_models: list[str] = []
+
+        async def mock_chat(**kwargs: dict[str, Any]) -> dict[str, Any]:
+            model = str(kwargs.get("model", ""))
+            called_models.append(model)
+            if model == "local/auto":
+                raise ConnectionError("local inference server is unavailable")
+            return {
+                "choices": [{"message": {"content": '{"ok": true}'}}],
+                "model": model,
+                "usage": {"total_tokens": 5},
+            }
+
+        mock_client.chat_completion = AsyncMock(side_effect=mock_chat)
+        mock_client.is_error_response.return_value = False
+        router = ModelRouter(
+            llm_client=mock_client,
+            breaker_registry=CircuitBreakerRegistry(),
+            queue_registry=QueueRegistry(),
+            retry_config=RetryConfig(max_retries=0, base_delay=0.01),
+        )
+
+        result = await router.execute(
+            model_chain=["open_router/qwen/qwen3-coder:free"],
+            messages=[{"role": "user", "content": "write a test"}],
+        )
+
+        assert result.success is True
+        assert result.model_used == "open_router/qwen/qwen3-coder:free"
+        assert result.fallback_used is True
+        assert called_models == ["local/auto", "open_router/qwen/qwen3-coder:free"]
 
     @pytest.mark.asyncio
     async def test_fallback_on_failure(self) -> None:
