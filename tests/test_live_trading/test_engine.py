@@ -148,7 +148,9 @@ class TestExecuteSignal:
         signal = {"symbol": "BTC/USDT", "side": "buy", "quantity": 0.01, "order_type": "market"}
         result = await engine.execute_signal(signal)
         assert result["accepted"] is True
-        assert result["order"]["id"] == "order_123"
+        order = result["order"]
+        assert order is not None
+        assert order["id"] == "order_123"
 
     async def test_execute_signal_with_agent_chain(self, engine) -> None:
         await engine.start()
