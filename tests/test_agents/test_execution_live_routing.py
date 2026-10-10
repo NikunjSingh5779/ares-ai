@@ -48,6 +48,7 @@ def mock_live_engine(mock_live_exchange):
     engine = MagicMock(spec=LiveTradingEngine)
     engine.exchange = mock_live_exchange
     engine.is_connected = True
+    engine.live_order_placement_enabled = False
     return engine
 
 
@@ -126,10 +127,11 @@ async def test_auto_mode_and_promotion_cannot_bypass_paper_only_default(
 
 
 @pytest.mark.asyncio
-async def test_routes_to_live_when_mode_auto_and_promotion_gate_passed(
+async def test_routes_to_live_only_when_explicitly_enabled_and_promotion_gate_passed(
     mock_paper_engine, mock_live_engine, execution_input
 ):
     mock_live_engine.mode = TradingMode.AUTO
+    mock_live_engine.live_order_placement_enabled = True  # Explicit test-only opt-in
     from unittest.mock import AsyncMock
 
     mock_live_engine.paper_record = AsyncMock(return_value={"promotion": {"passed": True}})
