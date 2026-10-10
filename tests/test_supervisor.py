@@ -409,7 +409,8 @@ class TestSupervisorGraphStructure:
         """Consensus receives input from both news and vision."""
         from langgraph.graph import StateGraph
 
-        from agents.supervisor import AgentState, _build_pipeline_nodes
+        from agents.state import AgentState
+        from agents.supervisor import _build_pipeline_nodes
 
         builder = StateGraph(AgentState)
         _build_pipeline_nodes(builder)
