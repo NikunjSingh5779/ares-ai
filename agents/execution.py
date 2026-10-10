@@ -173,7 +173,11 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         # --- Execution Routing ---
         parts = []
         is_live_auto = False
-        if self.live_engine and getattr(self.live_engine, "is_connected", False):
+        if (
+            self.live_engine
+            and getattr(self.live_engine, "is_connected", False)
+            and getattr(self.live_engine, "live_order_placement_enabled", False)
+        ):
             paper_rec = await self.live_engine.paper_record()
             if self.live_engine.mode == TradingMode.AUTO and paper_rec.get("promotion", {}).get("passed", False):
                 is_live_auto = True
