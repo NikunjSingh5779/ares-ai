@@ -177,6 +177,8 @@ class LLMClient:
             raise ValueError(f"Paid or unverified OpenCode model blocked by free-only policy: {model}")
         if provider in {"google", "mistral"}:
             raise ValueError(f"Direct {provider} models are not enabled by the free-only model policy: {model}")
+        if provider == "local" and "local" not in self.providers:
+            raise ValueError("Local inference was requested but LOCAL_LLM_BASE_URL is not configured")
 
         self._check_circuit_breaker(model)
         client = self._get_client(provider)
