@@ -97,6 +97,7 @@ class LiveTradingEngine:
         promotion_gate: PromotionGate,
         auditor: OrderAuditor | None = None,
         session_factory: Any = None,
+        live_order_placement_enabled: bool = False,
     ) -> None:
         self.exchange = exchange
         self.kill_switch = kill_switch
@@ -104,6 +105,9 @@ class LiveTradingEngine:
         self.promotion_gate = promotion_gate
         self.auditor = auditor or OrderAuditor()
         self._session_factory = session_factory
+        # Fail closed: production callers must never enable live order placement
+        # implicitly. Stabilization runs in paper-only mode by default.
+        self.live_order_placement_enabled = live_order_placement_enabled
 
         self._running = False
         self._paper_trades_count = 0
@@ -348,6 +352,27 @@ class LiveTradingEngine:
             "price": signal.get("price"),
             "reason": signal.get("reason", ""),
         }
+
+        # ── Stabilization safety gate ───────────────────────────────
+        # This check is deliberately before all approval/promotion logic so
+        # no mode, approval ID, or passing paper record can bypass paper-only.
+        if not self.live_order_placement_enabled:
+            self.auditor.record(
+                AuditEntry(
+                    order_intent=order_intent,
+                    agent_chain=agent_chain or [],
+                    risk_checks=risk_checks or [],
+                    order_result={
+                        "status": "blocked_paper_only",
+                        "reason": "Live order placement is disabled during stabilization",
+                    },
+                )
+            )
+            return {
+                "accepted": False,
+                "reason": "Paper-only stabilization mode: live order placement is disabled",
+                "order": None,
+            }
 
         # ── Pre-trade safety check ──────────────────────────────────
         safety_results = await self.check_pre_trade(signal.get("account_id"))

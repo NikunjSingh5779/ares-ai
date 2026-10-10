@@ -207,10 +207,15 @@ async def set_mode(body: SetModeRequest) -> dict[str, Any]:
 
 @router.post("/start")
 async def start_engine() -> dict[str, Any]:
-    """Connect to the exchange and start the live engine."""
+    """Start the exchange engine only when live execution is explicitly enabled."""
     engine = _get_engine()
     if engine is None:
         raise HTTPException(status_code=503, detail=_NO_ENGINE_MSG)
+    if not engine.live_order_placement_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Live execution is disabled during paper-only stabilization.",
+        )
     if engine.is_running:
         return {"status": "already_running", "connected": engine.is_connected}
 

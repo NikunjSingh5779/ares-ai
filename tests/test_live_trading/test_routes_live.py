@@ -39,6 +39,7 @@ def _make_mock_engine():
         auditor = OrderAuditor()
 
         is_running = False
+        live_order_placement_enabled = False
         _paper_record: dict[str, Any] = {}
 
         @property
@@ -146,20 +147,20 @@ class TestLiveMode:
 class TestLiveStartStop:
     """POST /api/v1/live/start and /stop tests."""
 
-    def test_start_engine(self, client) -> None:
+    def test_start_engine_blocked_during_paper_only_stabilization(self, client) -> None:
         engine = _make_mock_engine()
         with patch("backend.routers.live._get_engine", return_value=engine):
             response = client.post("/api/v1/live/start")
-        assert response.status_code == 200
-        assert response.json()["status"] == "started"
+        assert response.status_code == 403
+        assert "paper-only" in response.json()["detail"].lower()
+        engine.exchange.connect.assert_not_awaited()
 
-    def test_start_when_already_running(self, client) -> None:
+    def test_start_when_already_running_still_blocked_during_paper_only(self, client) -> None:
         engine = _make_mock_engine()
         engine.is_running = True
         with patch("backend.routers.live._get_engine", return_value=engine):
             response = client.post("/api/v1/live/start")
-        assert response.status_code == 200
-        assert response.json()["status"] == "already_running"
+        assert response.status_code == 403
 
     def test_stop_engine(self, client) -> None:
         engine = _make_mock_engine()

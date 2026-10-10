@@ -52,7 +52,8 @@ def engine(mock_exchange):
     ks = KillSwitch(max_drawdown_pct=15.0)
     mm = ModeManager(TradingMode.SEMI)  # Semi mode so we don't need approval
     pg = PromotionGate(min_paper_trades=10, min_paper_days=5)
-    engine = LiveTradingEngine(mock_exchange, ks, mm, pg)
+    # Existing execution-path tests opt in explicitly; production defaults stay paper-only.
+    engine = LiveTradingEngine(mock_exchange, ks, mm, pg, live_order_placement_enabled=True)
     engine.set_paper_record(10, 5)  # Meet promotion requirements
     return engine
 
@@ -125,6 +126,24 @@ class TestPreTradeChecks:
 
 class TestExecuteSignal:
     """Signal execution tests."""
+
+    async def test_live_order_placement_is_disabled_by_default(self, mock_exchange) -> None:
+        ks = KillSwitch(max_drawdown_pct=15.0)
+        mm = ModeManager(TradingMode.SEMI)
+        pg = PromotionGate(min_paper_trades=10, min_paper_days=5)
+        paper_only_engine = LiveTradingEngine(mock_exchange, ks, mm, pg)
+        result = await paper_only_engine.execute_signal(
+            {"symbol": "BTC/USDT", "side": "buy", "quantity": 0.01},
+            approval_id="explicit-approval-does-not-bypass-paper-only",
+        )
+        assert result["accepted"] is False
+        assert result["order"] is None
+        assert "paper-only" in result["reason"].lower()
+        mock_exchange.create_order.assert_not_awaited()
+        assert paper_only_engine.auditor.count() == 1
+        audit_entry = paper_only_engine.auditor.recent(1)[0]
+        assert audit_entry.order_result is not None
+        assert audit_entry.order_result["status"] == "blocked_paper_only"
 
     async def test_execute_signal_success(self, engine) -> None:
         await engine.start()

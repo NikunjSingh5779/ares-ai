@@ -173,37 +173,49 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         # --- Execution Routing ---
         parts = []
         is_live_auto = False
-        if self.live_engine and getattr(self.live_engine, "is_connected", False):
+        if (
+            self.live_engine
+            and getattr(self.live_engine, "is_connected", False)
+            and getattr(self.live_engine, "live_order_placement_enabled", False)
+        ):
             paper_rec = await self.live_engine.paper_record()
             if self.live_engine.mode == TradingMode.AUTO and paper_rec.get("promotion", {}).get("passed", False):
                 is_live_auto = True
         if is_live_auto and self.live_engine is not None:
-            # LIVE EXECUTION
+            # Route through the live engine so kill-switch, promotion, approval,
+            # connection, and paper-only guards cannot be bypassed.
             side_literal = "buy" if direction == "long" else "sell"
             try:
-                live_order = await self.live_engine.exchange.create_order(
-                    symbol=inputs.symbol,
-                    side=side_literal,  # type: ignore
-                    quantity=quantity,
-                    order_type="market",
+                live_result = await self.live_engine.execute_signal(
+                    {
+                        "symbol": inputs.symbol,
+                        "side": side_literal,
+                        "quantity": quantity,
+                        "order_type": "market",
+                        "price": fill_price,
+                        "reason": f"ExecutionAgent signal: {strategy_name}",
+                    }
                 )
-                if live_order.status == "failed":
+                if not live_result.get("accepted", False):
                     return ExecutionOutput(
                         executed=False,
                         fill_price=fill_price,
-                        rationale=f"Live trade failed: {live_order.raw.get('error', 'unknown error')}",
+                        rationale=f"Live trade blocked: {live_result.get('reason', 'unknown reason')}",
                     )
+                live_order = live_result.get("order") or {}
+                order_id = live_order.get("id")
+                order_price = live_order.get("price") or fill_price
                 parts.append(
-                    f"LIVE EXECUTED {direction} position for {inputs.symbol} at market price. Order ID: {live_order.id}"
+                    f"LIVE EXECUTED {direction} position for {inputs.symbol} at market price. Order ID: {order_id}"
                 )
                 return ExecutionOutput(
                     executed=True,
-                    order_id=live_order.id,
-                    fill_price=live_order.price or fill_price,
+                    order_id=order_id,
+                    fill_price=order_price,
                     rationale=". ".join(parts),
                 )
             except Exception as e:
-                logger.error(f"Unhandled exception: {e}", exc_info=True)
+                logger.error("Live execution failed: %s", e, exc_info=True)
                 return ExecutionOutput(
                     executed=False,
                     fill_price=fill_price,
