@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from scripts.test_free_models import flatten_agent_models, load_model_roster
