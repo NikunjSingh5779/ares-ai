@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from agents.client import LLMClient, NoOpLLMClient, create_llm_client
+from agents.models import load_model_roster
 
 
 class TestLLMClientInit:
@@ -139,3 +140,23 @@ class TestCreateLLMClient:
                 model="open_router/openai/gpt-4o", messages=[{"role": "user", "content": "hello"}]
             )
         assert client._clients == {}
+
+
+class TestFreeOnlyModelRoster:
+    def test_every_hosted_model_is_explicitly_free(self) -> None:
+        roster = load_model_roster()
+        for agent_name in roster.agent_names:
+            for model_id in roster.get(agent_name).model_chain:
+                if model_id.startswith("open_router/"):
+                    hosted_id = model_id.removeprefix("open_router/")
+                    assert hosted_id.endswith(":free") or hosted_id == "openrouter/free", (
+                        f"{agent_name} uses an unverified OpenRouter model: {model_id}"
+                    )
+                elif model_id.startswith("opencode/"):
+                    assert model_id.endswith("-free"), (
+                        f"{agent_name} uses an unverified OpenCode model: {model_id}"
+                    )
+                else:
+                    assert model_id.startswith("local/"), (
+                        f"{agent_name} uses a provider outside the free-only allowlist: {model_id}"
+                    )
