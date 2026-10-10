@@ -10,7 +10,7 @@ from scripts.test_free_models import flatten_agent_models, load_model_roster
 
 
 @pytest.fixture
-def sample_roster() -> dict:
+def sample_roster() -> dict[str, Any]:
     """A minimal model roster resembling configs/models.yaml."""
     return {
         "defaults": {"rate_limit_rpm": 4},
@@ -78,7 +78,7 @@ class TestFreePriceFilter:
     """Test the OpenRouter free-model filtering logic in isolation."""
 
     @pytest.fixture
-    def sample_api_response(self) -> dict:
+    def sample_api_response(self) -> dict[str, Any]:
         """Simulate OpenRouter /api/v1/models response."""
         return {
             "data": [
