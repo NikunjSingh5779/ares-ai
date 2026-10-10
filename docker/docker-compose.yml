@@ -96,8 +96,8 @@ services:
       chromadb:
         condition: service_healthy
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://ares:changeme_in_production@postgres:5432/ares_ai}
-      REDIS_HOST: ${REDIS_HOST:-redis}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ares}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-ares_ai}
+      REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       API_HOST: ${API_HOST:-0.0.0.0}
@@ -108,8 +108,8 @@ services:
       OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
-      CHROMA_HOST: ${CHROMA_HOST:-chromadb}
-      CHROMA_PORT: ${CHROMA_PORT:-8000}
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus
     ports:
       - "8080:8000"
