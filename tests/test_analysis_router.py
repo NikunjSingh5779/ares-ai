@@ -73,7 +73,7 @@ class TestAnalyzeStream:
         # We need to mock _get_supervisor to return a supervisor
         # whose stream_analysis yields our fake events
         mock_supervisor = AsyncMock(spec=Supervisor)
-        mock_supervisor.stream_analysis = lambda symbol, request: fake_gen  # type: ignore[method-assign]
+        mock_supervisor.stream_analysis = lambda symbol, request: fake_gen
 
         with patch("backend.routers.analysis._get_supervisor", return_value=mock_supervisor):
             # Use StreamingResponse directly
@@ -101,7 +101,7 @@ class TestAnalyzeStream:
         fake_gen = _make_fake_stream_events(2)
 
         mock_supervisor = AsyncMock(spec=Supervisor)
-        mock_supervisor.stream_analysis = lambda symbol, request: fake_gen  # type: ignore[method-assign]
+        mock_supervisor.stream_analysis = lambda symbol, request: fake_gen
 
         with patch("backend.routers.analysis._get_supervisor", return_value=mock_supervisor):
             response = client.get("/api/v1/analyze/stream?symbol=BTC-USD&request=test")
