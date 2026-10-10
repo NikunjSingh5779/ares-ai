@@ -190,10 +190,9 @@ class TestModelRouterMocked:
         )
 
         assert result.success is True
-        assert result.model_used == "model-a"
+        assert result.model_used == "local/auto"
         assert result.degraded is False
         assert result.fallback_used is False
-        assert result.model_used == "local/auto"
         mock_client.chat_completion.assert_awaited_once_with(
             model="local/auto",
             messages=[{"role": "user", "content": "test"}],
