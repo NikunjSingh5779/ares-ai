@@ -153,10 +153,6 @@ class TestFreeOnlyModelRoster:
                         f"{agent_name} uses an unverified model: {model_id}"
                     )
                 elif model_id.startswith("opencode/"):
-                    assert model_id.endswith("-free"), (
-                        f"{agent_name} uses an unverified OpenCode model: {model_id}"
-                    )
+                    assert model_id.endswith("-free"), f"{agent_name} uses an unverified OpenCode model: {model_id}"
                 else:
-                    assert model_id.startswith("local/"), (
-                        f"{agent_name} uses a non-allowlisted model: {model_id}"
-                    )
+                    assert model_id.startswith("local/"), f"{agent_name} uses a non-allowlisted model: {model_id}"
