@@ -48,8 +48,9 @@ class Settings(BaseSettings):
     chroma_collection: str = "ares_memories"
 
     # Local OpenAI-compatible inference (llama.cpp, Ollama OpenAI-compatible API, etc.)
-    # Empty disables local-first routing; set to the server's /v1 base URL to enable it.
-    local_llm_base_url: str = ""
+    # Default to port 1919 (keeps clear of the Docker Compose API port 8080).
+    # Override for a different local OpenAI-compatible inference server.
+    local_llm_base_url: str = "http://127.0.0.1:1919/v1"
     local_llm_api_key: str = ""
 
     # OpenRouter
