@@ -49,6 +49,12 @@ def mock_live_engine(mock_live_exchange):
     engine.exchange = mock_live_exchange
     engine.is_connected = True
     engine.live_order_placement_enabled = False
+    engine.execute_signal = AsyncMock(
+        return_value={
+            "accepted": True,
+            "order": {"id": "live_order_1", "price": 50000.0, "status": "open"},
+        }
+    )
     return engine
 
 
@@ -141,7 +147,15 @@ async def test_routes_to_live_only_when_explicitly_enabled_and_promotion_gate_pa
 
     assert result.executed is True
     assert "LIVE EXECUTED" in result.rationale
-    mock_live_engine.exchange.create_order.assert_called_once_with(
-        symbol="BTC-USD", side="buy", quantity=1.0, order_type="market"
+    mock_live_engine.execute_signal.assert_awaited_once_with(
+        {
+            "symbol": "BTC-USD",
+            "side": "buy",
+            "quantity": 1.0,
+            "order_type": "market",
+            "price": 50000.0,
+            "reason": "ExecutionAgent signal: test_strat",
+        }
     )
+    mock_live_engine.exchange.create_order.assert_not_called()
     mock_paper_engine.execute_signal.assert_not_called()
