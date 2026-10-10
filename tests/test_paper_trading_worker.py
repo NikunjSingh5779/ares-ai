@@ -149,8 +149,10 @@ class TestWorkerEdgeCases:
         worker = PaperTradingWorker(engine, ingestor, session_factory, poll_interval_seconds=999)
         worker._tick = AsyncMock(side_effect=asyncio.CancelledError())  # type: ignore[method-assign]
         worker.start()
-        await asyncio.wait_for(worker._task, timeout=5)
-        assert worker._task.done()
+        task = worker._task
+        assert task is not None
+        await asyncio.wait_for(task, timeout=5)
+        assert task.done()
 
     @pytest.mark.asyncio
     async def test_loop_logs_exception(self, engine, ingestor, session_factory):
