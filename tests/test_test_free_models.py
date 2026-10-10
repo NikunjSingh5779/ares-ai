@@ -90,7 +90,7 @@ class TestFreePriceFilter:
             ],
         }
 
-    def test_parse_free_models(self, sample_api_response: dict) -> None:
+    def test_parse_free_models(self, sample_api_response: dict[str, Any]) -> None:
         """Free model IDs should include only zero-priced entries."""
 
         # Can't test the async function directly without mocking httpx,
@@ -104,7 +104,7 @@ class TestFreePriceFilter:
                 free_ids.add(model["id"])
         assert free_ids == {"model-a:free", "model-b:free", "model-d:free"}
 
-    def test_not_free_models_excluded(self, sample_api_response: dict) -> None:
+    def test_not_free_models_excluded(self, sample_api_response: dict[str, Any]) -> None:
         """Paid models should not be included in free IDs."""
         free_ids = set()
         for model in sample_api_response["data"]:
