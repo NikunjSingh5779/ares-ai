@@ -129,6 +129,7 @@ async def test_auto_mode_and_promotion_cannot_bypass_paper_only_default(
     assert result.executed is True
     assert "PAPER EXECUTED" in result.rationale
     mock_live_engine.exchange.create_order.assert_not_called()
+    mock_live_engine.execute_signal.assert_not_awaited()
     mock_paper_engine.execute_signal.assert_called_once()
 
 
