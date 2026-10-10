@@ -171,7 +171,11 @@ class LLMClient:
         # Enforce the free-hosted-model policy at the network boundary. Local
         # models are unrestricted; hosted models must use provider-designated
         # free IDs so a roster typo cannot silently incur charges.
-        if provider in {"open_router", "default"} and clean_model != "openrouter/free" and not clean_model.endswith(":free"):
+        if (
+            provider in {"open_router", "default"}
+            and clean_model != "openrouter/free"
+            and not clean_model.endswith(":free")
+        ):
             raise ValueError(f"Paid or unverified OpenRouter model blocked by free-only policy: {model}")
         if provider == "opencode" and not clean_model.endswith("-free"):
             raise ValueError(f"Paid or unverified OpenCode model blocked by free-only policy: {model}")
