@@ -91,7 +91,9 @@ class ModelRouter:
         # If a local OpenAI-compatible provider is configured, try its currently
         # loaded model first. The roster's hosted fallbacks remain the recovery path.
         providers = getattr(self.client, "providers", {})
-        if model_chain and isinstance(providers, dict) and "local" in providers:
+        primary_model = model_chain[0].lower() if model_chain else ""
+        requires_vision = any(token in primary_model for token in ("-vl", "_vl", "vision"))
+        if model_chain and isinstance(providers, dict) and "local" in providers and not requires_vision:
             if not any(model_id.startswith("local/") for model_id in model_chain):
                 model_chain = ["local/auto", *model_chain]
         for i, model_id in enumerate(model_chain):
