@@ -75,6 +75,13 @@ class LLMClient:
         return True
 
     def _populate_from_env(self) -> None:
+        local_url = os.getenv("LOCAL_LLM_BASE_URL", "").strip()
+        if local_url and "local" not in self.providers:
+            self.providers["local"] = {
+                "api_key": os.getenv("LOCAL_LLM_API_KEY", "").strip(),
+                "base_url": local_url.rstrip("/"),
+            }
+
         env_map = {
             "open_router": ("OPENROUTER_API_KEY", "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
             "opencode": ("OPENCODE_API_KEY", "OPENCODE_BASE_URL", "https://api.opencode.ai/v1"),
@@ -157,19 +164,47 @@ class LLMClient:
         elif clean_model.startswith("mistral/"):
             clean_model = clean_model.replace("mistral/", "", 1)
             provider = "mistral"
+        elif clean_model.startswith("local/"):
+            clean_model = clean_model.replace("local/", "", 1)
+            provider = "local"
+
+        # Enforce the free-hosted-model policy at the network boundary. Local
+        # models are unrestricted; hosted models must use provider-designated
+        # free IDs so a roster typo cannot silently incur charges.
+        if provider in {"open_router", "default"} and clean_model != "openrouter/free" and not clean_model.endswith(":free"):
+            raise ValueError(f"Paid or unverified OpenRouter model blocked by free-only policy: {model}")
+        if provider == "opencode" and not clean_model.endswith("-free"):
+            raise ValueError(f"Paid or unverified OpenCode model blocked by free-only policy: {model}")
+        if provider in {"google", "mistral"}:
+            raise ValueError(f"Direct {provider} models are not enabled by the free-only model policy: {model}")
 
         self._check_circuit_breaker(model)
         client = self._get_client(provider)
 
-        payload: dict[str, Any] = {
-            "model": clean_model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            **kwargs,
-        }
-
         try:
+            if provider == "local" and clean_model in {"", "auto"}:
+                # Discover the currently loaded local model rather than hardcoding
+                # a model name. This works with llama.cpp and other OpenAI-compatible
+                # servers exposing GET /v1/models.
+                model_response = await client.get("/models", timeout=timeout or min(self.default_timeout, 5))
+                model_response.raise_for_status()
+                model_payload = model_response.json()
+                available_models = model_payload.get("data", []) if isinstance(model_payload, dict) else []
+                resolved_model = next(
+                    (item.get("id") for item in available_models if isinstance(item, dict) and item.get("id")),
+                    None,
+                )
+                if not resolved_model:
+                    raise ValueError("Local inference server returned no model IDs from /models")
+                clean_model = str(resolved_model)
+
+            payload: dict[str, Any] = {
+                "model": clean_model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                **kwargs,
+            }
             response = await client.post(
                 "/chat/completions",
                 json=payload,
@@ -182,12 +217,13 @@ class LLMClient:
 
             response_json = response.json()
 
-            # Catch OpenRouter downstream errors hidden in 200 OK responses
-            if provider == "open_router" and isinstance(response_json, dict) and "error" in response_json:
+            # Some OpenAI-compatible servers and OpenRouter may encode errors in
+            # HTTP 200 responses; treat those as failures so fallback can proceed.
+            if provider in {"open_router", "local"} and isinstance(response_json, dict) and "error" in response_json:
                 error_msg = response_json["error"]
-                logger.error(f"OpenRouter downstream payload error: {error_msg}")
+                logger.error("Provider '%s' returned an error payload: %s", provider, error_msg)
                 self._record_failure(model)
-                raise ValueError(f"OpenRouter payload error: {error_msg}")
+                raise ValueError(f"{provider} payload error: {error_msg}")
 
             self._record_success(model)
             return response_json  # type: ignore[no-any-return]
@@ -326,6 +362,11 @@ def create_llm_client() -> LLMClient | NoOpLLMClient:
     from backend.core.config import settings
 
     providers = {}
+    if getattr(settings, "local_llm_base_url", "").strip():
+        providers["local"] = {
+            "api_key": getattr(settings, "local_llm_api_key", "").strip(),
+            "base_url": settings.local_llm_base_url.rstrip("/"),
+        }
     if _is_valid_key(settings.openrouter_api_key):
         providers["open_router"] = {
             "api_key": settings.openrouter_api_key.strip(),
