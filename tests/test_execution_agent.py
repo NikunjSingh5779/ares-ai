@@ -148,6 +148,97 @@ class TestExecutionAgent:
         assert result.filled_quantity in (1.5, None)  # from risk max_position_size
         assert "EXECUTED" in result.rationale.upper()
 
+    async def test_reports_actual_slipped_fill_and_capped_quantity(self, mock_live_engine) -> None:
+        """The agent must report/persist the engine's fill, not the signal."""
+        engine = PaperTradingEngine(
+            initial_capital=100000.0,
+            commission_pct=0.001,
+            slippage_pct=0.001,
+        )
+        agent = ExecutionAgent(engine=engine, live_engine=mock_live_engine)
+        risk_output = approved_risk_output()
+        risk_output["max_position_size"] = 100.0  # deliberately oversized
+
+        result = await agent.process(
+            ExecutionInput(
+                symbol="BTC-USD",
+                candles=default_candles(),
+                market_analyst_output=long_market_analyst(),
+                risk_output=risk_output,
+            )
+        )
+
+        expected_fill = 50500.0 * 1.001
+        expected_quantity = 100000.0 / (expected_fill * 1.001)
+        assert result.executed is True
+        assert result.fill_price == pytest.approx(expected_fill)
+        assert result.filled_quantity == pytest.approx(expected_quantity)
+        assert len(engine._positions) == 1
+        assert engine._positions[0].quantity == pytest.approx(expected_quantity)
+
+    async def test_persists_actual_fill_and_quantity(self, mock_live_engine) -> None:
+        """The DB position row must match the engine fill, not the request."""
+        engine = PaperTradingEngine(
+            initial_capital=100000.0,
+            commission_pct=0.001,
+            slippage_pct=0.001,
+        )
+        session = _FakeSession()
+        agent = ExecutionAgent(
+            engine=engine,
+            live_engine=mock_live_engine,
+            session_factory=_FakeSessionFactory(session),  # type: ignore[arg-type]
+        )
+        risk_output = approved_risk_output()
+        risk_output["max_position_size"] = 100.0
+
+        result = await agent.process(
+            ExecutionInput(
+                symbol="BTC-USD",
+                candles=default_candles(),
+                market_analyst_output=long_market_analyst(),
+                risk_output=risk_output,
+            )
+        )
+
+        assert result.fill_price is not None
+        assert result.filled_quantity is not None
+        inserts = [params for sql, params in session.calls if "INSERT INTO positions" in sql]
+        assert len(inserts) == 1
+        assert inserts[0]["quantity"] == pytest.approx(result.filled_quantity)
+        assert inserts[0]["entry_price"] == pytest.approx(result.fill_price)
+        assert inserts[0]["market_value"] == pytest.approx(result.fill_price * result.filled_quantity)
+
+    async def test_reversal_persists_buy_sell_side(self, mock_live_engine) -> None:
+        """trade_history uses buy/sell, not the engine's long/short labels."""
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+        session = _FakeSession()
+        agent = ExecutionAgent(
+            engine=engine,
+            live_engine=mock_live_engine,
+            session_factory=_FakeSessionFactory(session),  # type: ignore[arg-type]
+        )
+
+        result = await agent.process(
+            ExecutionInput(
+                symbol="BTC-USD",
+                candles=default_candles(),
+                market_analyst_output={
+                    "confidence": 80.0,
+                    "direction": "short",
+                    "indicators": {},
+                    "rationale": "Bearish reversal",
+                },
+                risk_output=approved_risk_output(),
+            )
+        )
+
+        assert result.executed is True
+        inserts = [params for sql, params in session.calls if "INSERT INTO trade_history" in sql]
+        assert len(inserts) == 1
+        assert inserts[0]["side"] == "buy"  # the closed long's entry side
+
     async def test_rejects_when_approved_but_no_position_size(self, mock_live_engine) -> None:
         """Regression guard: if the Risk Agent approves a trade but supplies
         no valid position size (e.g. price data was missing when it ran),
@@ -352,3 +443,45 @@ class TestExecutionAgent:
         )
         assert result.executed is True  # FlexibleSchema -> Pydantic attribute access
         assert result.fill_price == 50500.0
+
+
+class _FakeResult:
+    def __init__(self, value: str = "fake-id") -> None:
+        self._value = value
+
+    def scalar(self) -> str:
+        return self._value
+
+
+class _FakeSession:
+    """Captures parameterized SQL for assertions."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.committed = False
+
+    async def execute(self, statement: Any, params: dict[str, Any] | None = None) -> _FakeResult:
+        self.calls.append((str(statement), params or {}))
+        return _FakeResult()
+
+    async def commit(self) -> None:
+        self.committed = True
+
+
+class _FakeSessionContext:
+    def __init__(self, session: _FakeSession) -> None:
+        self._session = session
+
+    async def __aenter__(self) -> _FakeSession:
+        return self._session
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+class _FakeSessionFactory:
+    def __init__(self, session: _FakeSession) -> None:
+        self._session = session
+
+    def __call__(self) -> _FakeSessionContext:
+        return _FakeSessionContext(self._session)

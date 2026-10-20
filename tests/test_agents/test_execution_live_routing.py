@@ -108,20 +108,81 @@ async def test_routes_to_paper_when_mode_auto_but_promotion_gate_failed(
 
 
 @pytest.mark.asyncio
-async def test_routes_to_live_when_mode_auto_and_promotion_gate_passed(
-    mock_paper_engine, mock_live_engine, execution_input
+async def test_routes_to_live_through_engine_when_enabled(
+    mock_paper_engine, mock_live_engine, execution_input, monkeypatch
 ):
-    mock_live_engine.mode = TradingMode.AUTO
-    from unittest.mock import AsyncMock
+    from configs.settings import settings
 
+    monkeypatch.setattr(settings, "live_trading_enabled", True)
+    mock_live_engine.mode = TradingMode.AUTO
+    mock_live_engine.is_running = True
+    mock_live_engine.is_connected = True
     mock_live_engine.paper_record = AsyncMock(return_value={"promotion": {"passed": True}})
+    mock_live_engine.execute_signal = AsyncMock(
+        return_value={
+            "accepted": True,
+            "reason": "ok",
+            "order": {"id": "live_order_1", "price": 50000.0},
+        }
+    )
 
     agent = ExecutionAgent(engine=mock_paper_engine, live_engine=mock_live_engine)
     result = await agent.process(execution_input)
 
     assert result.executed is True
+    assert result.order_id == "live_order_1"
     assert "LIVE EXECUTED" in result.rationale
-    mock_live_engine.exchange.create_order.assert_called_once_with(
-        symbol="BTC-USD", side="buy", quantity=1.0, order_type="market"
+    mock_live_engine.execute_signal.assert_awaited_once()
+    sent = mock_live_engine.execute_signal.await_args.kwargs
+    assert sent["signal"]["symbol"] == "BTC-USD"
+    assert sent["signal"]["side"] == "buy"
+    # The agent must never bypass the engine's safety gates.
+    mock_live_engine.exchange.create_order.assert_not_called()
+    mock_paper_engine.execute_signal.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_live_disabled_falls_back_to_paper(mock_paper_engine, mock_live_engine, execution_input, monkeypatch):
+    from configs.settings import settings
+
+    monkeypatch.setattr(settings, "live_trading_enabled", False)
+    mock_live_engine.mode = TradingMode.AUTO
+    mock_live_engine.is_running = True
+    mock_live_engine.is_connected = True
+    mock_live_engine.paper_record = AsyncMock(return_value={"promotion": {"passed": True}})
+    mock_live_engine.execute_signal = AsyncMock()
+
+    agent = ExecutionAgent(engine=mock_paper_engine, live_engine=mock_live_engine)
+    result = await agent.process(execution_input)
+
+    assert result.executed is True
+    assert "PAPER EXECUTED" in result.rationale
+    mock_live_engine.execute_signal.assert_not_awaited()
+    mock_live_engine.exchange.create_order.assert_not_called()
+    mock_paper_engine.execute_signal.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_live_engine_rejection_is_reported(mock_paper_engine, mock_live_engine, execution_input, monkeypatch):
+    from configs.settings import settings
+
+    monkeypatch.setattr(settings, "live_trading_enabled", True)
+    mock_live_engine.mode = TradingMode.AUTO
+    mock_live_engine.is_running = True
+    mock_live_engine.is_connected = True
+    mock_live_engine.paper_record = AsyncMock(return_value={"promotion": {"passed": True}})
+    mock_live_engine.execute_signal = AsyncMock(
+        return_value={
+            "accepted": False,
+            "reason": "Kill switch active",
+            "order": None,
+        }
     )
+
+    agent = ExecutionAgent(engine=mock_paper_engine, live_engine=mock_live_engine)
+    result = await agent.process(execution_input)
+
+    assert result.executed is False
+    assert "Live trade not accepted" in result.rationale
+    assert "Kill switch active" in result.rationale
     mock_paper_engine.execute_signal.assert_not_called()

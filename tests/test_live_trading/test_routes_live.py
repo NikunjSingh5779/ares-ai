@@ -20,6 +20,14 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _enable_live_trading(monkeypatch):
+    """Most tests here exercise live controls, not the paper-only default."""
+    from configs.settings import settings
+
+    monkeypatch.setattr(settings, "live_trading_enabled", True)
+
+
 def _make_mock_engine():
     """Create a mock engine with reasonable defaults for testing."""
     from live_trading.audit import OrderAuditor
@@ -142,6 +150,17 @@ class TestLiveMode:
         assert response.status_code == 400
         assert "paper record" in response.json()["detail"].lower()
 
+    def test_set_mode_auto_blocked_when_live_disabled(self, client, monkeypatch) -> None:
+        from configs.settings import settings
+
+        monkeypatch.setattr(settings, "live_trading_enabled", False)
+        engine = _make_mock_engine()
+        engine.set_paper_record(50, 30)
+        with patch("backend.routers.live._get_engine", return_value=engine):
+            response = client.post("/api/v1/live/mode", json={"mode": "auto"})
+        assert response.status_code == 403
+        assert "paper-only" in response.json()["detail"].lower()
+
 
 class TestLiveStartStop:
     """POST /api/v1/live/start and /stop tests."""
@@ -160,6 +179,16 @@ class TestLiveStartStop:
             response = client.post("/api/v1/live/start")
         assert response.status_code == 200
         assert response.json()["status"] == "already_running"
+
+    def test_start_blocked_when_live_disabled(self, client, monkeypatch) -> None:
+        from configs.settings import settings
+
+        monkeypatch.setattr(settings, "live_trading_enabled", False)
+        engine = _make_mock_engine()
+        with patch("backend.routers.live._get_engine", return_value=engine):
+            response = client.post("/api/v1/live/start")
+        assert response.status_code == 403
+        assert "paper-only" in response.json()["detail"].lower()
 
     def test_stop_engine(self, client) -> None:
         engine = _make_mock_engine()
@@ -181,16 +210,39 @@ class TestKillSwitchEndpoints:
     """POST /api/v1/live/kill and /arm tests."""
 
     def test_activate_kill_switch(self, client) -> None:
-        with patch("backend.routers.live._get_engine", return_value=_make_mock_engine()):
+        from live_trading.safety import KillSwitch
+
+        ks = KillSwitch()
+        with patch("backend.routers.live._get_kill_switch", return_value=ks):
             response = client.post("/api/v1/live/kill", json={"reason": "manual_test"})
         assert response.status_code == 200
         assert response.json()["status"] == "kill_switch_active"
+        assert response.json()["active"] is True
+        assert ks.is_active
 
     def test_arm_kill_switch(self, client) -> None:
-        with patch("backend.routers.live._get_engine", return_value=_make_mock_engine()):
+        from live_trading.safety import KillSwitch
+
+        ks = KillSwitch()
+        ks.activate(reason="test")
+        with patch("backend.routers.live._get_kill_switch", return_value=ks):
             response = client.post("/api/v1/live/arm")
         assert response.status_code == 200
         assert response.json()["status"] == "kill_switch_armed"
+        assert not ks.is_active
+
+    def test_kill_switch_works_without_an_engine(self, client) -> None:
+        """Paper-only mode must still expose an emergency stop."""
+        from live_trading.safety import KillSwitch
+
+        ks = KillSwitch()
+        with (
+            patch("backend.routers.live._get_kill_switch", return_value=ks),
+            patch("backend.routers.live._get_engine", return_value=None),
+        ):
+            response = client.post("/api/v1/live/kill", json={"reason": "paper"})
+        assert response.status_code == 200
+        assert ks.is_active
 
 
 class TestLiveDataEndpoints:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.security import hash_password
@@ -22,6 +22,12 @@ async def get_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     """Get a user by ID."""
     result = await db.execute(select(User).where(User.id == user_id))
     return result.scalars().first()
+
+
+async def count_users(db: AsyncSession) -> int:
+    """Return the number of user rows (used for single-user bootstrap)."""
+    result = await db.execute(select(func.count()).select_from(User))
+    return int(result.scalar_one())
 
 
 async def create_user(db: AsyncSession, user_in: UserCreate) -> User:

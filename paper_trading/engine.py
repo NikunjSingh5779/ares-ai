@@ -37,6 +37,8 @@ class PaperPosition:
     stop_loss: float | None = None
     take_profit: float | None = None
     strategy_name: str = ""
+    entry_commission: float = 0.0
+    margin: float = 0.0
 
 
 @dataclass
@@ -54,11 +56,18 @@ class ClosedTrade:
     pnl_pct: float
     exit_reason: str = "signal"
     strategy_name: str = ""
+    entry_commission: float = 0.0
+    exit_commission: float = 0.0
 
 
 @dataclass
 class PortfolioSummary:
-    """Snapshot of paper portfolio state and performance."""
+    """Snapshot of paper portfolio state and performance.
+
+    ``cash`` includes proceeds credited from open short positions. ``margin_used``
+    is the notional reserved against those shorts; ``equity`` is cash plus the
+    mark-to-market value of long positions minus the liability of short positions.
+    """
 
     initial_capital: float
     cash: float
@@ -70,6 +79,8 @@ class PortfolioSummary:
     losing_trades: int
     open_positions: int
     max_drawdown_pct: float = 0.0
+    equity: float = 0.0
+    margin_used: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -85,12 +96,32 @@ class PaperTradingEngine:
     and reversal signals.
     """
 
-    def __init__(self, initial_capital: float = 100000.0) -> None:
+    def __init__(
+        self,
+        initial_capital: float = 100000.0,
+        commission_pct: float = 0.0,
+        slippage_pct: float = 0.0,
+    ) -> None:
+        """Create a paper portfolio.
+
+        ``commission_pct`` and ``slippage_pct`` are expressed as decimals
+        (0.001 = 10 bps). They default to zero so direct unit tests can model
+        frictionless fills; the application wires the configured defaults from
+        ``configs.settings`` into its shared engine.
+        """
+        if not 0.0 <= commission_pct < 1.0:
+            raise ValueError("commission_pct must be between 0 and 1")
+        if not 0.0 <= slippage_pct < 1.0:
+            raise ValueError("slippage_pct must be between 0 and 1")
+
         self._initial_capital = max(initial_capital, 1000.0)
         self._cash: float = self._initial_capital
+        self._commission_pct = commission_pct
+        self._slippage_pct = slippage_pct
         self._positions: list[PaperPosition] = []
         self._closed_trades: list[ClosedTrade] = []
         self._equity_curve: list[float] = [self._initial_capital]
+        self._last_prices: dict[str, float] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -121,8 +152,12 @@ class PaperTradingEngine:
             Dict with keys ``accepted``, ``position_id``, ``reversal``,
             ``closed_trade``, and ``reason``.
         """
+        if side not in ("long", "short"):
+            return {"accepted": False, "reason": "Side must be 'long' or 'short'"}
         if quantity <= 0:
             return {"accepted": False, "reason": "Quantity must be positive"}
+        if entry_price <= 0:
+            return {"accepted": False, "reason": "Entry price must be positive"}
 
         result: dict[str, Any] = {
             "accepted": True,
@@ -146,27 +181,58 @@ class PaperTradingEngine:
             if closed is not None:
                 result["closed_trade"] = self._trade_to_dict(closed)
 
-        # Open new position (only spend up to cash)
-        position_value = min(quantity * entry_price, self._cash)
-        actual_quantity = position_value / entry_price if entry_price > 0 else 0.0
+        # Apply adverse slippage to the signal price. A long pays up; a short
+        # receives less. This is the actual fill recorded on the position.
+        fill_price = (
+            entry_price * (1.0 + self._slippage_pct) if side == "long" else entry_price * (1.0 - self._slippage_pct)
+        )
+        if fill_price <= 0:
+            return {"accepted": False, "reason": "Invalid fill price after slippage"}
 
+        # Longs are limited by free cash and by equity not already reserved as
+        # short margin. Shorts require 100% notional margin, so their notional
+        # cannot exceed current free margin. Both budgets include commission.
+        equity = self._compute_equity()
+        margin_used = sum(pos.margin for pos in self._positions)
+        free_margin = max(equity - margin_used, 0.0)
+        buying_power = min(self._cash, free_margin) if side == "long" else free_margin
+        max_affordable = max(buying_power, 0.0) / (fill_price * (1.0 + self._commission_pct))
+        actual_quantity = min(quantity, max_affordable)
         if actual_quantity <= 0:
             return {"accepted": False, "reason": "Insufficient cash"}
+
+        notional = actual_quantity * fill_price
+        entry_commission = notional * self._commission_pct
+        if side == "long":
+            self._cash -= notional + entry_commission
+            margin = 0.0
+        else:
+            # Credit short proceeds and reserve the notional as margin. The
+            # margin is reported for exposure control; cash stays net of fees.
+            self._cash += notional - entry_commission
+            margin = notional
 
         pos = PaperPosition(
             id=str(uuid.uuid4()),
             symbol=symbol,
             side=side,  # type: ignore[arg-type]
             quantity=actual_quantity,
-            entry_price=entry_price,
+            entry_price=fill_price,
             entry_at=datetime.now(),
             stop_loss=stop_loss,
             take_profit=take_profit,
             strategy_name=strategy_name,
+            entry_commission=entry_commission,
+            margin=margin,
         )
         self._positions.append(pos)
-        self._cash -= position_value
+        self._last_prices[symbol] = fill_price
+        self._equity_curve.append(self._compute_equity())
         result["position_id"] = pos.id
+        result["fill_price"] = fill_price
+        result["quantity"] = actual_quantity
+        result["commission"] = entry_commission
+        result["margin"] = margin
 
         return result
 
@@ -180,43 +246,64 @@ class PaperTradingEngine:
 
         Args:
             position_id: UUID of the position to close.
-            exit_price: Price at which the position is exited.
+            exit_price: Reference price at which the position is exited;
+                adverse slippage and commission are applied to the fill.
             exit_reason: Reason for closing (``"signal"``, ``"stop_loss"``,
                 ``"take_profit"``).
 
         Returns:
             The ``ClosedTrade`` record, or ``None`` if position not found.
         """
+        if exit_price <= 0:
+            return None
+
         for i, pos in enumerate(self._positions):
             if pos.id == position_id:
                 self._positions.pop(i)
 
-                if pos.side == "long":
-                    pnl = pos.quantity * (exit_price - pos.entry_price)
-                else:
-                    pnl = pos.quantity * (pos.entry_price - exit_price)
+                # Exit fills are adverse: a long sells lower; a short buys higher.
+                exit_fill = (
+                    exit_price * (1.0 - self._slippage_pct)
+                    if pos.side == "long"
+                    else exit_price * (1.0 + self._slippage_pct)
+                )
+                if exit_fill <= 0:
+                    # Restore the position rather than recording an invalid fill.
+                    self._positions.insert(i, pos)
+                    return None
 
+                exit_value = pos.quantity * exit_fill
+                exit_commission = exit_value * self._commission_pct
+                if pos.side == "long":
+                    price_pnl = pos.quantity * (exit_fill - pos.entry_price)
+                    self._cash += exit_value - exit_commission
+                else:
+                    price_pnl = pos.quantity * (pos.entry_price - exit_fill)
+                    self._cash -= exit_value + exit_commission
+
+                pnl = price_pnl - pos.entry_commission - exit_commission
                 entry_value = pos.quantity * pos.entry_price
                 pnl_pct = (pnl / entry_value * 100.0) if entry_value > 0 else 0.0
-
-                self._cash += pos.quantity * exit_price
 
                 trade = ClosedTrade(
                     symbol=pos.symbol,
                     side=pos.side,
                     quantity=pos.quantity,
                     entry_price=pos.entry_price,
-                    exit_price=exit_price,
+                    exit_price=exit_fill,
                     entry_at=pos.entry_at,
                     exit_at=datetime.now(),
                     pnl=round(pnl, 2),
                     pnl_pct=round(pnl_pct, 4),
                     exit_reason=exit_reason,
                     strategy_name=pos.strategy_name,
+                    entry_commission=pos.entry_commission,
+                    exit_commission=exit_commission,
                 )
                 self._closed_trades.append(trade)
+                self._last_prices.pop(pos.symbol, None)
 
-                # Track equity
+                # Track equity after the position is removed.
                 self._equity_curve.append(self._compute_equity())
 
                 return trade
@@ -244,20 +331,23 @@ class PaperTradingEngine:
             exit_price: float | None = None
             reason: str | None = None
 
+            # If a candle spans both levels, the intra-candle path is unknown.
+            # Assume the adverse level was reached first; optimistic ordering
+            # would inflate paper results and distort the promotion gate.
             if pos.side == "long":
-                if pos.take_profit is not None and high >= pos.take_profit:
-                    exit_price = pos.take_profit
-                    reason = "take_profit"
-                elif pos.stop_loss is not None and low <= pos.stop_loss:
+                if pos.stop_loss is not None and low <= pos.stop_loss:
                     exit_price = pos.stop_loss
                     reason = "stop_loss"
+                elif pos.take_profit is not None and high >= pos.take_profit:
+                    exit_price = pos.take_profit
+                    reason = "take_profit"
             else:  # short
-                if pos.take_profit is not None and low <= pos.take_profit:
-                    exit_price = pos.take_profit
-                    reason = "take_profit"
-                elif pos.stop_loss is not None and high >= pos.stop_loss:
+                if pos.stop_loss is not None and high >= pos.stop_loss:
                     exit_price = pos.stop_loss
                     reason = "stop_loss"
+                elif pos.take_profit is not None and low <= pos.take_profit:
+                    exit_price = pos.take_profit
+                    reason = "take_profit"
 
             if reason is not None and exit_price is not None:
                 trade = self.close_position(pos.id, exit_price, exit_reason=reason)
@@ -266,14 +356,30 @@ class PaperTradingEngine:
 
         return closed
 
-    def get_summary(self) -> PortfolioSummary:
-        """Compute portfolio-level metrics.
+    def mark_to_market(self, symbol: str, price: float) -> None:
+        """Mark open positions for ``symbol`` at the latest market price.
 
-        Returns:
-            ``PortfolioSummary`` with PnL, return %, win rate, drawdown.
+        Appending the resulting equity to the curve is what makes intra-trade
+        drawdown measurable. Calling this with a symbol that has no open
+        position is a no-op.
         """
-        total_pnl = sum(t.pnl for t in self._closed_trades)
-        total_return_pct = (self._compute_equity() / self._initial_capital - 1.0) * 100.0
+        if price <= 0:
+            return
+        if not any(pos.symbol == symbol for pos in self._positions):
+            return
+        self._last_prices[symbol] = price
+        self._equity_curve.append(self._compute_equity())
+
+    def get_summary(self) -> PortfolioSummary:
+        """Compute portfolio-level metrics at the latest marks.
+
+        ``total_pnl`` includes unrealized PnL and is derived from equity, so it
+        reconciles with the cash and open-position marks rather than summing
+        only closed trades.
+        """
+        equity = self._compute_equity()
+        total_pnl = equity - self._initial_capital
+        total_return_pct = (equity / self._initial_capital - 1.0) * 100.0
 
         wins = [t for t in self._closed_trades if t.pnl > 0]
         losses = [t for t in self._closed_trades if t.pnl < 0]
@@ -281,6 +387,7 @@ class PaperTradingEngine:
 
         win_rate = (len(wins) / n * 100.0) if n > 0 else 0.0
         max_dd = self._compute_max_drawdown()
+        margin_used = sum(pos.margin for pos in self._positions)
 
         return PortfolioSummary(
             initial_capital=self._initial_capital,
@@ -293,6 +400,8 @@ class PaperTradingEngine:
             losing_trades=len(losses),
             open_positions=len(self._positions),
             max_drawdown_pct=round(max_dd, 4),
+            equity=round(equity, 2),
+            margin_used=round(margin_used, 2),
         )
 
     def reset(self) -> None:
@@ -301,6 +410,7 @@ class PaperTradingEngine:
         self._positions.clear()
         self._closed_trades.clear()
         self._equity_curve = [self._initial_capital]
+        self._last_prices.clear()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -314,10 +424,19 @@ class PaperTradingEngine:
         return None
 
     def _compute_equity(self) -> float:
-        """Compute total portfolio equity (cash + open position values)."""
+        """Compute total portfolio equity at the latest marks.
+
+        Longs add market value to cash. Shorts subtract their liability, while
+        their credited proceeds remain in cash. At entry this reduces equity by
+        the entry commission only, which is the correct accounting identity.
+        """
         equity = self._cash
         for pos in self._positions:
-            equity += pos.quantity * pos.entry_price  # mark-to-market at entry for simplicity
+            mark = self._last_prices.get(pos.symbol, pos.entry_price)
+            if pos.side == "long":
+                equity += pos.quantity * mark
+            else:
+                equity -= pos.quantity * mark
         return equity
 
     def _compute_max_drawdown(self) -> float:
@@ -352,4 +471,7 @@ class PaperTradingEngine:
             "pnl_pct": trade.pnl_pct,
             "exit_reason": trade.exit_reason,
             "strategy_name": trade.strategy_name,
+            "entry_commission": round(trade.entry_commission, 8),
+            "exit_commission": round(trade.exit_commission, 8),
+            "fees": round(trade.entry_commission + trade.exit_commission, 2),
         }

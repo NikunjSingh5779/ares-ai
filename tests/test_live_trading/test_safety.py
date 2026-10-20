@@ -73,9 +73,10 @@ class TestKillSwitch:
     def test_auto_trigger_already_active(self) -> None:
         ks = KillSwitch()
         ks.activate(reason="manual")
-        # Should not re-trigger if already active
+        # Already active still counts as tripped so the emergency path runs
+        # (mode downgrade + cancel open orders) without overwriting the reason.
         tripped = ks.auto_trigger(20.0)
-        assert not tripped
+        assert tripped
         assert ks.triggered_by == "manual"
 
 

@@ -4,12 +4,21 @@ Provides auth verification, database sessions, and utility dependencies.
 Auth validates against ``settings.api_secret_key`` via ``Authorization: Bearer``
 or ``X-API-Key`` header.
 
-Public endpoints (health, docs, root) do not use ``verify_auth``;
-all trading and live POST endpoints require it.
+Every non-public router is mounted with ``verify_auth`` in ``backend.main``.
+Only ``/health``, ``/metrics``, OpenAPI docs, and ``/auth/login`` are reachable
+without a credential. ``/auth/register`` and ``/auth/verify`` declare their own
+auth dependency.
+
+Fail-closed rules:
+
+* an empty or default ``api_secret_key`` rejects every request with 503;
+* comparisons use :func:`secrets.compare_digest`;
+* there is no debug-mode bypass.
 """
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends, HTTPException, status
@@ -26,8 +35,20 @@ security_scheme = HTTPBearer(auto_error=False)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-# Sentinel for default key — if still set, debug-mode bypass is allowed
+# Sentinel for the shipped placeholder. The default is public knowledge, so it
+# is treated as "not configured" rather than as a valid credential.
 _DEFAULT_SECRET = "changeme_in_production"
+
+
+def _constant_time_match(candidate: str | None, expected: str) -> bool:
+    """Compare two credentials without leaking length/prefix timing."""
+    if not candidate or not expected:
+        return False
+    try:
+        return secrets.compare_digest(candidate, expected)
+    except TypeError:
+        # compare_digest rejects non-ASCII str inputs; credentials are ASCII.
+        return False
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -47,37 +68,43 @@ async def verify_auth(
     token: str | None = Depends(oauth2_scheme),
     api_key: str | None = Depends(api_key_header),
 ) -> str:
-    """Validate authentication via Bearer token (JWT) or X-API-Key header."""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    """Validate authentication via Bearer token (JWT) or X-API-Key header.
 
-    # ── Debug mode with default key: accept anything ──────────────
-    if settings.api_debug and settings.api_secret_key == _DEFAULT_SECRET:
-        if token:
-            return token
-        if api_key:
-            return api_key
-        return "dev-user-id"
+    Raises:
+        HTTPException: 503 when the server has no usable API key configured
+            (fail closed), 401 otherwise.
+    """
+    configured_key = settings.api_secret_key
 
-    # ── JWT Validation ───────────────
-    if token:
+    # A default/empty key means the operator has not configured auth. Never
+    # accept the shipped placeholder and never fall back to a debug bypass.
+    if not configured_key or configured_key == _DEFAULT_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "API authentication is not configured. Set API_SECRET_KEY to a "
+                "unique non-default value before serving requests."
+            ),
+        )
+
+    # ── JWT Validation ─────────────────────────────────────────────
+    # Only attempt JWT decoding when the JWT secret itself is configured;
+    # accepting JWTs signed with the public placeholder would be a bypass.
+    jwt_configured = bool(settings.jwt_secret_key) and settings.jwt_secret_key != _DEFAULT_SECRET
+    if token and jwt_configured:
         try:
             payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
             email: str | None = payload.get("sub")
-            if email is None:
-                raise credentials_exception
-            return email
+            if email:
+                return email
         except JWTError:
-            pass  # Fallback to api key if JWT fails
+            pass  # Fall through to API-key validation.
 
-    # ── API Key Validation (Server-to-Server) ───────────────
-    if token == settings.api_secret_key:
-        return token
-    if api_key and api_key == settings.api_secret_key:
-        return api_key
+    # ── API Key Validation (Server-to-Server) ──────────────────────
+    if _constant_time_match(token, configured_key):
+        return token  # type: ignore[return-value]
+    if _constant_time_match(api_key, configured_key):
+        return api_key  # type: ignore[return-value]
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -95,8 +122,8 @@ async def get_current_user_id(
 
 async def get_current_user(auth: str = Depends(verify_auth), db: AsyncSession = Depends(get_db)) -> User:
     """Resolve the current user record from the database."""
-    if auth == settings.api_secret_key or auth == "dev-user-id":
-        # Server-to-server or dev mode fallback
+    if auth == settings.api_secret_key:
+        # Server-to-server API-key callers have no user row.
         raise HTTPException(status_code=403, detail="A real user context is required.")
 
     user = await user_service.get_by_email(db, auth)

@@ -1,0 +1,15 @@
+# =============================================================================
+# ARES AI — production overlay for the full-stack Compose file
+# =============================================================================
+# Usage (from the docker/ directory):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Startup fails unless API_SECRET_KEY, JWT_SECRET_KEY, and the password embedded
+# in DATABASE_URL are all non-default. It does not enable live trading.
+# -----------------------------------------------------------------------------
+
+services:
+  backend:
+    environment:
+      ENVIRONMENT: production
+      API_DEBUG: "false"

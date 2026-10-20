@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import text
 
 from backend.core.metrics import record_live_order
+from configs.settings import settings
 from live_trading.audit import AuditEntry, OrderAuditor
 from live_trading.exceptions import (
     ExchangeConnectionError,
@@ -233,6 +234,12 @@ class LiveTradingEngine:
         Returns:
             True if the engine started successfully.
         """
+        if not settings.live_trading_enabled:
+            logger.warning(
+                "LiveTradingEngine.start() refused: live trading is disabled "
+                "(paper-only mode). Set LIVE_TRADING_ENABLED=true explicitly."
+            )
+            return False
         connected = await self.exchange.connect()
         if connected:
             self._running = True
@@ -348,6 +355,20 @@ class LiveTradingEngine:
             "price": signal.get("price"),
             "reason": signal.get("reason", ""),
         }
+
+        # ── Paper-only gate ─────────────────────────────────────────
+        # This is the engine-level backstop. The API and ExecutionAgent also
+        # check it, but a direct caller must never be able to place a live
+        # order just because the engine object exists.
+        if not settings.live_trading_enabled:
+            return {
+                "accepted": False,
+                "reason": (
+                    "Live trading is disabled (paper-only mode). "
+                    "Set LIVE_TRADING_ENABLED=true explicitly to allow live execution."
+                ),
+                "order": None,
+            }
 
         # ── Pre-trade safety check ──────────────────────────────────
         safety_results = await self.check_pre_trade(signal.get("account_id"))

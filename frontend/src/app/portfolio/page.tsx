@@ -291,12 +291,19 @@ export default function PortfolioPage() {
           )}
 
           {/* Metrics */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <MetricCard label="Total PnL" value={`$${portfolio.total_pnl.toLocaleString()}`} change={portfolio.total_return_pct} />
+            <MetricCard
+              label="Equity"
+              value={`$${(portfolio.equity ?? portfolio.initial_capital + portfolio.total_pnl).toLocaleString()}`}
+            />
             <MetricCard label="Cash Balance" value={`$${portfolio.cash.toLocaleString()}`} />
             <MetricCard label="Win Rate" value={`${portfolio.win_rate.toFixed(1)}`} unit="%" />
             <MetricCard label="Max Drawdown" value={`${portfolio.max_drawdown_pct.toFixed(2)}`} unit="%" />
           </div>
+          {portfolio.margin_used ? (
+            <p className="text-xs text-[#a1a1aa]">Short margin reserved: ${portfolio.margin_used.toLocaleString()}</p>
+          ) : null}
 
           {/* Equity Curve */}
           <div className="card-glass !p-0 overflow-hidden">

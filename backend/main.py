@@ -6,10 +6,11 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 
+from backend.core.dependencies import verify_auth
 from backend.core.error_handlers import setup_exception_handlers
 from backend.core.logging import setup_logging
 from backend.core.metrics import MetricsMiddleware
@@ -109,17 +110,24 @@ app.add_middleware(
 )
 
 # ── Domain routers ─────────────────────────────────────────────────────
+#
+# Every domain router is mounted behind verify_auth. The auth router is public
+# for /auth/login only; /auth/register and /auth/verify declare their own
+# dependency.
+# This is the single choke point — do not add a router without the dependency.
+
+_auth = [Depends(verify_auth)]
 
 app.include_router(auth_router)
-app.include_router(users_router)
-app.include_router(analysis_router)
-app.include_router(trading_router)
-app.include_router(journal_router)
-app.include_router(agents_router)
-app.include_router(monitoring_router)
-app.include_router(live_router)
-app.include_router(backtest_router)
-app.include_router(predictions_router)
+app.include_router(users_router, dependencies=_auth)
+app.include_router(analysis_router, dependencies=_auth)
+app.include_router(trading_router, dependencies=_auth)
+app.include_router(journal_router, dependencies=_auth)
+app.include_router(agents_router, dependencies=_auth)
+app.include_router(monitoring_router, dependencies=_auth)
+app.include_router(live_router, dependencies=_auth)
+app.include_router(backtest_router, dependencies=_auth)
+app.include_router(predictions_router, dependencies=_auth)
 
 # ── Prometheus /metrics endpoint (ASGI mount) ─────────────────────────
 

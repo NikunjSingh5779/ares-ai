@@ -148,6 +148,8 @@ export interface PortfolioSummary {
   losing_trades: number;
   open_positions: number;
   max_drawdown_pct: number;
+  equity?: number;
+  margin_used?: number;
 }
 
 export interface OpenPosition {
@@ -160,6 +162,8 @@ export interface OpenPosition {
   stop_loss?: number | null;
   take_profit?: number | null;
   strategy_name: string;
+  entry_commission?: number;
+  margin?: number;
 }
 
 export interface ClosedTrade {
@@ -174,6 +178,9 @@ export interface ClosedTrade {
   pnl_pct: number;
   exit_reason: string;
   strategy_name: string;
+  entry_commission?: number;
+  exit_commission?: number;
+  fees?: number;
 }
 
 // ─── Signal Response ────────────────────────────────────────────

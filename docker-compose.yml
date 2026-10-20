@@ -87,6 +87,10 @@ services:
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - API_DEBUG=false
+      # The container must bind all interfaces; compose publishes it on the
+      # host. API_HOST in .env is for bare-metal local runs (127.0.0.1).
+      - API_HOST=0.0.0.0
+      - API_SECRET_KEY=${API_SECRET_KEY:?Set API_SECRET_KEY in .env (generate a unique value)}
       - LOG_LEVEL=INFO
     env_file:
       - .env

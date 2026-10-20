@@ -44,45 +44,76 @@ class TestKillSwitchRedisErrors:
         ks = KillSwitch(redis_client=self._failing_redis())
         assert ks._set("any_key", "value") is False
 
-    def test_delete_does_not_raise_on_redis_error(self) -> None:
+    def test_delete_returns_false_on_redis_error(self) -> None:
         ks = KillSwitch(redis_client=self._failing_redis())
-        ks._delete("any_key")  # should not raise
+        assert ks._delete("any_key") is False
 
-    def test_is_active_returns_false_on_redis_error(self) -> None:
+    def test_is_active_fails_closed_on_redis_error(self) -> None:
+        """A shared-store outage must block orders, never allow them."""
         ks = KillSwitch(redis_client=self._failing_redis())
-        assert not ks.is_active
+        assert ks.is_active
+        assert not ks.storage_healthy
+        assert not ks.check()
 
-    def test_triggered_by_returns_none_on_redis_error(self) -> None:
+    def test_triggered_by_returns_none_on_fresh_redis_error(self) -> None:
         ks = KillSwitch(redis_client=self._failing_redis())
         assert ks.triggered_by is None
 
-    def test_triggered_at_returns_none_on_redis_error(self) -> None:
+    def test_triggered_at_returns_none_on_fresh_redis_error(self) -> None:
         ks = KillSwitch(redis_client=self._failing_redis())
         assert ks.triggered_at is None
 
-    def test_activate_not_stored_when_redis_configured_and_failing(self) -> None:
-        """When Redis is configured but unavailable, _set returns False so the
-        activate() guard ``if self._set(..., nx=True)`` prevents writing to
-        in-memory state. This is by design: mixing Redis and in-memory state
-        would be inconsistent. Use in-memory mode (no Redis client) for
-        test fixtures that need activate to work without Redis."""
+    def test_activate_latches_locally_when_redis_configured_and_failing(self) -> None:
+        """The trip must still block this process even if Redis is unavailable."""
         ks = KillSwitch(redis_client=self._failing_redis())
-        ks.activate(reason="test")
-        # Not stored because _set returns False when Redis fails
-        assert not ks.is_active
+        assert ks.activate(reason="test") is False
+        assert ks.is_active
+        assert ks.triggered_by == "test"
+        assert not ks.storage_healthy
 
     def test_activate_without_redis_stores_in_memory(self) -> None:
         """Without a Redis client, activate stores state in memory."""
         ks = KillSwitch()
-        ks.activate(reason="test")
+        assert ks.activate(reason="test") is True
         assert ks.is_active
         assert ks.triggered_by == "test"
 
     def test_arm_clears_in_memory_state(self) -> None:
         ks = KillSwitch()
-        ks.activate(reason="test")
-        ks.arm()
+        assert ks.activate(reason="test") is True
+        assert ks.arm() is True
         assert not ks.is_active
+
+    def test_arm_refuses_when_redis_is_down(self) -> None:
+        """Re-arming must not silently unblock while the store is unavailable."""
+        ks = KillSwitch(redis_client=self._failing_redis())
+        assert ks.is_active
+        assert ks.arm() is False
+        assert ks.is_active
+
+    def test_recovery_requires_explicit_arm(self) -> None:
+        """A recovered store does not auto-clear a fail-closed latch."""
+        client = self._failing_redis()
+        ks = KillSwitch(redis_client=client)
+
+        assert ks.is_active  # latches closed
+
+        # Store recovers, but the switch stays latched until a human re-arms.
+        client.get.side_effect = None
+        client.get.return_value = None
+        client.delete.side_effect = None
+        client.delete.return_value = 1
+
+        assert ks.is_active
+        assert ks.arm() is True
+        assert not ks.is_active
+        assert ks.storage_healthy
+
+    def test_auto_trigger_fails_closed_on_redis_error(self) -> None:
+        ks = KillSwitch(redis_client=self._failing_redis())
+        assert ks.auto_trigger(99.0) is True
+        assert ks.is_active
+        assert ks.triggered_by is not None
 
 
 class TestKillSwitchRedisBytes:

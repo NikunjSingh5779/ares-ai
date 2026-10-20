@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 # Root project directory (two levels up from this file)
@@ -76,7 +76,14 @@ class Settings(BaseSettings):
 
     # Trading defaults
     paper_trading_initial_capital: float = 100000.0
+    # Application defaults for simulated fills (decimals, not percentages).
+    # 0.001 = 10 bps. Direct engine construction defaults to zero for unit tests.
+    paper_trading_commission_pct: float = Field(default=0.001, ge=0.0, lt=1.0)
+    paper_trading_slippage_pct: float = Field(default=0.001, ge=0.0, lt=1.0)
     kill_switch_enabled: bool = True
+    # Paper-only by default. Live start/execution must be explicitly enabled
+    # *and* still pass every live safety gate. Keep false for local runs.
+    live_trading_enabled: bool = False
     default_trading_mode: str = "human_approval"
     max_position_size_pct: float = 5.0
     max_drawdown_pct: float = 20.0

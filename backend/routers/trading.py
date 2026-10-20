@@ -28,6 +28,8 @@ def _get_engine() -> PaperTradingEngine:
     if _engine is None:
         _engine = PaperTradingEngine(
             initial_capital=settings.paper_trading_initial_capital,
+            commission_pct=settings.paper_trading_commission_pct,
+            slippage_pct=settings.paper_trading_slippage_pct,
         )
     return _engine
 
@@ -48,6 +50,8 @@ async def portfolio() -> dict[str, Any]:
         "losing_trades": summary.losing_trades,
         "open_positions": summary.open_positions,
         "max_drawdown_pct": summary.max_drawdown_pct,
+        "equity": summary.equity,
+        "margin_used": summary.margin_used,
     }
 
 
@@ -76,6 +80,8 @@ def _get_open_positions(engine: PaperTradingEngine) -> list[dict[str, Any]]:
                 "stop_loss": pos.stop_loss,
                 "take_profit": pos.take_profit,
                 "strategy_name": pos.strategy_name,
+                "entry_commission": pos.entry_commission,
+                "margin": pos.margin,
             }
         )
     return positions_list
@@ -147,4 +153,7 @@ def _trade_to_dict(trade: Any) -> dict[str, Any]:
         "pnl_pct": trade.pnl_pct,
         "exit_reason": trade.exit_reason,
         "strategy_name": trade.strategy_name,
+        "entry_commission": round(trade.entry_commission, 8),
+        "exit_commission": round(trade.exit_commission, 8),
+        "fees": round(trade.entry_commission + trade.exit_commission, 2),
     }

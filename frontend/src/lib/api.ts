@@ -23,19 +23,60 @@ import type {
   BacktestResult,
   BacktestMetrics,
 } from "@/types/api";
+import { clearApiKey, getApiKey } from "./auth";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers);
+  headers.set("Content-Type", "application/json");
+  const key = getApiKey();
+  if (key) headers.set("X-API-Key", key);
+
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
+    cache: "no-store",
   });
+
+  if (res.status === 401) {
+    clearApiKey();
+    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      window.location.assign("/login");
+    }
+  }
+
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`API ${res.status} on ${path}: ${body}`);
+    throw new ApiError(res.status, `API ${res.status} on ${path}: ${body}`);
+  }
+  if (res.status === 204) {
+    return undefined as T;
   }
   return res.json() as Promise<T>;
+}
+
+/** Validate an API key before storing it in the session. */
+export async function verifyApiKey(key: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE}/auth/verify`, {
+      headers: { "X-API-Key": key },
+      cache: "no-store",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Analysis ───────────────────────────────────────────────────

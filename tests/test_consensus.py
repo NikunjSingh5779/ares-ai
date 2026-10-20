@@ -143,12 +143,12 @@ class TestConsensusEngine:
         result = ConsensusEngine.evaluate("BTC-USD", ma, quant)
         assert result["approved"] is True
 
-    def test_edge_confidence_exactly_80(self) -> None:
-        """Both exactly 80% → just meets threshold inclusive."""
+    def test_edge_confidence_exactly_80_is_rejected(self) -> None:
+        """Both exactly 80% → rejected; the spec requires strictly above 80%."""
         ma = {"direction": "long", "confidence": 80.0, "rationale": "Exactly 80"}
         quant = {"direction": "long", "confidence": 80.0, "rationale": "Exactly 80"}
         result = ConsensusEngine.evaluate("BTC-USD", ma, quant)
-        assert result["approved"] is True
+        assert result["approved"] is False
 
     def test_edge_confidence_just_below_80(self) -> None:
         """Both just below 80% → rejected."""

@@ -28,6 +28,29 @@ def test_settings_defaults() -> None:
     assert settings.max_drawdown_pct == 20.0
 
 
+def test_paper_accounting_defaults_are_realistic() -> None:
+    """The application should not run paper trades with frictionless fills."""
+    fields = Settings.model_fields
+    assert fields["paper_trading_commission_pct"].default == 0.001
+    assert fields["paper_trading_slippage_pct"].default == 0.001
+
+
+def test_production_compose_overlays_enable_production() -> None:
+    """Production overlays must actually flip ENVIRONMENT=production."""
+    root = Path(__file__).resolve().parent.parent
+    overlays = {
+        root / "docker-compose.prod.yml": {"backend", "run-live", "daily-reporter"},
+        root / "docker" / "docker-compose.prod.yml": {"backend"},
+    }
+    for path, required_services in overlays.items():
+        data = yaml.safe_load(path.read_text())
+        services = data["services"]
+        for service in required_services:
+            assert services[service]["environment"]["ENVIRONMENT"] == "production", (
+                f"{path.name} must set ENVIRONMENT=production for {service}"
+            )
+
+
 def test_models_yaml_exists() -> None:
     """Model roster file must exist."""
     assert MODELS_YAML_PATH.exists(), f"models.yaml not found at {MODELS_YAML_PATH}"
@@ -63,18 +86,17 @@ def test_all_agents_have_models() -> None:
         assert agents[agent_name]["primary"], f"{agent_name} agent missing primary model"
 
 
-def test_vision_agent_fallback_count() -> None:
-    """Vision agent fallback count should match expected."""
+def test_vision_agent_fallbacks_are_configured_and_free() -> None:
+    """Vision fallbacks must exist and stay on the free tier.
+
+    The roster now has validated image-capable free models; a text-only
+    fallback would fail at runtime, so every entry must be a free ID.
+    """
     data = yaml.safe_load(MODELS_YAML_PATH.read_text())
     vision = data["agents"].get("vision", {})
     fallbacks = vision.get("fallbacks", [])
-    # The Vision Agent requires VL (Vision-Language) capabilities.
-    # Currently, there are no reliable free-tier VL fallbacks. If the primary
-    # VL model is down, it is intentional that it degrades gracefully (skips)
-    # without trying an incompatible text-only model.
-    assert len(fallbacks) == 0, (
-        f"Vision agent should have exactly 0 fallbacks intentionally configured. Got: {fallbacks}"
-    )
+    assert len(fallbacks) >= 1, "Vision agent should have at least one fallback"
+    assert all(fallback.endswith(":free") or fallback.endswith("/free") for fallback in fallbacks)
 
 
 def test_circuit_breaker_defaults() -> None:

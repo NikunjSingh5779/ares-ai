@@ -150,8 +150,9 @@ class ConsensusEngine:
         ma_direction = str(market_analyst_output.get("direction", "flat"))
         quant_direction = str(quant_output.get("direction", "flat"))
 
-        # Check confidence thresholds
-        both_confident = ma_confidence >= REQUIRED_CONFIDENCE and quant_confidence >= REQUIRED_CONFIDENCE
+        # Check confidence thresholds. The spec requires *strictly greater*
+        # than 80%, so exactly 80% is not sufficient.
+        both_confident = ma_confidence > REQUIRED_CONFIDENCE and quant_confidence > REQUIRED_CONFIDENCE
 
         # Check direction agreement (both must agree and neither is flat)
         directions_agree = ma_direction == quant_direction and ma_direction in ("long", "short")
@@ -176,7 +177,7 @@ class ConsensusEngine:
         if not both_confident:
             rationale = (
                 f"Consensus rejected: confidence thresholds not met. "
-                f"Market Analyst: {ma_confidence:.1f}% (need ≥ {REQUIRED_CONFIDENCE:.0f}%), "
+                f"Market Analyst: {ma_confidence:.1f}% (need > {REQUIRED_CONFIDENCE:.0f}%), "
                 f"Quant: {quant_confidence:.1f}%"
             )
         elif not directions_agree:
