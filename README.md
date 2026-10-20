@@ -6,6 +6,23 @@ Designed for resilience and offline-first/graceful degradation, ARES AI is confi
 
 ---
 
+## Repository map
+
+`AGENTS.md` is the entry catalog; it routes to the full mandate, verified status,
+architecture, decisions, and the next plan. Each code folder has a `CONTEXT.md`
+stating its inputs, process, outputs, and human check.
+
+| Start here | File |
+|---|---|
+| Full project mandate | `docs/01-SPEC.md` |
+| Verified current state | `docs/02-STATUS.md` |
+| Layers, flows, MVC map | `docs/03-ARCHITECTURE.md` |
+| Decisions (ADRs) | `docs/04-DECISIONS.md` |
+| Prioritized plan | `docs/05-NEXT.md` |
+| Object/process map | `docs/map/AGENTS.md` |
+
+---
+
 ## 🧠 Multi-Agent Pipeline & Architecture
 
 ARES AI uses a directed graph to coordinate its agents. Each agent receives a strictly validated Pydantic state slice rather than free-form text, ensuring reliable orchestration even with smaller model sizes.
@@ -80,14 +97,23 @@ Copy the template configuration file to `.env`:
 ```powershell
 cp .env.example .env
 ```
-Open `.env` and fill in **either** your `OPENROUTER_API_KEY` or `OPENCODE_API_KEY` (which you can generate for free). Both are supported, but at least one is required to enable agent reasoning.
+Open `.env` and fill in:
+* `API_SECRET_KEY` — **required**. Generate a unique value with
+  `python -c "import secrets; print(secrets.token_urlsafe(32))"`. The shipped
+  default is rejected and every non-public API route returns 503 until it is set.
+* **either** `OPENROUTER_API_KEY` or `OPENCODE_API_KEY` (both free) to enable
+  agent reasoning.
+
+`LIVE_TRADING_ENABLED` stays `false` for paper-only operation. Turning it on is
+not sufficient by itself: the kill switch, human-approval mode, promotion gate,
+and exchange connection must all pass.
 
 ### 2. Start the Stack
 Spin up the core services via Docker Compose:
 ```powershell
-docker compose -f docker/docker-compose.yml up -d
+docker compose --env-file .env -f docker/docker-compose.yml up -d
 ```
-This runs **7 services**: PostgreSQL, Redis, ChromaDB, the FastAPI backend, the Next.js frontend, Prometheus, and Grafana — see ``docker/docker-compose.yml`` for ports.
+This runs **7 services**: PostgreSQL, Redis, ChromaDB, the FastAPI backend, the Next.js frontend, Prometheus, and Grafana — see ``docker/docker-compose.yml`` for ports. The explicit `--env-file` makes the root `.env` available for Compose interpolation as well as the backend container.
 
 You can also use the root ``docker-compose.yml`` (11 services) for the full
 stack that includes nginx, automated Postgres backups, the live trading loop
@@ -95,6 +121,14 @@ stack that includes nginx, automated Postgres backups, the live trading loop
 ```powershell
 docker compose up -d
 ```
+
+Production is an explicit overlay. It sets `ENVIRONMENT=production`, so startup
+fails unless the API key, JWT secret, and database password are all non-default:
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+The Docker-stack variant is `docker/docker-compose.prod.yml`. The overlay does
+not enable live trading; the live gates still apply.
 
 ### 3. Run Pipeline Simulation
 Test that the entire Python agent graph is wired and executing successfully:
@@ -122,7 +156,9 @@ Requires PostgreSQL and ChromaDB to be running (``docker compose -f docker/docke
   pnpm install
   pnpm dev
   ```
-  Open the interactive dashboard at `http://localhost:3000`.
+  Open the interactive dashboard at `http://localhost:3000`. The login screen
+  asks for `API_SECRET_KEY`; it is kept in `sessionStorage` for the tab and sent
+  as `X-API-Key`. Opening a new tab asks again.
 
 ---
 
@@ -185,4 +221,4 @@ Run the full pytest suite to verify no regressions in the agent graph, endpoints
 ```powershell
 python -m pytest tests/ -v
 ```
-Currently, all **871 tests** pass cleanly with **83.57% coverage** (verified 2026-07-26 via full local run with `uv sync --locked --all-extras --dev && uv run pytest tests/ -v`, matching CI).
+The suite currently passes at the 78% coverage gate. Verified test counts, coverage, and the current health of every check live in `docs/02-STATUS.md` — that file is the single source of truth.

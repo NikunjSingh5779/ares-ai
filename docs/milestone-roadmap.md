@@ -1,6 +1,10 @@
 <!-- docs/milestone-roadmap.md -->
 # ARES AI — Milestone Roadmap
 
+> **Reconciled 2026-10-20.** This table is milestone history. Current verified state,
+> measured checks, and known gaps live in `docs/02-STATUS.md`; the work plan lives in
+> `docs/05-NEXT.md`.
+
 **Last verified against actual code + passing tests: 2026-07-25.** Every row below was
 checked by reading the implementation and/or running its tests — not inferred from a
 prior status label. See "Reconciliation note" if a git branch name uses a different

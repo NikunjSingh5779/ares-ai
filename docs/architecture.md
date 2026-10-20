@@ -1,6 +1,6 @@
 # ARES AI — Architecture Overview
 
-> **Status:** This describes the target architecture as designed at M1; the system has since been built out through M13. For current per-area status, see docs/milestone-roadmap.md — that file, not this one, is the source of truth for what's done.
+> **Status:** **Superseded 2026-10-20.** This is the M1 target-architecture document, kept for history. The current structure, request flows, MVC mapping, and data ownership live in `docs/03-ARCHITECTURE.md`. Per-area status lives in `docs/02-STATUS.md`.
 
 ## System Architecture
 
