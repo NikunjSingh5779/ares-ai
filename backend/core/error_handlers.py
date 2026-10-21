@@ -4,8 +4,15 @@ from fastapi.responses import JSONResponse
 from backend.core.exceptions import AresError, AuthenticationError, ConfigurationError, RateLimitError
 
 
-async def ares_error_handler(request: Request, exc: AresError) -> JSONResponse:
-    """Global exception handler for ARES AI domain errors."""
+async def ares_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Global exception handler for ARES AI domain errors.
+
+    Starlette registers handlers by exception class but types the callback
+    against ``Exception``. Anything that is not an ``AresError`` is re-raised
+    so a mis-registration fails loudly instead of returning a 400.
+    """
+    if not isinstance(exc, AresError):
+        raise exc
     status_code = 400
     if isinstance(exc, AuthenticationError):
         status_code = 401
