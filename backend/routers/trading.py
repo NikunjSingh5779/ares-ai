@@ -12,15 +12,19 @@ The in-memory engine is a calculation cache, not a second source of truth.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from agents.consensus import ConsensusEngine
+from agents.risk import MAX_POSITION_SIZE_PCT, MAX_RISK_SCORE
+from backend.schemas.trading import ExecuteTradeRequest
 from configs.settings import settings
 from database.connection import async_session_factory
 from paper_trading.engine import ClosedTrade, PaperPosition, PaperTradingEngine
 from paper_trading.ledger import PaperTradingLedger
-from paper_trading.repository import PaperLedgerError, PaperLedgerRepository
+from paper_trading.repository import PaperLedgerError, PaperLedgerRepository, PaperOrderConflictError
 
 router = APIRouter(prefix="/api/v1", tags=["trading"])
 
@@ -98,49 +102,117 @@ async def orders() -> list[dict[str, Any]]:
 
 
 @router.post("/execute")
-async def execute(body: dict[str, Any]) -> dict[str, Any]:
-    """Execute a paper trade signal and persist it atomically.
+async def execute(payload: ExecuteTradeRequest) -> dict[str, Any]:
+    """Execute a paper trade only when the upstream agents approved it.
 
-    Body:
-        symbol (str): Ticker symbol
-        side (str): "long" or "short"
-        quantity (float): Number of units
-        entry_price (float): Price per unit
-        stop_loss (float, optional): Stop-loss level
-        take_profit (float, optional): Take-profit level
-        strategy_name (str, optional): Strategy name
+    The request carries the Market Analyst, Quant, and Risk outputs. The
+    server re-runs the deterministic consensus gate, verifies Risk's approval
+    and sizing, derives the fill price from the approved market snapshot, and
+    caps notional exposure at the 2% risk limit. There is no manual bypass in
+    this endpoint; use the normal ``/signal`` pipeline for generated trades.
+
+    ``client_order_id`` is idempotent per paper account. A duplicate returns
+    **409** and never creates a second position.
     """
     ledger = get_paper_trading_ledger()
+    approval = payload.approval
+    market = approval.market_analyst_output
+    quant = approval.quant_output
+    risk = approval.risk_output
 
-    symbol = body.get("symbol", "")
-    side = body.get("side", "long")
-    quantity = float(body.get("quantity", 0))
-    entry_price = float(body.get("entry_price", 0))
+    if market.direction != payload.side or quant.direction != payload.side:
+        raise HTTPException(
+            status_code=422,
+            detail="Approval direction does not match the requested side",
+        )
 
-    if not symbol:
-        raise HTTPException(status_code=400, detail="symbol is required")
-    if side not in ("long", "short"):
-        raise HTTPException(status_code=400, detail="side must be 'long' or 'short'")
-    if quantity <= 0:
-        raise HTTPException(status_code=400, detail="quantity must be positive")
-    if entry_price <= 0:
-        raise HTTPException(status_code=400, detail="entry_price must be positive")
+    consensus = ConsensusEngine.evaluate(
+        payload.symbol,
+        market.model_dump(),
+        quant.model_dump(),
+        vision_output=approval.vision_output.model_dump() if approval.vision_output else None,
+    )
+    if not consensus["approved"]:
+        raise HTTPException(status_code=422, detail=str(consensus["rationale"]))
 
-    stop_loss = body.get("stop_loss")
-    take_profit = body.get("take_profit")
+    if not risk.approved:
+        reasons = "; ".join(risk.reasons) if risk.reasons else "Risk Agent rejected trade"
+        raise HTTPException(status_code=422, detail=reasons)
+    if not math.isfinite(risk.risk_score) or risk.risk_score > MAX_RISK_SCORE:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Risk score {risk.risk_score:.1f} exceeds the maximum {MAX_RISK_SCORE:.0f}",
+        )
+
+    current_price = market.indicators.get("current_price")
+    try:
+        entry_price = float(current_price) if current_price is not None else 0.0
+    except (TypeError, ValueError):
+        entry_price = 0.0
+    if not math.isfinite(entry_price) or entry_price <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Approved Market Analyst output has no valid current_price",
+        )
 
     try:
-        return await ledger.execute_signal(
-            symbol=symbol,
-            side=side,
-            quantity=quantity,
-            entry_price=entry_price,
-            stop_loss=float(stop_loss) if stop_loss is not None else None,
-            take_profit=float(take_profit) if take_profit is not None else None,
-            strategy_name=body.get("strategy_name", ""),
+        quantity = float(risk.max_position_size) if risk.max_position_size is not None else 0.0
+    except (TypeError, ValueError):
+        quantity = 0.0
+    if not math.isfinite(quantity) or quantity <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Approved Risk output has no valid max_position_size",
         )
+
+    stop_loss = risk.stop_loss
+    if stop_loss is not None:
+        if not math.isfinite(stop_loss) or stop_loss <= 0:
+            raise HTTPException(status_code=422, detail="Approved stop_loss must be positive")
+        if payload.side == "long" and stop_loss >= entry_price:
+            raise HTTPException(status_code=422, detail="Long stop_loss must be below the entry price")
+        if payload.side == "short" and stop_loss <= entry_price:
+            raise HTTPException(status_code=422, detail="Short stop_loss must be above the entry price")
+
+    try:
+        summary = await ledger.get_summary()
     except PaperLedgerError as exc:
         raise HTTPException(status_code=503, detail="Paper ledger unavailable") from exc
+
+    max_notional = summary.equity * (MAX_POSITION_SIZE_PCT / 100.0)
+    notional = quantity * entry_price
+    if (
+        not math.isfinite(summary.equity)
+        or summary.equity <= 0
+        or not math.isfinite(notional)
+        or notional > max_notional * 1.001
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Approved size {notional:.2f} exceeds the "
+                f"{MAX_POSITION_SIZE_PCT:.0f}% paper-account limit ({max_notional:.2f})"
+            ),
+        )
+
+    try:
+        result = await ledger.execute_signal(
+            symbol=payload.symbol,
+            side=payload.side,
+            quantity=quantity,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit=None,
+            strategy_name=quant.strategy_name or market.setup or "consensus",
+            client_order_id=payload.client_order_id,
+        )
+    except PaperOrderConflictError as exc:
+        raise HTTPException(status_code=409, detail="client_order_id has already been used") from exc
+    except PaperLedgerError as exc:
+        raise HTTPException(status_code=503, detail="Paper ledger unavailable") from exc
+
+    result["client_order_id"] = payload.client_order_id
+    return result
 
 
 def _position_to_dict(position: PaperPosition) -> dict[str, Any]:

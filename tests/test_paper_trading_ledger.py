@@ -13,10 +13,11 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from paper_trading.engine import ClosedTrade, PaperTradingEngine
 from paper_trading.ledger import PaperTradingLedger
-from paper_trading.repository import PaperLedgerError, PaperLedgerRepository
+from paper_trading.repository import PaperLedgerError, PaperLedgerRepository, PaperOrderConflictError
 
 
 class _FakeResult:
@@ -187,6 +188,32 @@ class TestPaperLedgerRepositoryHydration:
             await repository.hydrate(PaperTradingEngine())
 
 
+class TestPaperOrderIdempotency:
+    async def test_client_order_id_exists(self) -> None:
+        session = _FakeSession([_FakeResult(row={"exists": 1})])
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+
+        assert await repository.client_order_id_exists("client-1") is True
+
+    async def test_client_order_id_is_absent(self) -> None:
+        session = _FakeSession([_FakeResult(row=None)])
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+
+        assert await repository.client_order_id_exists("client-1") is False
+
+    async def test_duplicate_client_order_id_maps_to_conflict(self) -> None:
+        session = _FakeSession([_FakeResult(row=_portfolio_row())])
+        session.commit_error = IntegrityError(
+            "INSERT INTO orders",
+            {},
+            Exception("duplicate key value violates unique constraint uq_orders_client_order_id"),
+        )
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+
+        with pytest.raises(PaperOrderConflictError, match="already been used"):
+            await repository.persist(PaperTradingEngine(), client_order_id="client-1")
+
+
 class TestPaperLedgerRepositoryPersistence:
     async def test_persists_position_history_orders_and_portfolio_atomically(self) -> None:
         session = _FakeSession([_FakeResult(row=_portfolio_row())])
@@ -219,6 +246,7 @@ class TestPaperLedgerRepositoryPersistence:
                 engine,
                 closed_trades=[closed],
                 entry_position_ids=[position_id],
+                client_order_id="client-1",
             )
             is True
         )
@@ -233,6 +261,17 @@ class TestPaperLedgerRepositoryPersistence:
         position_params = next(params for sql, params in session.calls if "INSERT INTO positions" in sql)
         assert position_params["side"] == "long"
         assert position_params["entry_commission"] >= 0.0
+
+        entry_order_params = next(
+            params
+            for sql, params in session.calls
+            if "INSERT INTO orders" in sql and params["client_order_id"] == "client-1"
+        )
+        assert entry_order_params["symbol"] == "BTC-USD"
+        exit_order_params = next(
+            params for sql, params in session.calls if "INSERT INTO orders" in sql and params["client_order_id"] is None
+        )
+        assert exit_order_params["symbol"] == "ETH-USD"
 
         trade_params = next(params for sql, params in session.calls if "INSERT INTO trade_history" in sql)
         assert trade_params["position_side"] == "short"
@@ -265,6 +304,7 @@ class TestPaperTradingLedgerService:
         repository = MagicMock(spec=PaperLedgerRepository)
         repository.hydrate = AsyncMock(return_value=True)
         repository.persist = AsyncMock(return_value=True)
+        repository.client_order_id_exists = AsyncMock(return_value=False)
         return PaperTradingLedger(engine=engine, repository=repository), repository
 
     async def test_execute_signal_persists_entry_and_reports_status(self) -> None:
@@ -278,6 +318,7 @@ class TestPaperTradingLedgerService:
             entry_price=50000.0,
             stop_loss=48000.0,
             strategy_name="trend",
+            client_order_id="client-1",
         )
 
         assert result["accepted"] is True
@@ -286,7 +327,26 @@ class TestPaperTradingLedgerService:
         persisted = repository.persist.await_args.kwargs
         assert persisted["entry_position_ids"] == [result["position_id"]]
         assert persisted["closed_trades"] == []
+        assert persisted["client_order_id"] == "client-1"
         assert len(engine.get_open_positions()) == 1
+
+    async def test_execute_signal_rejects_duplicate_client_order_id_before_mutation(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        ledger, repository = self._ledger(engine)
+        repository.client_order_id_exists = AsyncMock(return_value=True)
+        before = engine.snapshot()
+
+        with pytest.raises(PaperOrderConflictError, match="already been used"):
+            await ledger.execute_signal(
+                symbol="BTC-USD",
+                side="long",
+                quantity=1.0,
+                entry_price=50000.0,
+                client_order_id="client-1",
+            )
+
+        assert engine.snapshot() == before
+        repository.persist.assert_not_awaited()
 
     async def test_execute_signal_rejection_does_not_persist_or_mutate(self) -> None:
         engine = PaperTradingEngine(initial_capital=100000.0)

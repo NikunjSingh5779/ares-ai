@@ -5,14 +5,25 @@
 or the runner loop in `scripts/run_live.py`.
 
 ## Paper path
-`agents/execution.py` → `PaperTradingLedger.execute_signal()` → refresh the
-`PaperTradingEngine` cache from `PaperLedgerRepository` → engine fill with configured
-commission and adverse slippage → one transaction writing `positions`, entry/exit
-orders, reversal `trade_history`, and `portfolio` → `ExecutionOutput`.
+Two callers share one ledger:
+
+- **Pipeline:** `agents/execution.py` → `PaperTradingLedger.execute_signal()`.
+- **API:** `POST /api/v1/execute` → validate typed Market Analyst, Quant, and Risk
+  approvals → re-run `ConsensusEngine.evaluate` → derive price from the approved
+  `current_price` and quantity from `risk.max_position_size` → enforce the 2% equity cap
+  → `PaperTradingLedger.execute_signal()`.
+
+The ledger refreshes the `PaperTradingEngine` cache from `PaperLedgerRepository`, applies
+configured commission and adverse slippage, then writes `positions`, entry/exit orders,
+reversal `trade_history`, and `portfolio` in one transaction. `client_order_id` is
+required on the API path and checked before mutation; a partial unique index on
+`orders(account_id, client_order_id)` protects concurrent retries. A duplicate returns
+**409** and never creates a second position. A failed or conflicting write restores the
+cache snapshot; an accepted fill with no seeded account is rejected.
 `PaperTradingLedger.process_candle()` (used by `paper_trading/worker.py` and the
-runner) checks SL/TP, marks the remaining position, and persists the result. A failed
-write restores the cache snapshot; an accepted fill with no seeded account is rejected.
-PnL is equity-based, including open marks and fees.
+runner) checks SL/TP, marks the remaining position, and persists the result. PnL is
+equity-based, including open marks and fees. There is no manual `/execute` bypass;
+manual trades would need a separately designed label that excludes them from promotion.
 
 ## Live path
 `ExecutionAgent` → `LiveTradingEngine.execute_signal()` →
@@ -49,9 +60,10 @@ marks; the ledger writes SL/TP closures so normal exits count and survive restar
 `tests/test_agents/test_execution_live_routing.py`, `tests/test_paper_trading.py`.
 
 ## Known gaps
-Order idempotency; `get_open_orders()` returns `[]`; no balance reconciliation.
-Concurrent API/worker/runner paper writes are last-writer-wins (no row lock or
-optimistic version). `/execute` bypasses consensus/risk and role checks; promotion can
-therefore be distorted by a manual paper trade. A Redis outage blocks orders and
-requires a human re-arm (intentional); the latch is process-local, so a runner that
-latched also needs a restart until a shared arm epoch exists.
+`get_open_orders()` returns `[]`; no balance reconciliation. Concurrent API/worker/runner
+paper writes are last-writer-wins (no row lock or optimistic version); `client_order_id`
+prevents duplicate requests, not lost updates. `/execute` is approved-only but trusts the
+authenticated caller's agent payload; there is no signed/expiring signal token. No role
+checks on trading/live controls. A Redis outage blocks orders and requires a human re-arm
+(intentional); the latch is process-local, so a runner that latched also needs a restart
+until a shared arm epoch exists.

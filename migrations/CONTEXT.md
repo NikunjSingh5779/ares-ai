@@ -10,6 +10,8 @@
   through a splitter that preserves single/double quotes and dollar-quoted PL/pgSQL.
 - `versions/0002_paper_ledger.py` — durable paper-ledger columns and side backfill;
   idempotent because a fresh `0001` already executes the current schema.
+- `versions/0003_order_idempotency.py` — `orders.client_order_id` and its partial unique
+  index; idempotent for the same reason.
 - Root `alembic.ini` — `script_location`, URL source.
 
 ## Process
@@ -20,12 +22,14 @@
 4. Run `alembic upgrade head` on a scratch PostgreSQL 16 database, then run the suite.
 
 ## Invariants
-- Exactly one head: `0002_paper_ledger` revises `0001`.
+- Exactly one head: `0003_order_idempotency` revises `0002_paper_ledger`, which revises
+  `0001_initial_schema`.
 - Revision files are committed; otherwise a fresh clone cannot migrate.
 - `database/schema.sql` and `database/init.sql` remain byte-identical.
 - Migrations are forward-only in production; destructive changes need a plan.
 - `0002` backfills `trade_history.position_side='short'` for rows whose entry side is
-  `sell`. Old `positions` rows have no direction and default to long.
+  `sell`. Old `positions` rows have no direction and default to long. `0003` adds the
+  per-account client-order uniqueness guard; existing databases need `upgrade head`.
 
 ## Human check
 `alembic heads` (expect one), `alembic history`, `alembic upgrade head`, then

@@ -72,9 +72,9 @@ fill with no seeded paper account is rejected rather than kept only in memory.
 
 **Consequences:** P1-A is implemented and covered by repository/service/restart tests
 plus a manual PostgreSQL 16 round-trip. API reads now hydrate before responding.
-Concurrent API/worker/runner writes are still last-writer-wins; row locking and order
-idempotency remain P1-B. The pipeline result (`_last_state`) is still process-global and
-is a separate ownership issue.
+Concurrent API/worker/runner writes are still last-writer-wins. P1-B adds order
+idempotency, but row locking/optimistic versions remain P1-C. The pipeline result
+(`_last_state`) is still process-global and is a separate ownership issue.
 
 ---
 
@@ -228,3 +228,37 @@ The existing validator remains fail-fast on default API, JWT, and DB secrets.
 production deployment that forgets the overlay is visibly a development deployment,
 not a silent production one. The overlay does not enable live trading; the live gates
 still apply.
+
+---
+
+## ADR-014 — API paper execution requires upstream approvals and idempotency
+**Date:** 2026-10-21 · **Status:** accepted, implemented (P1-B, committed)
+
+**Context:** `/execute` accepted a raw `{symbol, side, quantity, entry_price}` body and
+called the ledger directly. It required auth but not consensus or Risk approval, and it
+had no duplicate-order guard. A caller could therefore create a position that never
+passed the agent gates and could retry an ambiguous request into a second position.
+
+**Decision:** `/execute` accepts only an `ExecuteTradeRequest` with a required
+`client_order_id` and typed `approval` outputs from Market Analyst, Quant, and Risk
+(optional Vision). The server re-runs `ConsensusEngine.evaluate`, requires both agent
+confidences >80%, matching directions, `risk.approved=true`, and `risk_score<=70`.
+It derives entry price from the approved Market Analyst `current_price`, quantity from
+`risk.max_position_size`, and stop-loss from the Risk output. It rejects missing or
+non-finite values, a stop on the wrong side of entry, and notional above 2% of current
+paper equity. Caller-supplied price/quantity and a manual bypass are not accepted; manual
+trades remain a future, separately designed path that must be labeled and excluded from
+promotion.
+
+`orders.client_order_id` is unique per paper account through a partial unique index.
+The repository checks before mutation, and the index closes the concurrent-retry race.
+A duplicate returns **409 Conflict** and never creates a second position. A failed or
+conflicting write restores the hydrated cache snapshot.
+
+**Consequences:** A request without approvals cannot create a position, and an ambiguous
+retry cannot duplicate a fill. The authenticated API key remains the trust boundary: a
+credential holder can still supply synthetic agent outputs, because there is no signed or
+expiring signal token yet. This decision does not add row locking or optimistic versions;
+concurrent API/worker/runner writers can still lose an update, which is P1-C. Existing
+deployments must run `alembic upgrade head` for `0003_order_idempotency`. Generated trades
+continue through `/signal`; the frontend wrapper was updated but remains unused by pages.

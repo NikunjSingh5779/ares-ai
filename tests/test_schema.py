@@ -31,8 +31,8 @@ def test_schema_not_empty() -> None:
     assert "CREATE TABLE" in content, "Schema must contain CREATE TABLE statements"
 
 
-def test_all_17_tables_present() -> None:
-    """Schema must define all 17 required tables."""
+def test_all_18_tables_present() -> None:
+    """Schema must define all 18 required tables."""
     content = SCHEMA_PATH.read_text()
     tables = TABLE_PATTERN.findall(content)
     table_names = {t.lower() for t in tables}
@@ -142,6 +142,14 @@ def test_paper_ledger_columns_present() -> None:
     assert "exit_commission NUMERIC" in content
     assert "equity_curve JSONB" in content
     assert "initial_capital NUMERIC" in content
+
+
+def test_order_idempotency_columns_present() -> None:
+    """Paper orders need a per-account client ID for duplicate protection."""
+    content = SCHEMA_PATH.read_text()
+    assert "client_order_id VARCHAR(100)" in content
+    assert "uq_orders_client_order_id" in content
+    assert "WHERE client_order_id IS NOT NULL" in content
 
 
 def test_init_schema_is_byte_identical_copy() -> None:

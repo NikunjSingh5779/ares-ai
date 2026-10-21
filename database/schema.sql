@@ -112,6 +112,7 @@ CREATE TABLE orders (
     avg_fill_price NUMERIC(20, 8),
     status VARCHAR(20) NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'open', 'filled', 'partially_filled', 'cancelled', 'rejected', 'expired')),
+    client_order_id VARCHAR(100),
     exchange_order_id VARCHAR(100),
     failure_reason TEXT,
     agent_rationale JSONB,
@@ -122,6 +123,9 @@ CREATE TABLE orders (
 CREATE INDEX idx_orders_account_id ON orders(account_id);
 CREATE INDEX idx_orders_status ON orders(status);
 CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
+CREATE UNIQUE INDEX uq_orders_client_order_id
+    ON orders(account_id, client_order_id)
+    WHERE client_order_id IS NOT NULL;
 
 -- ===========================================================================
 -- SIGNALS

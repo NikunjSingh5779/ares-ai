@@ -11,12 +11,15 @@ import type {
   LiveOrder,
   LivePosition,
   LiveStatusResponse,
+  MarketAnalystOutput,
   MetricsResponse,
   OpenPosition,
   PaperRecord,
   PortfolioSummary,
+  QuantOutput,
   RiskOutput,
   SignalResponse,
+  VisionOutput,
   SignalHistoryEntry,
   AnalyzeResponse,
   JournalHistoryEntry,
@@ -133,13 +136,15 @@ export async function getOrders(): Promise<ClosedTrade[]> {
 }
 
 export async function executeTrade(body: {
+  client_order_id: string;
   symbol: string;
-  side: string;
-  quantity: number;
-  entry_price: number;
-  stop_loss?: number;
-  take_profit?: number;
-  strategy_name?: string;
+  side: "long" | "short";
+  approval: {
+    market_analyst_output: MarketAnalystOutput;
+    quant_output: QuantOutput;
+    risk_output: RiskOutput;
+    vision_output?: VisionOutput | null;
+  };
 }): Promise<Record<string, unknown>> {
   return request<Record<string, unknown>>("/api/v1/execute", {
     method: "POST",

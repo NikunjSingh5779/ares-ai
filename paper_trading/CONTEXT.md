@@ -16,6 +16,8 @@ LLM, no exchange.
 
 ## Inputs
 - Approved signal: symbol, side, quantity, price.
+- For API `/execute`, a typed approval payload plus `client_order_id`; the router derives
+  quantity, price, and stop-loss before calling the ledger.
 - Candles for marks and SL/TP checks.
 - `paper_trading_initial_capital`, `paper_trading_commission_pct`, and
   `paper_trading_slippage_pct` from settings. The application constructs its engine
@@ -24,11 +26,12 @@ LLM, no exchange.
   process that hydrates the ledger must construct its engine with the same settings.
 
 ## Process
-1. `PaperTradingLedger.execute_signal` refreshes from PostgreSQL, snapshots the engine,
-   closes an opposite position if present, applies adverse slippage, sizes against cash
-   (long) or equity with 100% short margin, records the position, and debits/credits
-   cash including entry commission. It persists the open position, entry order, any
-   reversal close/history, and portfolio in one transaction.
+1. `PaperTradingLedger.execute_signal` refreshes from PostgreSQL, rejects an already-used
+   `client_order_id`, snapshots the engine, closes an opposite position if present,
+   applies adverse slippage, sizes against cash (long) or equity with 100% short margin,
+   records the position, and debits/credits cash including entry commission. It persists
+   the open position, entry order with its client ID, any reversal close/history, and
+   portfolio in one transaction. Exit orders carry no client ID.
 2. `PaperTradingLedger.process_candle` refreshes, checks SL/TP first (stop first when a
    candle spans both levels), marks any remaining open position, and persists the
    closure and/or mark.
@@ -53,8 +56,10 @@ hydrate before responding. Promotion reads `trade_history` and the portfolio dra
 - Shorts credit proceeds, report 100% notional margin, and subtract the liability from
   equity. Cash and reported PnL reconcile after every fill.
 - One open position per symbol (the engine closes an opposite position on reversal).
-- Concurrent API/worker/runner writes are last-writer-wins; no row lock or order
-  idempotency yet.
+- `orders.client_order_id` is unique per paper account through a partial unique index.
+  Duplicate API requests return 409 and never create a second position.
+- Concurrent API/worker/runner writes are still last-writer-wins; idempotency does not add
+  row locking or optimistic versions.
 
 ## Human check
 `GET /api/v1/portfolio`, `/positions`, `/orders`; run `scripts/seed.py` once on a fresh
@@ -67,7 +72,8 @@ returns empty state; writes return 503 rather than persisting in memory.
 `tests/test_schema.py`.
 
 ## Known gaps
-Concurrent writers can lose an update; direct `/execute` bypasses consensus/risk and
-role checks; there is no automated PostgreSQL CI job; the engine must be constructed
-with the same fee settings after restart. Stop fills still use the stop price on a gap,
-and there are no partial fills or borrow/funding costs.
+Concurrent writers can lose an update; `/execute` trusts the authenticated caller's agent
+payload (no signed/expiring token); there is no automated PostgreSQL CI job; the engine
+must be constructed with the same fee settings after restart. Stop fills still use the stop
+price on a gap, and there are no partial fills or borrow/funding costs. No manual
+paper-trade path exists; a future one must be labeled and excluded from promotion.

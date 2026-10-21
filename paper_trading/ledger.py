@@ -12,7 +12,7 @@ import logging
 from typing import Any
 
 from paper_trading.engine import ClosedTrade, PaperPosition, PaperTradingEngine, PortfolioSummary
-from paper_trading.repository import PaperLedgerError, PaperLedgerRepository
+from paper_trading.repository import PaperLedgerError, PaperLedgerRepository, PaperOrderConflictError
 
 logger = logging.getLogger("ares.paper_trading")
 
@@ -53,12 +53,17 @@ class PaperTradingLedger:
         stop_loss: float | None = None,
         take_profit: float | None = None,
         strategy_name: str = "",
+        client_order_id: str | None = None,
     ) -> dict[str, Any]:
         """Execute and persist one paper fill.
 
-        The engine snapshot is rolled back if the database transaction fails.
+        ``client_order_id`` is required by the HTTP execution path and is
+        checked before mutation. The unique database index is the race-free
+        guard. The engine snapshot is rolled back if persistence fails.
         """
         await self.refresh()
+        if client_order_id and await self.repository.client_order_id_exists(client_order_id):
+            raise PaperOrderConflictError("Client order ID has already been used")
         snapshot = self.engine.snapshot()
         closed_before = len(self.engine.get_closed_trades())
         result = self.engine.execute_signal(
@@ -83,6 +88,7 @@ class PaperTradingLedger:
                 self.engine,
                 closed_trades=new_closed,
                 entry_position_ids=[position_id] if position_id else [],
+                client_order_id=client_order_id,
             )
         except Exception:
             self.engine.restore_snapshot(snapshot)

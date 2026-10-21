@@ -1,7 +1,10 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from agents.state import MarketAnalystOutput, QuantOutput, RiskOutput, VisionOutput
 
 
 class AccountBase(BaseModel):
@@ -76,6 +79,7 @@ class OrderBase(BaseModel):
     quantity: float
     price: float | None = None
     stop_price: float | None = None
+    client_order_id: str | None = None
     strategy_name: str | None = None
 
 
@@ -93,3 +97,40 @@ class OrderResponse(OrderBase):
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class TradeApproval(BaseModel):
+    """The upstream outputs that must approve an API-initiated paper trade.
+
+    The server re-runs the deterministic consensus gate and checks the risk
+    output; it never trusts a caller-supplied boolean.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    market_analyst_output: MarketAnalystOutput
+    quant_output: QuantOutput
+    risk_output: RiskOutput
+    vision_output: VisionOutput | None = None
+
+
+class ExecuteTradeRequest(BaseModel):
+    """An approved paper-trade execution request.
+
+    Price and quantity are intentionally absent: they are derived from the
+    approved Market Analyst/Risk payload so a caller cannot submit a favorable
+    fill or an oversized order.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_order_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+        description="Idempotency key, unique per paper account",
+    )
+    symbol: str = Field(..., min_length=1, max_length=20)
+    side: Literal["long", "short"]
+    approval: TradeApproval

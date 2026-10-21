@@ -45,12 +45,19 @@ imported by domain packages.
 `trading.py` keeps a process-local `PaperTradingEngine` cache but coordinates every
 read/write through `paper_trading.ledger.PaperTradingLedger`; PostgreSQL is the durable
 source. `/portfolio`, `/positions`, and `/orders` hydrate before responding and return
-503 when the ledger is unavailable. `/execute` goes through the ledger and returns 503
-if the paper account is not seeded, rather than accepting an unpersisted trade.
+503 when the ledger is unavailable. `/execute` accepts only an `ExecuteTradeRequest`
+containing typed Market Analyst, Quant, and Risk approvals plus a required
+`client_order_id`. The router re-runs consensus, checks Risk approval/score, derives the
+fill from the approved `current_price`, derives quantity from
+`risk.max_position_size`, and caps notional at 2% of paper equity. It has no raw
+price/quantity fields and no manual bypass. A duplicate `client_order_id` returns 409;
+ledger failures return 503. The normal generated-trade path remains `/signal`.
 
 ## Known gaps
-- `/execute` accepts a raw body and bypasses consensus/risk; it is paper-only but can
-  distort promotion statistics until P1-B.
+- `/execute` trusts the authenticated caller's agent payload; there is no signed or
+  expiring signal token. The API key remains the trust boundary.
+- Concurrent API/worker/runner paper writes are still last-writer-wins; `client_order_id`
+  does not add row locking or optimistic versions.
 - `analysis.py` still owns the module-global `_last_state`.
 - `/health` returns 200 even when degraded; `/metrics` product endpoint is derived from
   the last run, not Prometheus counters.

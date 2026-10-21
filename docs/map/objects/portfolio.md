@@ -14,9 +14,10 @@
   cache rollback on failure.
 - `paper_trading/worker.py` — SL/TP polling; delegates candle processing to the ledger.
 - `backend/routers/trading.py` — ledger factory + `/portfolio`, `/positions`, `/orders`,
-  `/execute`.
-- `database/schema.sql` — the tables above, including `positions.side` and the paper
-  cost/margin/equity fields.
+  approved-only `/execute` with server-side consensus/risk checks and 2% notional cap.
+- `backend/schemas/trading.py` — `ExecuteTradeRequest` and `TradeApproval`.
+- `database/schema.sql` — the tables above, including `positions.side`, the paper
+  cost/margin/equity fields, and `orders.client_order_id`.
 
 **Shape:** position = `{id, symbol, side, quantity, entry_price, entry_at, stop_loss,
 take_profit, entry_commission, margin}`; closed trade adds `exit_price`, `pnl`,
@@ -25,8 +26,10 @@ equity, `margin_used`, return %, win rate, max drawdown.
 
 **Writers:** `PaperTradingLedger.execute_signal` / `process_candle`; `agents/execution.py`
 uses the ledger for paper fills (direct-SQL fallback only when no ledger is wired);
-`paper_trading/worker.py` delegates closures and marks. API, worker, and runner each
-have a process-local engine cache but share the same PostgreSQL ledger.
+`paper_trading/worker.py` delegates closures and marks. `/execute` accepts only typed
+Market Analyst/Quant/Risk approvals, re-runs consensus, derives price/size, and requires a
+`client_order_id`. API, worker, and runner each have a process-local engine cache but share
+the same PostgreSQL ledger.
 
 **Readers:** `/api/v1/portfolio`, `/positions`, `/orders` (hydrate first); promotion gate
 (`live_trading/engine.py` queries `trade_history` and portfolio drawdown); frontend
@@ -36,7 +39,9 @@ portfolio/paper pages.
 rejection (a failed reversal keeps the old position); an accepted fill with no seeded
 paper account is rejected; configured fees and adverse
 slippage apply; a candle spanning both levels resolves to the stop;
-`total_pnl = equity - initial_capital`; shorts carry side/margin explicitly.
+`total_pnl = equity - initial_capital`; shorts carry side/margin explicitly. The API
+cannot supply its own price or quantity, and a duplicate `client_order_id` returns 409
+before a second position is created.
 
 **Change impact:**
 - Add a field → DB column + migration + Pydantic model + `to_dict` + frontend type + tests.
@@ -45,9 +50,10 @@ slippage apply; a candle spanning both levels resolves to the stop;
 
 **Tests:** `tests/test_paper_trading.py`, `tests/test_paper_trading_ledger.py`,
 `tests/test_paper_trading_worker.py`, `tests/test_execution_agent.py`,
-`tests/test_schema.py`.
+`tests/test_trading_router.py`, `tests/test_schema.py`.
 
-**Known gaps:** concurrent API/worker/runner writes are last-writer-wins; no order
-idempotency or row locking. `/execute` has no consensus/risk gate. No automated
-PostgreSQL integration test in CI. Old short positions cannot be inferred during
-migration and default to long.
+**Known gaps:** concurrent API/worker/runner writes are last-writer-wins; `client_order_id`
+prevents duplicate requests but there is no row locking or optimistic version. `/execute`
+trusts the authenticated caller's agent payload and has no signed/expiring signal token.
+No automated PostgreSQL integration test in CI. Old short **positions** cannot be inferred
+during migration and default to long.

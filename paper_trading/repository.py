@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from paper_trading.engine import ClosedTrade, PaperPosition, PaperTradingEngine
@@ -24,6 +25,16 @@ logger = logging.getLogger("ares.paper_trading")
 
 class PaperLedgerError(RuntimeError):
     """Raised when a paper-ledger read or write cannot be completed."""
+
+
+class PaperOrderConflictError(PaperLedgerError):
+    """Raised when a client order ID was already used for this paper account."""
+
+
+def _is_client_order_conflict(exc: IntegrityError) -> bool:
+    """Identify the client-order unique index across SQLAlchemy drivers."""
+    constraint = getattr(getattr(exc, "orig", None), "constraint_name", "") or ""
+    return "client_order_id" in str(exc).lower() or constraint == "uq_orders_client_order_id"
 
 
 class PaperLedgerRepository:
@@ -36,6 +47,33 @@ class PaperLedgerRepository:
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
+
+    async def client_order_id_exists(self, client_order_id: str) -> bool:
+        """Return whether this client order ID is already recorded.
+
+        The unique index is the race-free guard; this read gives the API a
+        clean 409 before any engine mutation in the common duplicate case.
+        """
+        try:
+            async with self._session_factory() as session:
+                found = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM orders o
+                            JOIN accounts a ON a.id = o.account_id
+                            WHERE a.exchange = 'paper'
+                              AND o.client_order_id = :client_order_id
+                            LIMIT 1
+                            """
+                        ),
+                        {"client_order_id": client_order_id},
+                    )
+                ).first()
+                return found is not None
+        except Exception as exc:  # noqa: BLE001 - preserve DB failure context
+            raise PaperLedgerError(f"Could not check client order ID: {exc}") from exc
 
     async def hydrate(self, engine: PaperTradingEngine) -> bool:
         """Load the paper account into ``engine``.
@@ -204,12 +242,15 @@ class PaperLedgerRepository:
         *,
         closed_trades: Sequence[ClosedTrade] = (),
         entry_position_ids: Sequence[str] = (),
+        client_order_id: str | None = None,
     ) -> bool:
         """Persist the engine snapshot and any newly closed trades atomically.
 
         ``entry_position_ids`` identifies positions that need an entry order
         row.  Without it, marking an existing position does not duplicate order
-        history.  Returns ``False`` when the seeded paper account is missing.
+        history. ``client_order_id`` is attached to the new entry order for
+        idempotency; exit orders keep their own generated identity.  Returns
+        ``False`` when the seeded paper account is missing.
         """
         try:
             async with self._session_factory() as session:
@@ -233,6 +274,7 @@ class PaperLedgerRepository:
                             quantity=position.quantity,
                             price=position.entry_price,
                             position_id=position.id,
+                            client_order_id=client_order_id,
                             rationale={
                                 "strategy_name": position.strategy_name,
                                 "event": "entry",
@@ -251,6 +293,7 @@ class PaperLedgerRepository:
                         quantity=trade.quantity,
                         price=trade.exit_price,
                         position_id=trade.position_id or None,
+                        client_order_id=None,
                         rationale={
                             "strategy_name": trade.strategy_name,
                             "event": "exit",
@@ -262,6 +305,10 @@ class PaperLedgerRepository:
                 await self._update_portfolio(session, portfolio_id, engine)
                 await session.commit()
                 return True
+        except IntegrityError as exc:
+            if _is_client_order_conflict(exc):
+                raise PaperOrderConflictError("Client order ID has already been used") from exc
+            raise PaperLedgerError(f"Could not persist paper ledger: {exc}") from exc
         except Exception as exc:  # noqa: BLE001 - wrap repository failures
             raise PaperLedgerError(f"Could not persist paper ledger: {exc}") from exc
 
@@ -440,6 +487,7 @@ class PaperLedgerRepository:
         quantity: float,
         price: float,
         position_id: str | None,
+        client_order_id: str | None,
         rationale: dict[str, Any],
     ) -> None:
         await session.execute(
@@ -448,11 +496,11 @@ class PaperLedgerRepository:
                 INSERT INTO orders (
                     account_id, position_id, symbol, side, order_type, status,
                     quantity, price, filled_quantity, avg_fill_price,
-                    agent_rationale
+                    client_order_id, agent_rationale
                 ) VALUES (
                     :account_id, :position_id, :symbol, :side, 'market', 'filled',
                     :quantity, :price, :quantity, :price,
-                    CAST(:rationale AS JSONB)
+                    :client_order_id, CAST(:rationale AS JSONB)
                 )
                 """
             ),
@@ -463,6 +511,7 @@ class PaperLedgerRepository:
                 "side": side,
                 "quantity": quantity,
                 "price": price,
+                "client_order_id": client_order_id,
                 "rationale": json.dumps(rationale),
             },
         )
