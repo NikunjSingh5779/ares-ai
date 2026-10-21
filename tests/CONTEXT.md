@@ -12,8 +12,9 @@
 - Root `test_*.py` — one file per module (supervisor, consensus, risk, paper, backtest…).
 - `test_postgres_integration.py` — opt-in real-PostgreSQL ledger tests; skipped unless
   `ARES_TEST_POSTGRES_URL` points at a disposable database whose name contains `test`.
-- `conftest.py` — shared fixtures; overrides `verify_auth` for domain tests only.
-  Auth-specific tests remove the override and exercise the real gate.
+- `conftest.py` — shared fixtures; overrides `verify_auth` **and** the role dependencies
+  (`require_trading_access`, `require_live_control`) for domain tests only. Auth/role
+  tests remove those overrides and exercise the real gates.
 
 ## Rules
 - Deterministic: fake LLMs/HTTP, no real keys, no sleeps for timing.
@@ -28,7 +29,7 @@
 - Full: `pytest tests/ -q`
 - Real PostgreSQL: `ARES_TEST_POSTGRES_URL=postgresql+asyncpg://ares:ares_test@localhost:5432/ares_ai_test pytest tests/test_postgres_integration.py -q --no-cov`
   (CI job `postgres-integration` does this on `postgres:16-alpine`).
-- Types: `mypy .` (currently red on tests/scripts — see `docs/02-STATUS.md`)
+- Types: `mypy .` (clean on 183 files as of 2026-10-21)
 
 ## Human check
 Full suite green, `ruff check .`, `mypy .`, and no new warnings.

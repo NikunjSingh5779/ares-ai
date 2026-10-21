@@ -20,12 +20,20 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader, HTTPBearer, OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.roles import (
+    ADMIN,
+    LIVE_CONTROL_ROLES,
+    TRADING_ROLES,
+    VIEWER,
+    normalize_role,
+)
 from backend.db.models import User
 from backend.services import user_service
 from configs.settings import settings
@@ -64,15 +72,23 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
-async def verify_auth(
-    token: str | None = Depends(oauth2_scheme),
-    api_key: str | None = Depends(api_key_header),
-) -> str:
-    """Validate authentication via Bearer token (JWT) or X-API-Key header.
+@dataclass(frozen=True)
+class AuthPrincipal:
+    """The authenticated caller and the role resolved from the credential."""
 
-    Raises:
-        HTTPException: 503 when the server has no usable API key configured
-            (fail closed), 401 otherwise.
+    subject: str
+    role: str
+    via_api_key: bool = False
+
+
+def _authenticate(token: str | None, api_key: str | None) -> AuthPrincipal:
+    """Resolve a credential to a subject and role, or raise 401/503.
+
+    JWTs carry the role claim minted at login. Tokens without a role (issued
+    before P1.6) stay valid for read-only routes but default to ``viewer`` for
+    trading and live-control routes. The server API key is the operator trust
+    boundary and maps to ``admin``; it never requires a database lookup, so the
+    kill switch remains usable while PostgreSQL is down.
     """
     configured_key = settings.api_secret_key
 
@@ -94,23 +110,67 @@ async def verify_auth(
     if token and jwt_configured:
         try:
             payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-            email: str | None = payload.get("sub")
-            if email:
-                return email
+            email = payload.get("sub")
+            if isinstance(email, str) and email:
+                raw_role = payload.get("role")
+                role = normalize_role(raw_role) if isinstance(raw_role, str) else VIEWER
+                return AuthPrincipal(subject=email, role=role)
         except JWTError:
             pass  # Fall through to API-key validation.
 
     # ── API Key Validation (Server-to-Server) ──────────────────────
-    if _constant_time_match(token, configured_key):
-        return token  # type: ignore[return-value]
-    if _constant_time_match(api_key, configured_key):
-        return api_key  # type: ignore[return-value]
+    if token and _constant_time_match(token, configured_key):
+        return AuthPrincipal(subject=token, role=ADMIN, via_api_key=True)
+    if api_key and _constant_time_match(api_key, configured_key):
+        return AuthPrincipal(subject=api_key, role=ADMIN, via_api_key=True)
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or missing API key/token. Provide via Authorization: Bearer or X-API-Key header.",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+async def verify_auth(
+    token: str | None = Depends(oauth2_scheme),
+    api_key: str | None = Depends(api_key_header),
+) -> str:
+    """Validate authentication via Bearer token (JWT) or X-API-Key header.
+
+    Raises:
+        HTTPException: 503 when the server has no usable API key configured
+            (fail closed), 401 otherwise.
+    """
+    return _authenticate(token, api_key).subject
+
+
+def _require_roles(principal: AuthPrincipal, allowed: frozenset[str], action: str) -> AuthPrincipal:
+    """Reject a principal whose role is not allowed to perform ``action``."""
+    if principal.role not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"{action} requires operator or admin role "
+                f"(current role: {principal.role}). Re-authenticate after a role change."
+            ),
+        )
+    return principal
+
+
+async def require_trading_access(
+    token: str | None = Depends(oauth2_scheme),
+    api_key: str | None = Depends(api_key_header),
+) -> AuthPrincipal:
+    """Require a role that may execute a paper trade (viewer is read-only)."""
+    return _require_roles(_authenticate(token, api_key), TRADING_ROLES, "Trading")
+
+
+async def require_live_control(
+    token: str | None = Depends(oauth2_scheme),
+    api_key: str | None = Depends(api_key_header),
+) -> AuthPrincipal:
+    """Require a role that may start/stop live trading or touch its safety gates."""
+    return _require_roles(_authenticate(token, api_key), LIVE_CONTROL_ROLES, "Live trading control")
 
 
 async def get_current_user_id(

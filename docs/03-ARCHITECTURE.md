@@ -75,6 +75,13 @@ bootstrap that requires the operator's API key; `/auth/verify` also requires a
 credential. The frontend stores the key in `sessionStorage` and `AuthGate`
 redirects to `/login` when absent.
 
+`/execute` and the live controls (`mode`, `start`, `stop`, `kill`, `arm`) add a
+second gate: `require_trading_access` / `require_live_control` in
+`backend/core/dependencies.py`. JWTs carry the role (`viewer`, `operator`,
+`admin`, `super_admin`) minted at login; API keys map to `admin`; a missing or
+unknown role fails closed to `viewer`. The gate verifies the credential only, so
+`/live/kill` still works when PostgreSQL is unreachable.
+
 **Backtest** (`POST /api/v1/backtest/run`)
 `backend/routers/backtest.py` → `backtesting/engine.py` (pure Python; commission and
 slippage modelled; entry at next candle open when no fixed price).

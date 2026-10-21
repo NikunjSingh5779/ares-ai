@@ -20,7 +20,9 @@ Async sessions (`get_db`), ORM entities, schema on first container start.
 - One schema change updates: DDL, ORM (if mapped), migration, and tests.
 - `schema.sql` and `init.sql` stay byte-identical after line-ending normalization;
   `tests/test_schema.py` enforces it.
-- `migrations/versions/` is tracked and has exactly one head (`0003_order_idempotency`).
+- `migrations/versions/` is tracked and has exactly one head (`0004_role_hierarchy`).
+- `users.role` is one of `viewer`, `operator`, `admin`, `super_admin`; the default is
+  `viewer`. Legacy `user` rows are rewritten to `operator` by migration `0004`.
 - Paper state columns: `positions.side`, `entry_commission`, `margin`;
   `portfolio.initial_capital`, `margin_used`, `equity_curve`;
   `trade_history.position_side`, `entry_commission`, `exit_commission`, `exit_reason`;
@@ -41,4 +43,5 @@ Most access is raw SQL, so the ORM covers only part of the schema. Existing data
 must run `alembic upgrade head`; `init.sql` only applies on first container start.
 Migration `0002` assumes pre-existing `positions` rows are long because the old table
 had no direction column; reconcile any historical shorts manually. `0003` adds the
-idempotency column/index and must be applied to existing deployments.
+idempotency column/index; `0004` replaces the role check and default. Both must be applied
+to existing deployments with `alembic upgrade head`.

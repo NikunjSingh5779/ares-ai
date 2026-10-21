@@ -9,9 +9,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from backend.core.dependencies import require_live_control
 from configs.settings import settings
 from database.connection import async_session_factory
 from live_trading import (
@@ -180,7 +181,7 @@ async def live_status() -> dict[str, Any]:
 _NO_ENGINE_MSG = "Exchange not configured. Set API keys in .env first."
 
 
-@router.post("/mode")
+@router.post("/mode", dependencies=[Depends(require_live_control)])
 async def set_mode(body: SetModeRequest) -> dict[str, Any]:
     """Change the trading mode.
 
@@ -243,7 +244,7 @@ async def set_mode(body: SetModeRequest) -> dict[str, Any]:
     return {"mode": new_mode.value}
 
 
-@router.post("/start")
+@router.post("/start", dependencies=[Depends(require_live_control)])
 async def start_engine() -> dict[str, Any]:
     """Connect to the exchange and start the live engine."""
     if not settings.live_trading_enabled:
@@ -267,7 +268,7 @@ async def start_engine() -> dict[str, Any]:
     raise HTTPException(status_code=500, detail="Failed to connect to exchange")
 
 
-@router.post("/stop")
+@router.post("/stop", dependencies=[Depends(require_live_control)])
 async def stop_engine() -> dict[str, Any]:
     """Disconnect from the exchange and stop the engine."""
     engine = _get_engine()
@@ -280,7 +281,7 @@ async def stop_engine() -> dict[str, Any]:
     return {"status": "stopped"}
 
 
-@router.post("/kill")
+@router.post("/kill", dependencies=[Depends(require_live_control)])
 async def activate_kill_switch(body: KillSwitchRequest) -> dict[str, Any]:
     """Activate the kill switch — halts all live order placement immediately.
 
@@ -305,7 +306,7 @@ async def activate_kill_switch(body: KillSwitchRequest) -> dict[str, Any]:
     return response
 
 
-@router.post("/arm")
+@router.post("/arm", dependencies=[Depends(require_live_control)])
 async def arm_kill_switch() -> dict[str, Any]:
     """Re-arm the kill switch — human confirmation required.
 

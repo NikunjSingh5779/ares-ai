@@ -337,6 +337,7 @@ def app_with_mock_user(monkeypatch) -> FastAPI:
             user = MagicMock()
             user.email = "existing@example.com"
             user.password_hash = "mock_hash_that_wont_be_checked"
+            user.role = "admin"
             user.is_active = True
             return user
         return None
@@ -401,8 +402,18 @@ class TestLoginEndpointRateLimit:
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             # Without a real password hash match, we expect 401 — not 429
-            assert resp.status_code in (200, 401)
+            assert resp.status_code == 200
             assert "Retry-After" not in resp.headers
+            from jose import jwt
+
+            from configs.settings import settings
+
+            payload = jwt.decode(
+                resp.json()["access_token"],
+                settings.jwt_secret_key,
+                algorithms=[settings.jwt_algorithm],
+            )
+            assert payload["role"] == "admin"
 
     def test_login_requires_configured_jwt_secret(self, app_with_mock_user, monkeypatch) -> None:
         """A login must never return a token that verify_auth will reject."""

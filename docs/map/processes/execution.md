@@ -71,7 +71,8 @@ trusts the authenticated caller's agent payload, since there is no signed/expiri
 token. `ExecutionAgent` keeps a legacy in-memory/direct-SQL fallback when constructed
 without a `ledger`; production paths (`backend/routers/analysis.py`, `scripts/run_live.py`)
 always pass the ledger, and the fallback bypasses the writer lock — do not use it for paper
-writes. No role
-checks on trading/live controls. A Redis outage blocks orders and requires a human re-arm
+writes. Trading and live controls require `operator` or higher through
+`require_trading_access` / `require_live_control`; `viewer` is read-only and the role check
+does not query PostgreSQL. A Redis outage blocks orders and requires a human re-arm
 (intentional); the latch is process-local, so a runner that latched also needs a restart
 until a shared arm epoch exists.

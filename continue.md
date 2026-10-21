@@ -5,13 +5,16 @@
 **Branch:** `fix/orchestration-reliability-frontend`
 **Head commit:** `test(paper): run the ledger suite against real PostgreSQL in CI` (read
 the hash with `git log -1 --format=%h`).
-**Branch position:** **7 commits ahead / 4 behind `master`** (per
+**Branch position:** **10 commits ahead / 4 behind `master`** (per
 `git rev-list --left-right --count master...HEAD`).
-**Working tree:** clean. P1-A (`9c16122`), P1-B (`feat(paper): require approved execution
-and client order ids`), P1-C (`fix(paper): serialize ledger writers with an advisory
-lock`), and P1.4 (the head commit) are committed and pushed to `origin`. GitHub Actions run
-39601089127 passed `test`, `postgres-integration`, `frontend`, and `docker`; only `lint`
-failed, on the 22 pre-existing mypy errors. Do not reset, clean, or push unless the user
+**Working tree:** **clean**. P1.6 role-based authorization and the 22-error mypy cleanup
+are two local commits, **not pushed**. P1-A (`9c16122`),
+P1-B (`feat(paper): require approved execution and client order ids`), P1-C
+(`fix(paper): serialize ledger writers with an advisory lock`), and P1.4
+(`b6b5bea`) are committed and pushed to `origin`; the remote is still at P1.4. GitHub
+Actions run 39601089127 passed `test`, `postgres-integration`, `frontend`, and `docker`;
+only `lint` failed, on the 22 pre-existing mypy errors. Local `mypy .` is now clean, so the
+next push should turn `lint` green. Do not reset, clean, commit, or push unless the user
 explicitly asks.
 
 This is the fresh-session handoff. Read it fully before editing. It records what is done,
@@ -73,9 +76,23 @@ P1.4 is committed as `test(paper): run the ledger suite against real PostgreSQL 
 hydrate → fill → restart → close path plus duplicate, concurrent-writer, and busy-lock
 cases against a real database, and `.github/workflows/ci.yml::postgres-integration` runs it
 on `postgres:16-alpine`. The module skips without `ARES_TEST_POSTGRES_URL`; CI sets
-`ARES_REQUIRE_POSTGRES_INTEGRATION=1` so it cannot skip silently. The next work is **P1.6
-role-based authorization**, then **P1.5 health/metrics**. Run the Phase 1 exit criterion
-against a Compose stack before claiming Phase 1 done.
+`ARES_REQUIRE_POSTGRES_INTEGRATION=1` so it cannot skip silently.
+
+P1.6 is committed locally (not pushed):
+
+- Roles are `viewer`, `operator`, `admin`, `super_admin`; legacy `user` maps to `operator`,
+  and unknown/missing roles fail closed to `viewer`.
+- Login JWTs carry the role claim. `/execute` and `/live/{mode,start,stop,kill,arm}` require
+  operator or higher; viewers get 403. Role checks do not query PostgreSQL, so the kill
+  switch works during a database outage; API keys map to `admin`.
+- Migration `0004_role_hierarchy` expands the role constraint, rewrites `user` to
+  `operator`, and defaults new rows to `viewer`. Verified on PostgreSQL 16, including a
+  legacy `user` row.
+- The 22 mypy errors are fixed; `mypy .` is clean on 183 files. Full suite is **1121
+  passed + 1 skipped / 80.19%**.
+
+The next work is **P1.5 health/metrics**, then the Phase 1 Compose mid-trade restart exit
+criterion. Run that exit against a running stack before claiming Phase 1 done.
 
 **Do not start new feature work before reading sections 2, 3, 5, 5a, 6, and 8.**
 
@@ -127,11 +144,10 @@ mypy .
 
 Expected today:
 
-- `pytest`: **1103 passed**, 2 warnings, **80.08%** coverage, exit 0.
+- `pytest`: **1121 passed**, 1 skipped, 2 warnings, **80.19%** coverage, exit 0.
 - `ruff check .`: clean.
 - `ruff format --check .`: clean.
-- `mypy .`: **22 pre-existing errors in 8 test/script files**. The six P1-B production
-  modules are clean. Do not claim full mypy is green until those 22 are fixed.
+- `mypy .`: **clean on 183 source files**. The 22 pre-existing errors are fixed.
 
 Frontend (only needed for frontend changes):
 
@@ -175,7 +191,8 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
     read-only use is allowed.
 12. **No real-capital live trading.** Live code stays gated; do not enable it.
 13. **Do not commit/push** unless the user explicitly asks. P1-A through P1.4 are
-    committed and pushed to `origin`.
+    pushed to `origin`; P1.6 and the mypy cleanup are local commits only,
+    only.
 14. User preference: dashboard is single-user/local. Future market data direction is the
    existing ingestion + Binance WebSocket + Alpaca.
 15. Use ICM/MVC structure and React/frontend review skills for frontend work.
@@ -187,7 +204,7 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 ### 3.1 Branch / worktree
 
 - Branch: `fix/orchestration-reliability-frontend`
-- 7 ahead / 4 behind `master`.
+- 10 ahead / 4 behind `master`.
 - Head: the P1.4 commit `test(paper): run the ledger suite against real PostgreSQL in CI`
   (the hash changes if the commit is amended; prefer `git log -1 --oneline`)
 - P1-A is committed as `9c16122`, P1-B as `feat(paper): require approved execution and
@@ -201,46 +218,42 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 - P1.4 is committed as the head commit and touches `tests/test_postgres_integration.py`,
   `.github/workflows/ci.yml`, `tests/CONTEXT.md`, `docker/CONTEXT.md`,
   `docs/02-STATUS.md`, `docs/05-NEXT.md`, and this file.
+- **P1.6 + mypy local commits:** `backend/core/roles.py`, `backend/core/dependencies.py`,
+  `backend/core/error_handlers.py`, `backend/routers/{auth,live,trading,users}.py`,
+  `backend/db/models.py`, `backend/schemas/user.py`, `backend/services/user_service.py`,
+  `database/{schema,init}.sql`, `migrations/versions/0004_role_hierarchy.py`, the security/
+  test typing files, and the docs/context updates.
 - `migrations/versions/` is no longer gitignored and contains `.gitkeep`,
-  `0001_initial_schema.py`, `0002_paper_ledger.py`, and `0003_order_idempotency.py`.
-- `origin/fix/orchestration-reliability-frontend` contains P1.4 (`b6b5bea`); no PR or
-  merge has been performed.
+  `0001_initial_schema.py`, `0002_paper_ledger.py`, `0003_order_idempotency.py`, and
+  `0004_role_hierarchy.py` (new head).
+- `origin/fix/orchestration-reliability-frontend` contains P1.4 (`b6b5bea`); the P1.6 and
+  mypy changes exist only in local commits. No PR or merge has been performed.
 
 ### 3.2 Verified commands and results
 
 | Check | Result |
 |---|---|
-| `python -m pytest tests/ -q` | **1103 passed, 1 skipped**, 2 warnings, exit 0 |
-| Coverage | **80.08%** default / **80.10%** with the integration job, gate is 78% |
+| `python -m pytest tests/ -q` | **1121 passed, 1 skipped**, 2 warnings, exit 0 |
+| Coverage | **80.19%** default, gate is 78% (the 5 integration tests are opt-in) |
+| `tests/test_security/test_role_auth.py` | **18 passed** — role matrix + real-route viewer denial |
+| `tests/test_security/test_route_auth.py` | **5 passed** — now genuinely traverses FastAPI 0.139 included routers |
 | `tests/test_paper_trading_ledger.py` | **34 passed** |
 | `tests/test_trading_router.py` | **17 passed** |
 | `tests/test_schema.py` | **15 passed** |
 | `tests/test_paper_trading_worker.py` | **13 passed** |
 | `tests/test_config.py` | **17 passed** |
-| `tests/test_postgres_integration.py` (real PG) | **5 passed** |
+| `tests/test_postgres_integration.py` (real PG) | **5 passed** (last run before P1.6; ledger paths unchanged) |
 | `ruff check .` | clean |
 | `ruff format --check .` | clean |
-| `mypy .` | **22 errors in 8 files**, all pre-existing tests/scripts |
-| Targeted P1-B/P1-C mypy | clean on 5 production modules + `test_postgres_integration.py` |
-| `python -m alembic heads` | **`0003_order_idempotency (head)`** |
-| Frontend `pnpm build` | passed (P1-B wrapper update) |
+| `mypy .` | **clean, 183 source files** |
+| `python -m alembic heads` | **`0004_role_hierarchy (head)`** |
+| Frontend `pnpm build` | passed (unchanged since P1-B) |
 | CI PostgreSQL job | **passed** on GitHub Actions run 39601089127 (46 s) |
-| Manual PostgreSQL 16 P1-B checks | passed on a temporary container; container removed |
-| Manual PostgreSQL 16 P1-C checks | passed on a temporary container; container and script removed |
+| Manual PostgreSQL 16 P1-B/P1-C checks | passed on temporary containers; containers removed |
+| Manual PostgreSQL 16 P1.6 migration | passed: fresh head, legacy `user` → `operator`, default `viewer`, `user` rejected |
 
-The 22 mypy errors are in:
-
-- `tests/test_test_free_models.py` (6)
-- `tests/test_error_handlers.py` (4)
-- `tests/test_analysis_router.py` (3)
-- `tests/test_paper_trading_worker.py` (3)
-- `tests/test_supervisor.py` (2)
-- `scripts/test_free_models.py` (2)
-- `tests/test_live_trading/test_safety_edge_cases.py` (1)
-- `tests/test_live_trading/test_engine_edge_cases.py` (1)
-
-Do not report mypy as green. Do not add new production-code mypy errors while fixing
-those.
+The 22 pre-existing mypy errors in 8 test/script files are fixed. Do not reintroduce them;
+`mypy .` is part of the local definition of done.
 
 ### 3.3 Manual PostgreSQL evidence
 
@@ -269,9 +282,17 @@ those.
 4. A duplicate request with the same client ID raised `PaperOrderConflictError`; a fresh
    process after restart also rejected it. One order and one open position remained.
 
-The container, databases, and temporary scripts were removed. The user's real database
-has **not** been migrated; run `alembic upgrade head` (or recreate it) before using this
-build.
+**P1.6 (committed locally):** A disposable PostgreSQL 16 container on port `55432` was used:
+
+1. Fresh `alembic upgrade head` applied `0001` → `0004`; the role check allowed
+   `viewer`/`operator`/`admin`/`super_admin` and the column default was `viewer`.
+2. `alembic downgrade 0003_order_idempotency` restored the old constraint; a legacy
+   `role='user'` row was inserted, then `alembic upgrade head` rewrote it to `operator`.
+3. A new row without a role defaulted to `viewer`.
+4. A later `role='user'` insert was rejected by `users_role_check`.
+
+The one-shot `--rm` container was stopped. The user's real database has **not** been
+migrated; run `alembic upgrade head` (or recreate it) before using this build.
 
 ---
 
@@ -534,8 +555,60 @@ Covered on a real PostgreSQL 16 instance:
 CI job `postgres-integration` (`.github/workflows/ci.yml`) starts `postgres:16-alpine`,
 loads `database/schema.sql`, and runs the module with `--no-cov`. It sets
 `ARES_REQUIRE_POSTGRES_INTEGRATION=1`, so a missing `ARES_TEST_POSTGRES_URL` is a hard
-failure rather than a silent skip. Local numbers: 5 passed in ~5.2 s; the full suite is
-**1108 passed / 80.10%** with the URL and **1103 passed + 1 skipped / 80.08%** without.
+failure rather than a silent skip. At the P1.4 commit: 5 passed in ~5.2 s; the full suite
+was **1108 passed / 80.10%** with the URL and **1103 passed + 1 skipped / 80.08%** without.
+
+---
+
+## 5c. P1.6 — role-based authorization (committed locally, not pushed)
+
+**Roles:** `backend/core/roles.py` defines `viewer`, `operator`, `admin`, `super_admin`.
+`normalize_role` maps legacy `user` to `operator` and every unknown value to `viewer`
+(fail closed). `TRADING_ROLES` and `LIVE_CONTROL_ROLES` are the same operator+ set;
+`ADMIN_ROLES` is admin/super_admin.
+
+**Credential mapping:** `POST /auth/login` mints `{"sub": email, "role": normalized_role}`.
+`backend/core/dependencies.py::_authenticate` verifies a JWT signature and reads the role
+claim; it does **not** query PostgreSQL. An `X-API-Key` (or a Bearer token equal to the
+server key) maps to `admin`, because the key is the server-to-server trust boundary. A JWT
+without a role, or with an unknown role, is treated as `viewer`.
+
+**Gates:** `require_trading_access` guards `POST /api/v1/execute`;
+`require_live_control` guards `/api/v1/live/{mode,start,stop,kill,arm}`. Read-only live
+routes and the rest of `/api/v1` still use only `verify_auth`. Both role dependencies raise
+**403** with the current role in the detail. The global `verify_auth` still returns the
+string subject, so existing handlers did not change.
+
+**Why no DB lookup:** `/live/kill` and `/live/arm` must work while PostgreSQL is down. A
+DB-backed role check would turn a database outage into an inability to stop trading.
+Role changes therefore take effect on the next login; document this as an operational
+tradeoff, not a bug.
+
+**Migration:** `migrations/versions/0004_role_hierarchy.py` discovers every `users` check
+constraint that mentions `role`, drops it, rewrites `user` → `operator`, sets the default
+to `viewer`, and adds the four-role check. `database/schema.sql` and `init.sql` carry the
+same definition; `User.role` and `UserBase.role` default to `viewer`;
+`user_service.create_user` normalizes the role.
+
+**Tests:** `tests/test_security/test_role_auth.py` (18 tests) covers viewer/operator/admin/
+super_admin, legacy `user`, unknown and missing role, API key, invalid token, route wiring,
+and viewer 403s on all six protected real routes. An operator JWT reaches body validation
+on `/execute` (422), proving the role gate passes without executing. `tests/conftest.py`
+overrides both auth and role dependencies for domain tests; the role tests clear those
+overrides.
+
+**FastAPI 0.139 trap:** `app.routes` contains `_IncludedRouter` wrappers, not flattened
+`APIRoute`s. `tests/test_security/test_route_auth.py` was silently vacuous before this
+change; it now walks `original_router.routes` and `include_context.dependencies`. Keep that
+traversal when adding route-level guards.
+
+**Real PostgreSQL 16:** fresh `upgrade head`; `downgrade 0003` + legacy `user` row +
+`upgrade head` → `operator`; default insert → `viewer`; `role='user'` insert rejected.
+The one-shot `--rm` container was stopped.
+
+**Mypy:** all 22 errors fixed (typed fixtures, unused ignores, exception-handler signature
+widened with an `isinstance` guard, `AgentState` imported from `agents.state`). `mypy .` is
+clean on 183 files. Full suite **1121 passed + 1 skipped / 80.19%**; ruff clean.
 
 ---
 
@@ -626,17 +699,22 @@ failure rather than a silent skip. Local numbers: 5 passed in ~5.2 s; the full s
 - The API key remains the operator trust boundary. A future design should bind execution
   to a stored `signals` row or a signed nonce with an expiry.
 
-### Gap 3 — No role-based authorization on trading/live routes (P1)
+### Gap 3 — Role-based authorization — closed by P1.6
 
-- Any valid API key or JWT reaches live controls.
-- Require operator/admin for `/live/start`, `/live/kill`, `/live/arm`, mode changes,
-  and trading controls; add viewer/operator/admin route tests.
+- `viewer` gets 403 on `/execute` and `/live/{mode,start,stop,kill,arm}`; operator or
+  higher is required. The role matrix and real-route denial are tested.
+- JWTs carry the role claim; API keys map to `admin`; missing/unknown roles fail closed to
+  `viewer`. The gate does not query PostgreSQL, so the kill switch survives a DB outage.
+- Migration `0004` rewrites legacy `user` → `operator`, allows `viewer`/`operator`, and
+  defaults new rows to `viewer`.
+- Remaining operational tradeoff: role changes need a re-login (no revocation list), and
+  an API-key holder is always `admin`.
 
-### Gap 4 — `mypy` red (P1 CI)
+### Gap 4 — `mypy` — closed
 
-- 22 errors in 8 test/script files (list in section 3.2).
-- P1-B/P1-C production modules are clean.
-- Fix these before calling CI green; then add mypy to CI.
+- All 22 errors in 8 test/script files are fixed; `mypy .` is clean on 183 files.
+- Keep it clean; CI `lint` should pass on the next push. No production type check was
+  weakened to get here.
 
 ### Gap 5 — `/analyze` concurrency/cost control (P1)
 
@@ -696,19 +774,27 @@ high-fidelity paper results.
 - Preserve `client_order_id` idempotency and the approved-only `/execute` gate.
 - Do not replace the lock with a session-level advisory lock (it leaks via the pool).
 
-### P1-D — PostgreSQL CI and type/CI hygiene — P1.4 done, mypy pending
+### P1-D — PostgreSQL CI and type/CI hygiene — done
 
 - P1.4 is committed as the head commit: see section 5b. The `postgres-integration` job
   passed on GitHub Actions run 39601089127.
-- Fix the 22 mypy errors; CI run 39601089127 failed only `lint` (`mypy .`), so that is the
-  one red job.
-- Keep production modules clean.
+- The 22 mypy errors are fixed; `mypy .` is clean on 183 files. CI `lint` was the only red
+  job and should pass on the next push.
 
-### P1-E — Authorization and kill-switch operations
+### P1-E — Authorization and kill-switch operations — roles done
 
-- Add roles to users/JWT/API-key mapping.
-- Require operator/admin for live controls.
-- Add a shared Redis arm epoch so one human re-arm clears all processes.
+- Roles, JWT claim, API-key mapping, and live-control gates are done and committed locally
+  (P1.6, section 5c); migration `0004` is verified on PostgreSQL 16.
+- Remaining: a shared Redis arm epoch so one human re-arm clears the API and every runner.
+  The latch is process-local today (fail-closed, but operationally awkward).
+
+### P1.5 — health and metrics — next
+
+- `/health` should return 503 when DB/Redis/Chroma are degraded, and Compose healthchecks
+  should consume the enriched signal.
+- `/api/v1/metrics` should expose real Prometheus counters instead of the last pipeline
+  state in `_last_state`.
+- Then run the Phase 1 Compose mid-trade restart exit.
 
 ### P2 — Paper realism, frontend, observability
 
@@ -736,16 +822,12 @@ python -m pytest tests/test_paper_trading.py tests/test_paper_trading_ledger.py 
 ruff check .
 ruff format --check .
 
-# Type checks (expected 22 test/script errors today)
+# Type checks (clean today)
 mypy .
 
-# Targeted P1-B/P1-C production check (should be clean)
-mypy backend/routers/trading.py backend/schemas/trading.py backend/db/models.py `
-  paper_trading/repository.py paper_trading/ledger.py paper_trading/worker.py `
-  configs/settings.py migrations/versions/0003_order_idempotency.py
-
-# Integration test typing (should be clean)
-mypy tests/test_postgres_integration.py
+# Role gate tests
+python -m pytest tests/test_security/test_role_auth.py `
+  tests/test_security/test_route_auth.py -q --no-cov
 
 # Real-PostgreSQL integration (disposable DB; module skips without the URL)
 $env:ARES_TEST_POSTGRES_URL='postgresql+asyncpg://ares:ares_test@localhost:5432/ares_ai_test'
@@ -784,7 +866,7 @@ captured; `.env` may contain live keys.
    normalization. A schema change updates both and a migration.
 3. **`0001` executes the current schema.** Follow-up revisions must be idempotent
    (`IF NOT EXISTS` / guarded constraints) or a fresh `alembic upgrade head` fails.
-   This applies to `0003`.
+   This applies to `0003` and `0004`.
 4. **Do not reset a user's database.** Existing deployments need
    `alembic upgrade head`; `init.sql` only runs on first container start.
 5. **Fee configuration is not persisted.** Construct every process engine with the same
@@ -824,6 +906,17 @@ captured; `.env` may contain live keys.
 20. **`pnpm lint` is broken by the Next 16 migration.** `pnpm build` passes; fix the
     script separately.
 21. **Never print resolved Compose output** or commit `.env`.
+22. **Do not move role checks into a PostgreSQL lookup.** JWTs carry the role and the gate
+    verifies the credential only, so `/live/kill` still works when the database is down.
+    The cost is that a role change needs a re-login; accept that at single-user scale.
+23. **API keys map to `admin`.** The key is the server-to-server trust boundary, not a
+    viewer credential. Do not add a separate API-key role without a new design.
+24. **FastAPI 0.139 does not flatten included routers into `app.routes`.** Use
+    `_IncludedRouter.original_router.routes` and `include_context.dependencies` when
+    auditing route auth; a flat `isinstance(APIRoute)` scan only sees `/health` and `/`.
+25. **Migration `0004` discovers the role constraint dynamically.** Do not assume
+    `users_role_check` is the only name; a fresh `0001` already applies the current schema,
+    so the revision must tolerate the new definition and the old one.
 
 ---
 
@@ -832,10 +925,10 @@ captured; `.env` may contain live keys.
 A change is not finished until:
 
 - the focused tests pass first,
-- `pytest tests/ -q` passes (current baseline 1103),
-- coverage stays at or above 78%,
+- `pytest tests/ -q` passes (current baseline 1121),
+- coverage stays at or above 78% (currently 80.19%),
 - `ruff check .` and `ruff format --check .` are clean,
-- `mypy` has no new errors (ideally all 22 are fixed if claiming CI green),
+- `mypy .` is clean (183 files today),
 - a real PostgreSQL migration/round-trip is run for schema/ledger changes,
 - frontend `pnpm build` passes for frontend changes,
 - docs and the routed `CONTEXT.md` are updated,
@@ -865,13 +958,20 @@ with `Retry-After: 1`. P1.4 is committed as
 `tests/test_postgres_integration.py` proves hydrate → fill → restart → close, duplicate
 IDs, concurrent fills, the one-winner duplicate race, and the busy lock on real PostgreSQL
 16, and the `postgres-integration` CI job runs it on `postgres:16-alpine`.
-Verification today is **1103 passed + 1 skipped / 80.08% coverage** without a database and
-**1108 passed / 80.10%** with one, clean ruff, 22 pre-existing mypy errors in tests/scripts,
-a passing frontend build, and real PostgreSQL 16 checks for fresh
-migration, P1-A → `0002` → head, duplicate rejection before/after restart, concurrent
-fills, a held lock, lock release, and a cancelled writer. The next change is **P1.6 role
-authorization**, then **P1.5 health/metrics**; run the Phase 1 exit criterion against a
-Compose stack before calling Phase 1 done. P1-A through P1.4 are pushed to `origin`.
+P1.6 is committed locally (not pushed): `viewer`/`operator`/`admin`/`super_admin` roles,
+the role claim in login JWTs, API keys mapping to `admin`, viewer 403s on `/execute` and
+`/live/{mode,start,stop,kill,arm}`, and no database lookup in the role gate so the kill
+switch survives a DB outage. Migration `0004_role_hierarchy` rewrites legacy `user` to
+`operator`, allows `viewer`/`operator`, and defaults new rows to `viewer`. The 22
+pre-existing mypy errors are fixed.
+Verification today is **1121 passed + 1 skipped / 80.19% coverage** without a database,
+clean ruff, `mypy .` clean on 183 files, a passing frontend build, and real PostgreSQL 16
+checks for fresh migration, P1-A → `0002` → head, duplicate rejection before/after restart,
+concurrent fills, a held lock, lock release, a cancelled writer, and the P1.6 role
+migration (including a legacy `user` row). The next change is **P1.5 health/metrics**;
+then run the Phase 1 exit criterion against a running Compose stack before calling Phase 1
+done. P1-A through P1.4 are pushed to `origin`; P1.6 and the mypy cleanup are committed
+locally, not pushed.
 GitHub Actions run 39601089127 passed `test`, `postgres-integration`, `frontend`, and
-`docker`; only `lint` failed, on the 22 pre-existing mypy errors. Do not push, reset, or
-rewrite history without explicit user approval.
+`docker`; only `lint` failed, on the then-open mypy errors. Do not push, reset, or rewrite
+history without explicit user approval.

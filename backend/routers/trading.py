@@ -15,10 +15,11 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from agents.consensus import ConsensusEngine
 from agents.risk import MAX_POSITION_SIZE_PCT, MAX_RISK_SCORE
+from backend.core.dependencies import require_trading_access
 from backend.schemas.trading import ExecuteTradeRequest
 from configs.settings import settings
 from database.connection import async_session_factory
@@ -107,7 +108,7 @@ async def orders() -> list[dict[str, Any]]:
     return [_trade_to_dict(trade) for trade in reversed(closed)]
 
 
-@router.post("/execute")
+@router.post("/execute", dependencies=[Depends(require_trading_access)])
 async def execute(payload: ExecuteTradeRequest) -> dict[str, Any]:
     """Execute a paper trade only when the upstream agents approved it.
 

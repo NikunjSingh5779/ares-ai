@@ -2,7 +2,7 @@
 # Status — verified state
 
 **Last verified:** 2026-10-21
-**Branch:** `fix/orchestration-reliability-frontend` — 7 commits ahead / 4 behind `master`.
+**Branch:** `fix/orchestration-reliability-frontend` — 10 commits ahead / 4 behind `master`.
 P1-A is committed as `9c16122`; P1-B (approved-only `/execute` plus client-order
 idempotency) is committed as `feat(paper): require approved execution and client order
 ids`; P1-C (paper writer lock) is committed as `fix(paper): serialize ledger writers with
@@ -10,15 +10,19 @@ an advisory lock`; P1.4 (real-PostgreSQL integration job) is committed as
 `test(paper): run the ledger suite against real PostgreSQL in CI`.
 `origin/fix/orchestration-reliability-frontend` contains P1.4 (`b6b5bea`). GitHub Actions run
 39601089127 passed `test`, `postgres-integration`, `frontend`, and `docker`; only `lint`
-failed, on the 22 pre-existing mypy errors (gap 4).
+failed, on the 22 pre-existing mypy errors (gap 4, now fixed locally).
+**Committed locally, not pushed:** the mypy cleanup and P1.6 role-based authorization are
+two local commits. The working tree is clean.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
 ## Green
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1103 passed, 1 skipped**, 2 warnings (integration module skips without `ARES_TEST_POSTGRES_URL`) |
-| Coverage | `pytest tests/ -q` | **80.08%** default; **80.10%** with the integration job (gate 78%) |
+| Test suite | `pytest tests/ -q` | **1121 passed, 1 skipped**, 2 warnings (integration module skips without `ARES_TEST_POSTGRES_URL`) |
+| Coverage | `pytest tests/ -q` | **80.19%** default (gate 78%); the P1.4 integration module adds 5 tests when its URL is set |
+| Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
+| Type check | `mypy .` | **clean, 183 source files** (the 22 test/script errors are fixed) |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
 | Lint | `ruff check .` | clean |
 | Format | `ruff format --check .` | clean |
@@ -28,7 +32,7 @@ failed, on the 22 pre-existing mypy errors (gap 4).
 | Trading-route tests | `pytest tests/test_trading_router.py -q` | **17 passed** — approval, derivation, 409/422/503, busy-lock retry |
 | Schema tests | `pytest tests/test_schema.py -q` | **15 passed** — ledger/idempotency columns, init/schema parity, migration splitter |
 | Worker tests | `pytest tests/test_paper_trading_worker.py -q` | **13 passed** — ledger delegation, locked symbol hydration |
-| Targeted mypy | P1-B/P1-C production modules | clean |
+| Alembic | `python -m alembic heads` | **`0004_role_hierarchy (head)`** |
 | PostgreSQL 16 P1-C check | temporary container: concurrent fills, duplicate client ID, held lock → 503-equivalent busy error, released lock retry, cancelled writer | passed; no leaked advisory locks; container and script removed |
 | PostgreSQL 16 P1-B check | temporary container: fresh `upgrade head`, P1-A schema → `stamp 0002` → `upgrade head`, duplicate execute before/after restart | passed; container and temporary scripts removed |
 | Frontend build | `pnpm build` (in `frontend/`) | passed (P1-B client wrapper update) |
@@ -38,7 +42,7 @@ failed, on the 22 pre-existing mypy errors (gap 4).
 
 | Fix | Evidence |
 |---|---|
-| Auth on every non-public route | `backend/main.py` mounts every domain router with `Depends(verify_auth)`; `tests/test_security/test_route_auth.py` enumerates `/api/v1` routes and fails if one is unprotected. Default/empty `API_SECRET_KEY` returns 503; no `API_DEBUG` bypass. |
+| Auth on every non-public route | `backend/main.py` mounts every domain router with `Depends(verify_auth)`; `tests/test_security/test_route_auth.py` traverses FastAPI 0.139 `_IncludedRouter` wrappers and fails if any `/api/v1` route is unprotected (the old flat scan was vacuous on this FastAPI version). Default/empty `API_SECRET_KEY` returns 503; no `API_DEBUG` bypass. |
 | Single-user registration, no role escalation | `/auth/register` is a one-time bootstrap that requires the operator's API key; the first account is admin and later registrations are 403. `UserRegister` has no `role` field. |
 | Fail-closed, shared kill switch | `live_trading/safety.py` latches on `redis.RedisError`/`OSError`; `is_active`/`check()` return blocked; `arm()` refuses while Redis is down; after recovery a human `arm()` is required. `/live/kill` and `/live/arm` work with no exchange configured. |
 | One live-order path | `agents/execution.py` calls `LiveTradingEngine.execute_signal()`; the only production `exchange.create_order` call site is `live_trading/engine.py`. Tests assert the agent never calls the exchange directly. |
@@ -98,8 +102,8 @@ the lost-update half.
 
 P1-C closes the concurrent-writer gap for paper state. The lock is database-wide, not
 per-account; that is acceptable at single-user scale. Reads do not take the advisory lock
-because each process has its own cache. Role authorization (P1.6) and a signed signal
-token (P2) remain open.
+because each process has its own cache. Role authorization is closed by P1.6; a signed
+signal token (P2) remains open.
 
 ## P1.4 — real-PostgreSQL integration in CI (committed, verified 2026-10-21)
 
@@ -113,7 +117,21 @@ token (P2) remain open.
 | Concurrent duplicate race | Two processes submit the same `client_order_id` concurrently: exactly one accepted, one conflict, one order/one position — the partial unique index plus the writer lock hold. |
 | Busy writer | While one connection holds the advisory lock, a writer with a 0.2 s timeout raises `PaperLedgerBusyError` and writes nothing; after release the same request succeeds. |
 | CI job | `.github/workflows/ci.yml::postgres-integration` starts `postgres:16-alpine`, loads `database/schema.sql`, installs with `uv --locked`, and runs the module with `--no-cov`. `ARES_REQUIRE_POSTGRES_INTEGRATION=1` makes a missing URL a hard failure, never a silent skip. Verified on GitHub Actions run 39601089127 (46 s, all 5 tests passed). |
-| Verified locally | Temporary PostgreSQL 16 container (schema from `database/schema.sql`): **5 passed in 5.2 s**; full suite **1108 passed / 80.10%** with the URL and **1103 passed + 1 skipped / 80.08%** without. Container removed. |
+| Verified locally (at the P1.4 commit) | Temporary PostgreSQL 16 container (schema from `database/schema.sql`): **5 passed in 5.2 s**; full suite **1108 passed / 80.10%** with the URL and **1103 passed + 1 skipped / 80.08%** without. Container removed. |
+
+## P1.6 — role-based authorization (committed locally, verified 2026-10-21)
+
+| Piece | Evidence |
+|---|---|
+| Canonical roles | `backend/core/roles.py`: `viewer`, `operator`, `admin`, `super_admin`. `user` is a legacy alias for `operator`; unknown values normalize to `viewer` (fail closed). |
+| JWT role claim | `POST /auth/login` mints `{"sub": email, "role": normalized_role}`. `require_trading_access` and `require_live_control` verify the signature and role directly, with **no database lookup**, so `/live/kill` and `/live/arm` still work while PostgreSQL is down. A token minted before P1.6 has no role and is read-only until re-login. |
+| API-key mapping | Possessing `API_SECRET_KEY` is the server-to-server operator boundary and maps to `admin`; it can execute paper trades and operate live controls. |
+| Route gates | `/api/v1/execute` requires `operator`/`admin`/`super_admin`; `/live/mode`, `/live/start`, `/live/stop`, `/live/kill`, and `/live/arm` require the same. Read-only `/live/status`, `/live/positions`, `/live/orders`, `/live/audit`, and `/live/promotion` remain available to viewers. |
+| Viewer denial | `tests/test_security/test_role_auth.py` sends a viewer JWT to all six protected routes on the real app and gets **403**; an operator JWT reaches body validation on `/execute` (**422**, not forbidden). The unit matrix covers viewer/operator/admin/super_admin, legacy `user`, unknown role, missing role, API key, and invalid token. |
+| Migration | `migrations/versions/0004_role_hierarchy.py` finds the existing role check dynamically, rewrites `user` → `operator`, allows `viewer`/`operator`, and changes the default to `viewer`. `database/schema.sql` and `init.sql` match; `User.role` and `UserBase.role` default to `viewer`. |
+| Real PostgreSQL 16 | Fresh `alembic upgrade head` produced the new constraint and `viewer` default. After `downgrade 0003`, a legacy `role='user'` row upgraded to `operator`; a later `role='user'` insert was rejected by `users_role_check`. The one-shot `--rm` container was stopped. |
+| Mypy cleanup | The 22 pre-existing errors in 8 test/script files are fixed (annotations, unused ignores, exception-handler signature, `AgentState` import). `mypy .` is clean on **183 source files**; no safety gate or test assertion was weakened. |
+| Counts | Full suite **1121 passed, 1 skipped / 80.19%**; `ruff check .` and `ruff format --check .` clean. |
 
 ## Red / known gaps
 
@@ -121,14 +139,14 @@ token (P2) remain open.
 |---|---|---|---|
 | 1 | ~~Concurrent paper-ledger writes are last-writer-wins~~ | Closed by P1-C: writers serialize on `pg_try_advisory_xact_lock` across API/worker/runner, with an in-process cache lock. Busy writers fail closed with 503. | ~~P1~~ fixed |
 | 2 | `/execute` trusts the authenticated caller's agent payload | The server recomputes consensus and caps size, but an API-key holder can supply synthetic Market Analyst/Quant/Risk outputs. There is no signed or expiring signal token. The API key remains the trust boundary. | P2 |
-| 3 | No role-based authorization on trading/live routes | any valid API key or JWT reaches live controls; single-user bootstrap limits exposure, but a seeded non-admin JWT is operator-level. | P1 |
-| 4 | `mypy` fails | **22 errors in 8 files**, all in `tests/` + `scripts/` (6 in `test_test_free_models.py`, 4 in `test_error_handlers.py`, 3 in `test_analysis_router.py`, 3 in `test_paper_trading_worker.py`, 2 in `test_supervisor.py`, 2 in `scripts/test_free_models.py`, 1 each in `test_safety_edge_cases.py` and `test_engine_edge_cases.py`) | P1 (CI red) |
+| 3 | ~~No role-based authorization on trading/live routes~~ | Closed by P1.6: viewer JWTs get 403 on `/execute` and all live controls; operator+ required; JWT role claim and API-key mapping tested on the real routes. | ~~P1~~ fixed |
+| 4 | ~~`mypy` fails~~ | Closed: the 22 errors in 8 test/script files are fixed and `mypy .` is clean on 183 files. CI should turn green on the next push. | ~~P1~~ fixed |
 | 5 | `/analyze` concurrency/cost control absent | global `_last_state`, unbounded `BackgroundTasks`; auth is required, but runs are still not isolated | P1 |
 | 6 | Kill-switch latch is process-local | a Redis outage latches each process; `/live/arm` clears the API process, but a runner that also latched stays blocked until restarted (fail-closed, never auto-trades) | P1 operational |
 | 7 | ~~No automated PostgreSQL integration test in CI~~ | Closed by P1.4: `postgres-integration` runs hydrate → fill → restart → close, duplicate IDs, concurrent fills, and the busy lock on `postgres:16-alpine`; the local default suite skips the module without `ARES_TEST_POSTGRES_URL`. | ~~P2~~ fixed |
 | 8 | UI has mock data and fake settings | `frontend/src/app/markets/page.tsx:81`, `settings/page.tsx` (no API call, 10% vs backend 2%) | P2 |
 | 9 | Model catalog removals are not checked in CI | manual check only; `scripts/test_free_models.py` exists but is not a CI job | P2 |
-| 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency` (and P1-A columns); `init.sql` only runs on first container start. Old short **positions** still cannot be inferred and default to long. | Operational |
+| 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency` and `0004_role_hierarchy` (plus P1-A columns); `0004` rewrites legacy `user` → `operator` and makes `viewer` the default. `init.sql` only runs on first container start. Old short **positions** still cannot be inferred and default to long. | Operational |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 

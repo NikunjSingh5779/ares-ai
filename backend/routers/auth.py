@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.dependencies import get_db, verify_auth
 from backend.core.login_rate_limit import login_rate_limiter
+from backend.core.roles import normalize_role
 from backend.core.security import create_access_token, verify_password
 from backend.schemas.user import UserCreate, UserRegister, UserResponse
 from backend.services import user_service
@@ -100,7 +101,7 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_access_token(data={"sub": user.email})
+    access_token = create_access_token(data={"sub": user.email, "role": normalize_role(user.role)})
     return {"access_token": access_token, "token_type": "bearer"}
 
 

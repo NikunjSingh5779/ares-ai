@@ -7,6 +7,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.roles import normalize_role
 from backend.core.security import hash_password
 from backend.db.models import User
 from backend.schemas.user import UserCreate
@@ -36,7 +37,7 @@ async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
         email=user_in.email,
         display_name=user_in.display_name,
         password_hash=hash_password(user_in.password),
-        role=user_in.role,
+        role=normalize_role(user_in.role),
         is_active=True,
     )
     db.add(db_user)

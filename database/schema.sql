@@ -18,8 +18,8 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     display_name VARCHAR(100) NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'user'
-        CHECK (role IN ('user', 'admin', 'super_admin')),
+    role VARCHAR(20) NOT NULL DEFAULT 'viewer'
+        CHECK (role IN ('viewer', 'operator', 'admin', 'super_admin')),
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

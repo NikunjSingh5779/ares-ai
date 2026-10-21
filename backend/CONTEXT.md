@@ -10,7 +10,7 @@ Controllers translate; they must not own domain state.
 | Controllers | `routers/` — `analysis`, `trading`, `live`, `agents`, `journal`, `monitoring`, `backtest`, `predictions`, `auth`, `users` |
 | Models | `schemas/` (API), `db/models.py` (ORM) |
 | Views | JSON responses + OpenAPI `/docs`; SSE in `analysis.stream_analysis` |
-| Core | `core/` — `dependencies` (auth), `rate_limit`, `security` (headers/JWT), `metrics`, `logging`, `error_handlers`, `login_rate_limit` |
+| Core | `core/` — `dependencies` (auth/roles), `roles`, `rate_limit`, `security` (headers/JWT), `metrics`, `logging`, `error_handlers`, `login_rate_limit` |
 | Data | `data/` — `ingestor`, `models`, `sources/` (yahoo, binance, coingecko, web_search) |
 | Services | `services/` — `user_service` |
 | App | `main.py` — lifespan, middleware, router registration, `/health` |
@@ -30,6 +30,12 @@ JSON/SSE responses, Prometheus metrics at `/metrics`, health at `/health`, DB wr
   router alone is mounted publicly. `/auth/login` is the only credential-free auth
   endpoint; `/auth/register` requires the operator API key and cannot set `role`;
   `/auth/verify` declares `verify_auth` itself.
+- Trading/live-control routes also require a role: `/execute` uses
+  `require_trading_access`; `/live/{mode,start,stop,kill,arm}` use
+  `require_live_control`. `viewer` is read-only; `operator`/`admin`/`super_admin` may
+  trade. JWTs carry the `role` claim minted at login; API keys map to `admin`; tokens
+  without a role are read-only. Role checks verify the credential only and do not query
+  PostgreSQL, so the kill switch remains usable during a database outage.
 
 ## Dependency direction
 `main → routers → services/domain → db/data`. Never the reverse; `routers/` must not be
@@ -39,6 +45,7 @@ imported by domain packages.
 - `GET /health` reports DB/Redis/Chroma reachability (public).
 - `GET /docs` shows the route and schema.
 - Any `/api/v1/*` call without a key returns 401; with the default key returns 503.
+- A viewer JWT gets 403 on `/execute` and every `/live` control.
 - `pytest tests/test_analysis_router.py tests/test_security/ -q`
 
 ## Paper trading boundary
@@ -62,4 +69,5 @@ ledger failures return 503. The normal generated-trade path remains `/signal`.
 - `analysis.py` still owns the module-global `_last_state`.
 - `/health` returns 200 even when degraded; `/metrics` product endpoint is derived from
   the last run, not Prometheus counters.
-- No role-based authorization: any valid API key/JWT reaches trading and live controls.
+- Role changes take effect on the next login because the role is a JWT claim; there is no
+  revocation list. API-key holders always map to `admin`.

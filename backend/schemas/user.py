@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 class UserBase(BaseModel):
     email: EmailStr
     display_name: str
-    role: str = "user"
+    role: str = "viewer"
 
 
 class UserCreate(UserBase):

@@ -14,8 +14,9 @@ idempotency) followed in the next commit, `feat(paper): require approved executi
 client order ids`. P1-C (paper writer serialization) is committed as `fix(paper): serialize
 ledger writers with an advisory lock`. P1.4 (real-PostgreSQL integration job) is committed
 as `test(paper): run the ledger suite against real PostgreSQL in CI`; the job passed on its
-first GitHub run (39601089127). The remaining Phase 1 release risk is role checks and the
-Compose exit run.
+first GitHub run (39601089127). P1.6 (role-based authorization) is committed locally and
+verified, together with the mypy cleanup; neither is pushed yet. The remaining Phase 1
+release risk is P1.5 health/metrics and the Compose exit run.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
@@ -50,13 +51,13 @@ updates. A writer that cannot get the lock within 10 s fails closed with **503**
 | 1.3 | Order idempotency + concurrent-writer safety | ledger/repository, order schema | Duplicate client order IDs are rejected; row locking or optimistic versions prevent lost updates across API/worker/runner | **Done (P1-B duplicates, P1-C writer lock)** |
 | 1.4 | PostgreSQL integration test in CI | `tests/`, CI workflow | Testcontainers/Compose runs hydrate → fill → restart → close on a real database | **Done (P1.4)**; `postgres-integration` job |
 | 1.5 | `/health` returns 503 when degraded; real Prometheus metrics | `backend/main.py`, `backend/core/metrics.py` | Compose healthchecks use the enriched health signal; `/api/v1/metrics` no longer reads `_last_state` | Pending |
-| 1.6 | Role-based authorization for trading/live controls | auth/JWT/API-key mapping, route tests | Viewer cannot trade; operator/admin required for live start/kill/arm/mode changes | Pending |
+| 1.6 | Role-based authorization for trading/live controls | auth/JWT/API-key mapping, route tests | Viewer cannot trade; operator/admin required for live start/kill/arm/mode changes | **Done (P1.6, committed locally)** |
 
 **Exit:** restart the stack mid-trade; portfolio, open positions, and promotion record are identical before and after, and no concurrent write can silently lose a fill.
 P1-B satisfies the restart and duplicate-order portions; P1-C satisfies the lost-update
 portion; P1.4 runs hydrate → fill → restart → close on real PostgreSQL in CI (green on run
-39601089127). The Phase 1 exit stays open only because the statement has not been re-run
-against a running Compose stack with the lock in place.
+39601089127); P1.6 closes role authorization. The Phase 1 exit stays open only because the
+statement has not been re-run against a running Compose stack with the lock in place.
 
 ## Phase 2 — product realism and UI
 
@@ -84,8 +85,8 @@ against a running Compose stack with the lock in place.
 
 ## Phase 3 — hygiene
 
-- Fix the 22 mypy errors (all in tests/scripts); keep CI green.
-- Re-verify README numbers (1103 / 80.08%) and roadmap status.
+- Keep `mypy .` green (clean on 183 files as of 2026-10-21; the 22 errors are fixed).
+- Re-verify README numbers (1121 / 80.19%) and roadmap status.
 - Improvement engine: persist history, rename “win rate”, remove the 75% consensus suggestion.
 - Add Prometheus alert rules; remove duplicate monitoring configs.
 - Prune stale branches and land Dependabot PRs.

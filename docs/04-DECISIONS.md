@@ -302,5 +302,45 @@ migration. The lock is per database, not per paper account, so unrelated paper a
 seeded) would serialize with each other; acceptable at single-user scale. Throughput is one
 paper write at a time, which is far above the platform's 60-second candle cadence. Reads
 still hydrate their local cache without the advisory lock, which is safe because caches are
-process-local. The pipeline result (`_last_state`) and role authorization remain separate
-issues (ADR-006, P1.6).
+process-local. The pipeline result (`_last_state`) remains a separate issue (ADR-006);
+role authorization is ADR-016.
+
+---
+
+## ADR-016 - Roles are credential claims; live controls do not depend on the database
+**Date:** 2026-10-21 - **Status:** accepted, implemented (P1.6, committed locally)
+
+**Context:** Before P1.6, any valid API key or JWT reached `/execute` and every live
+control. The database only knew `user`/`admin`/`super_admin`, so there was no read-only
+role and no operator tier. A role check that looks the user up in PostgreSQL on every
+request would also make `/live/kill` and `/live/arm` fail during a database outage,
+exactly when the kill switch is most needed.
+
+**Decision:**
+- Canonical roles are `viewer`, `operator`, `admin`, `super_admin`. `viewer` is read-only;
+  `operator` and above may execute paper trades and operate live controls; `admin` and
+  `super_admin` additionally administer users.
+- `POST /auth/login` mints the role into the JWT (`{"sub": email, "role": role}`).
+  `require_trading_access` and `require_live_control` verify the JWT signature and read
+  the claim directly; they never query PostgreSQL.
+- A server API key maps to `admin`, because the key is the server-to-server operator
+  trust boundary. A JWT with no role, or an unknown role, fails closed to `viewer`.
+- `/api/v1/execute` and `/live/{mode,start,stop,kill,arm}` require `operator` or higher.
+  Read-only live routes remain available to viewers.
+- Migration `0004_role_hierarchy` expands the database constraint, rewrites legacy `user`
+  rows to `operator`, and makes `viewer` the default for new rows.
+
+**Alternatives considered:**
+- *Look up the role in PostgreSQL on each request.* Rejected: it makes safety controls
+  depend on the database and adds a query to every gated call.
+- *Keep `user` as the operator role and add only `viewer`.* Rejected: `user` is ambiguous
+  and the migration would still need a compatibility story.
+- *Accept the role from a request header or body.* Rejected: a client must never choose
+  its own role.
+
+**Consequences:** Role changes take effect on the next login because the role is a claim;
+there is no revocation list. Tokens minted before P1.6 have no role claim and are read-only
+until re-login. The API key remains a high-trust secret and always maps to `admin`. The
+role checks are centralized in `backend/core/dependencies.py`, and the kill switch still
+works while PostgreSQL is down. Tests cover the role matrix and viewer denial against the
+real routes; migration `0004` was verified on PostgreSQL 16, including a legacy `user` row.
