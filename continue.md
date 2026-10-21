@@ -3,13 +3,14 @@
 **Last updated:** 2026-10-21
 **Repository:** `C:\Users\ASUS\ares-ai`
 **Branch:** `fix/orchestration-reliability-frontend`
-**Head commit:** `fix(paper): serialize ledger writers with an advisory lock` (read the
-hash with `git log -1 --format=%h`).
-**Branch position:** **6 commits ahead / 4 behind `master`** (per
+**Head commit:** `test(paper): run the ledger suite against real PostgreSQL in CI` (read
+the hash with `git log -1 --format=%h`).
+**Branch position:** **7 commits ahead / 4 behind `master`** (per
 `git rev-list --left-right --count master...HEAD`).
 **Working tree:** clean. P1-A (`9c16122`), P1-B (`feat(paper): require approved execution
-and client order ids`), and P1-C (the head commit) are committed and **not pushed**. Do not
-reset, clean, or push unless the user explicitly asks.
+and client order ids`), P1-C (`fix(paper): serialize ledger writers with an advisory
+lock`), and P1.4 (the head commit) are committed and **not pushed**. Do not reset, clean,
+or push unless the user explicitly asks.
 
 This is the fresh-session handoff. Read it fully before editing. It records what is done,
 what was verified, the behavior contracts that must not regress, the remaining defects, and
@@ -65,7 +66,12 @@ P1-C is committed as `fix(paper): serialize ledger writers with an advisory lock
 - No schema change, no migration. Real PostgreSQL 16 check passed for concurrent fills,
   duplicate client IDs, a held lock, lock release, and a cancelled writer.
 
-The next work is **P1.4 (automated PostgreSQL integration test in CI)**, then **P1.6
+P1.4 is committed as `test(paper): run the ledger suite against real PostgreSQL in CI`:
+`tests/test_postgres_integration.py` runs the
+hydrate → fill → restart → close path plus duplicate, concurrent-writer, and busy-lock
+cases against a real database, and `.github/workflows/ci.yml::postgres-integration` runs it
+on `postgres:16-alpine`. The module skips without `ARES_TEST_POSTGRES_URL`; CI sets
+`ARES_REQUIRE_POSTGRES_INTEGRATION=1` so it cannot skip silently. The next work is **P1.6
 role-based authorization**, then **P1.5 health/metrics**. Run the Phase 1 exit criterion
 against a Compose stack before claiming Phase 1 done.
 
@@ -179,37 +185,43 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 ### 3.1 Branch / worktree
 
 - Branch: `fix/orchestration-reliability-frontend`
-- 6 ahead / 4 behind `master`.
-- Head: the P1-C commit `fix(paper): serialize ledger writers with an advisory lock`
+- 7 ahead / 4 behind `master`.
+- Head: the P1.4 commit `test(paper): run the ledger suite against real PostgreSQL in CI`
   (the hash changes if the commit is amended; prefer `git log -1 --oneline`)
 - P1-A is committed as `9c16122`, P1-B as `feat(paper): require approved execution and
-  client order ids`, and P1-C as the head commit. P1-C touches
+  client order ids`, and P1-C as `fix(paper): serialize ledger writers with an advisory
+  lock`. P1-C touches
   `paper_trading/repository.py`, `paper_trading/ledger.py`,
   `paper_trading/worker.py`, `backend/routers/trading.py`, `configs/settings.py`,
   `.env.example`, `tests/test_paper_trading_ledger.py`,
   `tests/test_paper_trading_worker.py`, `tests/test_trading_router.py`,
   `tests/test_config.py`, and the docs/context updates.
+- P1.4 is committed as the head commit and touches `tests/test_postgres_integration.py`,
+  `.github/workflows/ci.yml`, `tests/CONTEXT.md`, `docker/CONTEXT.md`,
+  `docs/02-STATUS.md`, `docs/05-NEXT.md`, and this file.
 - `migrations/versions/` is no longer gitignored and contains `.gitkeep`,
   `0001_initial_schema.py`, `0002_paper_ledger.py`, and `0003_order_idempotency.py`.
-- No push, PR, or merge has been performed for P1-A or P1-B.
+- No push, PR, or merge has been performed for P1-A, P1-B, P1-C, or P1.4.
 
 ### 3.2 Verified commands and results
 
 | Check | Result |
 |---|---|
-| `python -m pytest tests/ -q` | **1103 passed**, 2 warnings, exit 0 |
-| Coverage | **80.08%**, gate is 78% |
+| `python -m pytest tests/ -q` | **1103 passed, 1 skipped**, 2 warnings, exit 0 |
+| Coverage | **80.08%** default / **80.10%** with the integration job, gate is 78% |
 | `tests/test_paper_trading_ledger.py` | **34 passed** |
 | `tests/test_trading_router.py` | **17 passed** |
 | `tests/test_schema.py` | **15 passed** |
 | `tests/test_paper_trading_worker.py` | **13 passed** |
 | `tests/test_config.py` | **17 passed** |
+| `tests/test_postgres_integration.py` (real PG) | **5 passed** |
 | `ruff check .` | clean |
 | `ruff format --check .` | clean |
 | `mypy .` | **22 errors in 8 files**, all pre-existing tests/scripts |
-| Targeted P1-B/P1-C mypy | clean on 5 production modules |
+| Targeted P1-B/P1-C mypy | clean on 5 production modules + `test_postgres_integration.py` |
 | `python -m alembic heads` | **`0003_order_idempotency (head)`** |
 | Frontend `pnpm build` | passed (P1-B wrapper update) |
+| CI PostgreSQL job | `postgres-integration` added; not yet exercised on GitHub (branch not pushed) |
 | Manual PostgreSQL 16 P1-B checks | passed on a temporary container; container removed |
 | Manual PostgreSQL 16 P1-C checks | passed on a temporary container; container and script removed |
 
@@ -494,7 +506,33 @@ No schema, migration, or frontend change.
 - The lock is per database, not per paper account.
 - Reads skip the advisory lock (each process has its own cache); only the in-process lock
   guards them.
-- No automated PostgreSQL test yet (P1.4).
+- The Compose restart exit check (Phase 1 exit) is still manual; P1.4 covers the database
+  cases described in section 5b.
+
+## 5b. P1.4 — real-PostgreSQL integration job (committed)
+
+`tests/test_postgres_integration.py` is opt-in: it runs only when
+`ARES_TEST_POSTGRES_URL` is set, and the module refuses a database whose name does not
+contain `test`. Setup seeds one paper account and truncates only the ledger tables.
+
+Covered on a real PostgreSQL 16 instance:
+
+1. **Exit path:** fill BTC long at 50 000 → new process hydrates the position and 50 000
+   cash → take-profit at 55 000 → third process sees the closed trade (+5 000), 105 000
+   cash, `positions.is_open=false`, one `trade_history` row, and entry/exit orders.
+2. **Duplicate after restart:** the same `client_order_id` raises
+   `PaperOrderConflictError` before mutation; one order and one position remain.
+3. **Concurrent distinct fills:** BTC long and ETH short from separate engines both
+   persist; 2 positions, 2 orders, 52 000 cash.
+4. **Concurrent duplicate:** exactly one accepted, one conflict, one order/one position.
+5. **Busy writer:** while one connection holds the advisory lock, a 0.2 s-timeout writer
+   gets `PaperLedgerBusyError` and writes nothing; after release the retry succeeds.
+
+CI job `postgres-integration` (`.github/workflows/ci.yml`) starts `postgres:16-alpine`,
+loads `database/schema.sql`, and runs the module with `--no-cov`. It sets
+`ARES_REQUIRE_POSTGRES_INTEGRATION=1`, so a missing `ARES_TEST_POSTGRES_URL` is a hard
+failure rather than a silent skip. Local numbers: 5 passed in ~5.2 s; the full suite is
+**1108 passed / 80.10%** with the URL and **1103 passed + 1 skipped / 80.08%** without.
 
 ---
 
@@ -610,11 +648,12 @@ No schema, migration, or frontend change.
 - Fail-closed and safe, but operationally awkward.
 - Implement a shared Redis arm epoch/generation and test multi-process recovery.
 
-### Gap 7 — PostgreSQL integration in CI (P2)
+### Gap 7 — PostgreSQL integration in CI — closed by P1.4
 
-- The real database round-trips are manual only.
-- Add a Testcontainers/Compose-backed test job for hydrate → fill → restart → close,
-  duplicate client IDs, and every SQL column referenced by worker/agent code.
+- `tests/test_postgres_integration.py` + the `postgres-integration` job cover hydrate →
+  fill → restart → close, duplicate IDs, concurrent fills, the duplicate race, and the
+  busy lock on `postgres:16-alpine`.
+- Not covered: restarting a Compose stack mid-trade (Phase 1 exit).
 
 ### Gap 8 — Old short positions migration (P1 operational)
 
@@ -654,13 +693,12 @@ high-fidelity paper results.
 - Preserve `client_order_id` idempotency and the approved-only `/execute` gate.
 - Do not replace the lock with a session-level advisory lock (it leaks via the pool).
 
-### P1-D — PostgreSQL CI and type/CI hygiene
+### P1-D — PostgreSQL CI and type/CI hygiene — P1.4 done, mypy pending
 
-- Add a Postgres-backed integration job, including duplicate client IDs, concurrent
-  writers, and restart.
-- Fix the 22 mypy errors; keep production modules clean.
-- Add CI: pytest, ruff check, ruff format --check, mypy, frontend build, frontend lint
-  after fixing the script.
+- P1.4 is committed as the head commit: see section 5b.
+- Fix the 22 mypy errors; the existing `lint` job runs `mypy .`, so it stays red until
+  they are fixed.
+- Keep production modules clean.
 
 ### P1-E — Authorization and kill-switch operations
 
@@ -701,6 +739,13 @@ mypy .
 mypy backend/routers/trading.py backend/schemas/trading.py backend/db/models.py `
   paper_trading/repository.py paper_trading/ledger.py paper_trading/worker.py `
   configs/settings.py migrations/versions/0003_order_idempotency.py
+
+# Integration test typing (should be clean)
+mypy tests/test_postgres_integration.py
+
+# Real-PostgreSQL integration (disposable DB; module skips without the URL)
+$env:ARES_TEST_POSTGRES_URL='postgresql+asyncpg://ares:ares_test@localhost:5432/ares_ai_test'
+python -m pytest tests/test_postgres_integration.py -q --no-cov
 
 # Alembic
 python -m alembic heads
@@ -811,12 +856,16 @@ committed as `fix(paper): serialize ledger writers with an advisory lock`: every
 takes an in-process cache lock plus a transaction-scoped PostgreSQL advisory lock
 (`pg_try_advisory_xact_lock`) across hydrate → mutate → persist, so API, worker, and runner
 serialize instead of losing updates; a writer that cannot get the lock within 10 s gets 503
-with `Retry-After: 1`.
-Verification today is **1103 tests / 80.08% coverage**, clean ruff, 22 pre-existing mypy
-errors in tests/scripts, a passing frontend build, and real PostgreSQL 16 checks for fresh
+with `Retry-After: 1`. P1.4 is committed as
+`test(paper): run the ledger suite against real PostgreSQL in CI`:
+`tests/test_postgres_integration.py` proves hydrate → fill → restart → close, duplicate
+IDs, concurrent fills, the one-winner duplicate race, and the busy lock on real PostgreSQL
+16, and the `postgres-integration` CI job runs it on `postgres:16-alpine`.
+Verification today is **1103 passed + 1 skipped / 80.08% coverage** without a database and
+**1108 passed / 80.10%** with one, clean ruff, 22 pre-existing mypy errors in tests/scripts,
+a passing frontend build, and real PostgreSQL 16 checks for fresh
 migration, P1-A → `0002` → head, duplicate rejection before/after restart, concurrent
-fills, a held lock, lock release, and a cancelled writer. The next change is **P1.4:
-automated PostgreSQL integration test in CI**, then **P1.6 role authorization**, then
-**P1.5 health/metrics**; run the Phase 1 exit criterion against a Compose stack before
-calling Phase 1 done. The branch is not pushed. Do not push, reset, or rewrite history
-without explicit user approval.
+fills, a held lock, lock release, and a cancelled writer. The next change is **P1.6 role
+authorization**, then **P1.5 health/metrics**; run the Phase 1 exit criterion against a
+Compose stack before calling Phase 1 done. The branch is not pushed. Do not push, reset, or
+rewrite history without explicit user approval.

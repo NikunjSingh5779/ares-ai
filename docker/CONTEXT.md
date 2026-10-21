@@ -8,7 +8,7 @@
 - `docker/docker-compose.yml` — full-stack variant; `docker-compose.dev.yml` — dev overlay.
 - `Dockerfile` (backend), `frontend/Dockerfile`, `docker/nginx/`, `docker/backup/`.
 - `docker/prometheus/` + `docker/grafana/` **and** `docker/monitoring/` — duplicate monitoring sets.
-- `.github/workflows/ci.yml` — lint, tests, compose validation, image builds.
+- `.github/workflows/ci.yml` — lint, tests, real-PostgreSQL integration, compose validation, image builds.
 
 ## Invariants
 - Production compose sets `ENVIRONMENT=production` and real secrets (currently missing).

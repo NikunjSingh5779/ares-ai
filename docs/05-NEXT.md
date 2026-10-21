@@ -12,8 +12,9 @@ Completed 2026-10-21: **0.1 auth**, **0.2 one live-order path + fail-closed kill
 was committed as `9c16122` on 2026-10-21; P1-B (approved `/execute` plus client-order
 idempotency) followed in the next commit, `feat(paper): require approved execution and
 client order ids`. P1-C (paper writer serialization) is committed as `fix(paper): serialize
-ledger writers with an advisory lock`; the remaining Phase 1 release risk is the missing
-automated PostgreSQL CI and role checks.
+ledger writers with an advisory lock`. P1.4 (real-PostgreSQL integration job) is committed
+as `test(paper): run the ledger suite against real PostgreSQL in CI`; the remaining Phase 1
+release risk is role checks and the Compose exit run.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
@@ -46,15 +47,15 @@ updates. A writer that cannot get the lock within 10 s fails closed with **503**
 | 1.1 | Durable paper ledger, hydration, atomic persistence | `paper_trading/repository.py`, `paper_trading/ledger.py`, `paper_trading/engine.py`, `paper_trading/worker.py`, `backend/routers/trading.py`, `scripts/run_live.py`, schema/migrations | Restart preserves portfolio, positions, trades, and equity; failed writes restore the cache | **Done (P1-A)** |
 | 1.2 | Secure `/execute`: require an approved signal/risk payload or explicitly mark manual paper trades | `backend/routers/trading.py`, `agents/execution.py`, schemas | A request without approval cannot create a position; manual trades are labeled/excluded from promotion | **Done (P1-B, approved-only; no manual path)** |
 | 1.3 | Order idempotency + concurrent-writer safety | ledger/repository, order schema | Duplicate client order IDs are rejected; row locking or optimistic versions prevent lost updates across API/worker/runner | **Done (P1-B duplicates, P1-C writer lock)** |
-| 1.4 | PostgreSQL integration test in CI | `tests/`, CI workflow | Testcontainers/Compose runs hydrate → fill → restart → close on a real database | Pending |
+| 1.4 | PostgreSQL integration test in CI | `tests/`, CI workflow | Testcontainers/Compose runs hydrate → fill → restart → close on a real database | **Done (P1.4)**; `postgres-integration` job |
 | 1.5 | `/health` returns 503 when degraded; real Prometheus metrics | `backend/main.py`, `backend/core/metrics.py` | Compose healthchecks use the enriched health signal; `/api/v1/metrics` no longer reads `_last_state` | Pending |
 | 1.6 | Role-based authorization for trading/live controls | auth/JWT/API-key mapping, route tests | Viewer cannot trade; operator/admin required for live start/kill/arm/mode changes | Pending |
 
 **Exit:** restart the stack mid-trade; portfolio, open positions, and promotion record are identical before and after, and no concurrent write can silently lose a fill.
 P1-B satisfies the restart and duplicate-order portions; P1-C satisfies the lost-update
-portion. The Phase 1 exit stays open only because the statement has not been re-run against
-a running Compose stack with the lock in place, and P1.4's automated PostgreSQL test does
-not exist yet.
+portion; P1.4 runs hydrate → fill → restart → close on real PostgreSQL in CI. The Phase 1
+exit stays open only because the statement has not been re-run against a running Compose
+stack with the lock in place.
 
 ## Phase 2 — product realism and UI
 

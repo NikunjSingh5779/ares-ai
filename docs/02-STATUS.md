@@ -2,22 +2,25 @@
 # Status — verified state
 
 **Last verified:** 2026-10-21
-**Branch:** `fix/orchestration-reliability-frontend` — 6 commits ahead / 4 behind `master`.
+**Branch:** `fix/orchestration-reliability-frontend` — 7 commits ahead / 4 behind `master`.
 P1-A is committed as `9c16122`; P1-B (approved-only `/execute` plus client-order
 idempotency) is committed as `feat(paper): require approved execution and client order
 ids`; P1-C (paper writer lock) is committed as `fix(paper): serialize ledger writers with
-an advisory lock`. The branch is not pushed.
+an advisory lock`; P1.4 (real-PostgreSQL integration job) is committed as
+`test(paper): run the ledger suite against real PostgreSQL in CI`. The branch is not pushed.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
 ## Green
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1103 passed**, 2 warnings |
-| Coverage | `pytest tests/ -q` | **80.08%** (gate 78%) |
+| Test suite | `pytest tests/ -q` | **1103 passed, 1 skipped**, 2 warnings (integration module skips without `ARES_TEST_POSTGRES_URL`) |
+| Coverage | `pytest tests/ -q` | **80.08%** default; **80.10%** with the integration job (gate 78%) |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
 | Lint | `ruff check .` | clean |
 | Format | `ruff format --check .` | clean |
+| PostgreSQL integration | `ARES_TEST_POSTGRES_URL=... pytest tests/test_postgres_integration.py -q` | **5 passed** — real hydrate → fill → restart → close, duplicate ID, concurrent fills, one-winner duplicate race, busy lock → retry |
+| CI PostgreSQL job | `.github/workflows/ci.yml` | **defined** — runs the 5 tests on `postgres:16-alpine`; a missing URL fails instead of skipping; first GitHub run pending push |
 | Paper-ledger tests | `pytest tests/test_paper_trading_ledger.py -q` | **34 passed** — hydration, atomic write, duplicate ID, writer lock, rejection/rollback, restart mid-trade |
 | Trading-route tests | `pytest tests/test_trading_router.py -q` | **17 passed** — approval, derivation, 409/422/503, busy-lock retry |
 | Schema tests | `pytest tests/test_schema.py -q` | **15 passed** — ledger/idempotency columns, init/schema parity, migration splitter |
@@ -95,6 +98,20 @@ per-account; that is acceptable at single-user scale. Reads do not take the advi
 because each process has its own cache. Role authorization (P1.6) and a signed signal
 token (P2) remain open.
 
+## P1.4 — real-PostgreSQL integration in CI (committed, verified 2026-10-21)
+
+| Piece | Evidence |
+|---|---|
+| Opt-in tests | `tests/test_postgres_integration.py` runs only when `ARES_TEST_POSTGRES_URL` is set; otherwise the module skips, so the default suite needs no database. |
+| Safety gate | The module refuses to run unless the target database name contains `test`; setup/teardown truncates only `users`, `accounts`, `portfolio`, `positions`, `orders`, and `trade_history`. Never point it at a real ledger. |
+| Phase 1 exit path | One process fills BTC long at 50 000; a second process hydrates from PostgreSQL, sees the same position/cash (50 000), and closes it via `process_candle` at the 55 000 take-profit; a third process sees the closed trade (+5 000), cash 105 000, `positions.is_open=false`, one `trade_history` row, and two orders (entry has the client ID, exit has `NULL`). |
+| Duplicate after restart | A fresh process reusing `client_order_id` raises `PaperOrderConflictError` before mutation; exactly one order and one open position remain. |
+| Concurrent fills | Two processes fill BTC long and ETH short concurrently: both positions and orders persist, portfolio cash is 52 000 (no lost update). |
+| Concurrent duplicate race | Two processes submit the same `client_order_id` concurrently: exactly one accepted, one conflict, one order/one position — the partial unique index plus the writer lock hold. |
+| Busy writer | While one connection holds the advisory lock, a writer with a 0.2 s timeout raises `PaperLedgerBusyError` and writes nothing; after release the same request succeeds. |
+| CI job | `.github/workflows/ci.yml::postgres-integration` starts `postgres:16-alpine`, loads `database/schema.sql`, installs with `uv --locked`, and runs the module with `--no-cov`. `ARES_REQUIRE_POSTGRES_INTEGRATION=1` makes a missing URL a hard failure, never a silent skip. Not yet exercised on GitHub (branch not pushed). |
+| Verified locally | Temporary PostgreSQL 16 container (schema from `database/schema.sql`): **5 passed in 5.2 s**; full suite **1108 passed / 80.10%** with the URL and **1103 passed + 1 skipped / 80.08%** without. Container removed. |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
@@ -105,7 +122,7 @@ token (P2) remain open.
 | 4 | `mypy` fails | **22 errors in 8 files**, all in `tests/` + `scripts/` (6 in `test_test_free_models.py`, 4 in `test_error_handlers.py`, 3 in `test_analysis_router.py`, 3 in `test_paper_trading_worker.py`, 2 in `test_supervisor.py`, 2 in `scripts/test_free_models.py`, 1 each in `test_safety_edge_cases.py` and `test_engine_edge_cases.py`) | P1 (CI red) |
 | 5 | `/analyze` concurrency/cost control absent | global `_last_state`, unbounded `BackgroundTasks`; auth is required, but runs are still not isolated | P1 |
 | 6 | Kill-switch latch is process-local | a Redis outage latches each process; `/live/arm` clears the API process, but a runner that also latched stays blocked until restarted (fail-closed, never auto-trades) | P1 operational |
-| 7 | No automated PostgreSQL integration test in CI | the real-DB proofs are manual; mocked sessions still cannot validate every SQL column or the unique-index race | P2 |
+| 7 | ~~No automated PostgreSQL integration test in CI~~ | Closed by P1.4: `postgres-integration` runs hydrate → fill → restart → close, duplicate IDs, concurrent fills, and the busy lock on `postgres:16-alpine`; the local default suite skips the module without `ARES_TEST_POSTGRES_URL`. | ~~P2~~ fixed |
 | 8 | UI has mock data and fake settings | `frontend/src/app/markets/page.tsx:81`, `settings/page.tsx` (no API call, 10% vs backend 2%) | P2 |
 | 9 | Model catalog removals are not checked in CI | manual check only; `scripts/test_free_models.py` exists but is not a CI job | P2 |
 | 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency` (and P1-A columns); `init.sql` only runs on first container start. Old short **positions** still cannot be inferred and default to long. | Operational |
