@@ -13,8 +13,9 @@ was committed as `9c16122` on 2026-10-21; P1-B (approved `/execute` plus client-
 idempotency) followed in the next commit, `feat(paper): require approved execution and
 client order ids`. P1-C (paper writer serialization) is committed as `fix(paper): serialize
 ledger writers with an advisory lock`. P1.4 (real-PostgreSQL integration job) is committed
-as `test(paper): run the ledger suite against real PostgreSQL in CI`; the remaining Phase 1
-release risk is role checks and the Compose exit run.
+as `test(paper): run the ledger suite against real PostgreSQL in CI`; the job passed on its
+first GitHub run (39601089127). The remaining Phase 1 release risk is role checks and the
+Compose exit run.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
@@ -53,9 +54,9 @@ updates. A writer that cannot get the lock within 10 s fails closed with **503**
 
 **Exit:** restart the stack mid-trade; portfolio, open positions, and promotion record are identical before and after, and no concurrent write can silently lose a fill.
 P1-B satisfies the restart and duplicate-order portions; P1-C satisfies the lost-update
-portion; P1.4 runs hydrate → fill → restart → close on real PostgreSQL in CI. The Phase 1
-exit stays open only because the statement has not been re-run against a running Compose
-stack with the lock in place.
+portion; P1.4 runs hydrate → fill → restart → close on real PostgreSQL in CI (green on run
+39601089127). The Phase 1 exit stays open only because the statement has not been re-run
+against a running Compose stack with the lock in place.
 
 ## Phase 2 — product realism and UI
 

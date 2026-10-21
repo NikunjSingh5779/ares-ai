@@ -9,8 +9,10 @@ the hash with `git log -1 --format=%h`).
 `git rev-list --left-right --count master...HEAD`).
 **Working tree:** clean. P1-A (`9c16122`), P1-B (`feat(paper): require approved execution
 and client order ids`), P1-C (`fix(paper): serialize ledger writers with an advisory
-lock`), and P1.4 (the head commit) are committed and **not pushed**. Do not reset, clean,
-or push unless the user explicitly asks.
+lock`), and P1.4 (the head commit) are committed and pushed to `origin`. GitHub Actions run
+39601089127 passed `test`, `postgres-integration`, `frontend`, and `docker`; only `lint`
+failed, on the 22 pre-existing mypy errors. Do not reset, clean, or push unless the user
+explicitly asks.
 
 This is the fresh-session handoff. Read it fully before editing. It records what is done,
 what was verified, the behavior contracts that must not regress, the remaining defects, and
@@ -172,8 +174,8 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 11. **Do not modify** `C:\Users\ASUS\.claude\plugins` or `C:\Users\ASUS\.claude\skills`;
     read-only use is allowed.
 12. **No real-capital live trading.** Live code stays gated; do not enable it.
-13. **Do not commit/push** unless the user explicitly asks. P1-A and P1-B are already
-    committed; the branch is not pushed.
+13. **Do not commit/push** unless the user explicitly asks. P1-A through P1.4 are
+    committed and pushed to `origin`.
 14. User preference: dashboard is single-user/local. Future market data direction is the
    existing ingestion + Binance WebSocket + Alpaca.
 15. Use ICM/MVC structure and React/frontend review skills for frontend work.
@@ -201,7 +203,8 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
   `docs/02-STATUS.md`, `docs/05-NEXT.md`, and this file.
 - `migrations/versions/` is no longer gitignored and contains `.gitkeep`,
   `0001_initial_schema.py`, `0002_paper_ledger.py`, and `0003_order_idempotency.py`.
-- No push, PR, or merge has been performed for P1-A, P1-B, P1-C, or P1.4.
+- `origin/fix/orchestration-reliability-frontend` contains P1.4 (`b6b5bea`); no PR or
+  merge has been performed.
 
 ### 3.2 Verified commands and results
 
@@ -221,7 +224,7 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 | Targeted P1-B/P1-C mypy | clean on 5 production modules + `test_postgres_integration.py` |
 | `python -m alembic heads` | **`0003_order_idempotency (head)`** |
 | Frontend `pnpm build` | passed (P1-B wrapper update) |
-| CI PostgreSQL job | `postgres-integration` added; not yet exercised on GitHub (branch not pushed) |
+| CI PostgreSQL job | **passed** on GitHub Actions run 39601089127 (46 s) |
 | Manual PostgreSQL 16 P1-B checks | passed on a temporary container; container removed |
 | Manual PostgreSQL 16 P1-C checks | passed on a temporary container; container and script removed |
 
@@ -695,9 +698,10 @@ high-fidelity paper results.
 
 ### P1-D — PostgreSQL CI and type/CI hygiene — P1.4 done, mypy pending
 
-- P1.4 is committed as the head commit: see section 5b.
-- Fix the 22 mypy errors; the existing `lint` job runs `mypy .`, so it stays red until
-  they are fixed.
+- P1.4 is committed as the head commit: see section 5b. The `postgres-integration` job
+  passed on GitHub Actions run 39601089127.
+- Fix the 22 mypy errors; CI run 39601089127 failed only `lint` (`mypy .`), so that is the
+  one red job.
 - Keep production modules clean.
 
 ### P1-E — Authorization and kill-switch operations
@@ -867,5 +871,7 @@ a passing frontend build, and real PostgreSQL 16 checks for fresh
 migration, P1-A → `0002` → head, duplicate rejection before/after restart, concurrent
 fills, a held lock, lock release, and a cancelled writer. The next change is **P1.6 role
 authorization**, then **P1.5 health/metrics**; run the Phase 1 exit criterion against a
-Compose stack before calling Phase 1 done. The branch is not pushed. Do not push, reset, or
+Compose stack before calling Phase 1 done. P1-A through P1.4 are pushed to `origin`.
+GitHub Actions run 39601089127 passed `test`, `postgres-integration`, `frontend`, and
+`docker`; only `lint` failed, on the 22 pre-existing mypy errors. Do not push, reset, or
 rewrite history without explicit user approval.

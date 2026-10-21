@@ -7,7 +7,10 @@ P1-A is committed as `9c16122`; P1-B (approved-only `/execute` plus client-order
 idempotency) is committed as `feat(paper): require approved execution and client order
 ids`; P1-C (paper writer lock) is committed as `fix(paper): serialize ledger writers with
 an advisory lock`; P1.4 (real-PostgreSQL integration job) is committed as
-`test(paper): run the ledger suite against real PostgreSQL in CI`. The branch is not pushed.
+`test(paper): run the ledger suite against real PostgreSQL in CI`.
+`origin/fix/orchestration-reliability-frontend` contains P1.4 (`b6b5bea`). GitHub Actions run
+39601089127 passed `test`, `postgres-integration`, `frontend`, and `docker`; only `lint`
+failed, on the 22 pre-existing mypy errors (gap 4).
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
 ## Green
@@ -20,7 +23,7 @@ an advisory lock`; P1.4 (real-PostgreSQL integration job) is committed as
 | Lint | `ruff check .` | clean |
 | Format | `ruff format --check .` | clean |
 | PostgreSQL integration | `ARES_TEST_POSTGRES_URL=... pytest tests/test_postgres_integration.py -q` | **5 passed** — real hydrate → fill → restart → close, duplicate ID, concurrent fills, one-winner duplicate race, busy lock → retry |
-| CI PostgreSQL job | `.github/workflows/ci.yml` | **defined** — runs the 5 tests on `postgres:16-alpine`; a missing URL fails instead of skipping; first GitHub run pending push |
+| CI PostgreSQL job | GitHub Actions `CI` run 39601089127 | **passed** on `postgres:16-alpine` in 46 s — all 5 tests, no skip |
 | Paper-ledger tests | `pytest tests/test_paper_trading_ledger.py -q` | **34 passed** — hydration, atomic write, duplicate ID, writer lock, rejection/rollback, restart mid-trade |
 | Trading-route tests | `pytest tests/test_trading_router.py -q` | **17 passed** — approval, derivation, 409/422/503, busy-lock retry |
 | Schema tests | `pytest tests/test_schema.py -q` | **15 passed** — ledger/idempotency columns, init/schema parity, migration splitter |
@@ -109,7 +112,7 @@ token (P2) remain open.
 | Concurrent fills | Two processes fill BTC long and ETH short concurrently: both positions and orders persist, portfolio cash is 52 000 (no lost update). |
 | Concurrent duplicate race | Two processes submit the same `client_order_id` concurrently: exactly one accepted, one conflict, one order/one position — the partial unique index plus the writer lock hold. |
 | Busy writer | While one connection holds the advisory lock, a writer with a 0.2 s timeout raises `PaperLedgerBusyError` and writes nothing; after release the same request succeeds. |
-| CI job | `.github/workflows/ci.yml::postgres-integration` starts `postgres:16-alpine`, loads `database/schema.sql`, installs with `uv --locked`, and runs the module with `--no-cov`. `ARES_REQUIRE_POSTGRES_INTEGRATION=1` makes a missing URL a hard failure, never a silent skip. Not yet exercised on GitHub (branch not pushed). |
+| CI job | `.github/workflows/ci.yml::postgres-integration` starts `postgres:16-alpine`, loads `database/schema.sql`, installs with `uv --locked`, and runs the module with `--no-cov`. `ARES_REQUIRE_POSTGRES_INTEGRATION=1` makes a missing URL a hard failure, never a silent skip. Verified on GitHub Actions run 39601089127 (46 s, all 5 tests passed). |
 | Verified locally | Temporary PostgreSQL 16 container (schema from `database/schema.sql`): **5 passed in 5.2 s**; full suite **1108 passed / 80.10%** with the URL and **1103 passed + 1 skipped / 80.08%** without. Container removed. |
 
 ## Red / known gaps
