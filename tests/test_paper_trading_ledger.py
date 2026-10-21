@@ -7,7 +7,10 @@ the real database round-trip is verified manually against PostgreSQL 16.
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -17,7 +20,32 @@ from sqlalchemy.exc import IntegrityError
 
 from paper_trading.engine import ClosedTrade, PaperTradingEngine
 from paper_trading.ledger import PaperTradingLedger
-from paper_trading.repository import PaperLedgerError, PaperLedgerRepository, PaperOrderConflictError
+from paper_trading.repository import (
+    PAPER_LEDGER_WRITER_LOCK_KEY,
+    PaperLedgerBusyError,
+    PaperLedgerError,
+    PaperLedgerRepository,
+    PaperOrderConflictError,
+)
+
+
+class _WriterLockSpy:
+    """Records writer-lock entry/exit order around the ledger cycle."""
+
+    def __init__(self) -> None:
+        self.entries = 0
+        self.exits = 0
+        self.events: list[str] = []
+
+    @asynccontextmanager
+    async def __call__(self, *, timeout_seconds: float = 10.0) -> AsyncIterator[None]:
+        self.entries += 1
+        self.events.append("lock_enter")
+        try:
+            yield
+        finally:
+            self.exits += 1
+            self.events.append("lock_exit")
 
 
 class _FakeResult:
@@ -33,6 +61,11 @@ class _FakeResult:
 
     def all(self) -> list[dict[str, Any]]:
         return self._rows
+
+    def scalar(self) -> Any:
+        if self._row is None:
+            return None
+        return next(iter(self._row.values()), None)
 
 
 class _FakeSession:
@@ -299,12 +332,92 @@ class TestPaperLedgerRepositoryPersistence:
             await repository.persist(PaperTradingEngine())
 
 
+class TestPaperLedgerRepositoryWriterLock:
+    """The cross-process advisory lock that serializes API, worker, and runner."""
+
+    async def test_acquires_and_releases_around_the_body(self) -> None:
+        session = _FakeSession([_FakeResult(row={"locked": True})])
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+
+        async with repository.writer_lock(timeout_seconds=1.0):
+            assert "pg_try_advisory_xact_lock" in session.calls[0][0]
+            assert session.calls[0][1]["key"] == PAPER_LEDGER_WRITER_LOCK_KEY
+            assert session.rolled_back is False
+
+        # The transaction-scoped lock dies with the rollback, so it cannot
+        # leak onto a pooled connection.
+        assert session.rolled_back is True
+
+    async def test_retries_until_the_lock_is_granted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("paper_trading.repository.WRITER_LOCK_POLL_INTERVAL_SECONDS", 0.0)
+        session = _FakeSession([_FakeResult(row={"locked": False}), _FakeResult(row={"locked": True})])
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+
+        async with repository.writer_lock(timeout_seconds=1.0):
+            pass
+
+        attempts = [call for call in session.calls if "pg_try_advisory_xact_lock" in call[0]]
+        assert len(attempts) == 2
+        assert session.rolled_back is True
+
+    async def test_times_out_as_busy_instead_of_waiting_forever(self) -> None:
+        session = _FakeSession([_FakeResult(row={"locked": False})])
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+
+        with pytest.raises(PaperLedgerBusyError, match="writer is still running"):
+            async with repository.writer_lock(timeout_seconds=0.0):
+                pass
+
+        assert session.rolled_back is True
+
+    async def test_wraps_acquisition_failures(self) -> None:
+        session = _FakeSession()
+        session.execute = AsyncMock(side_effect=RuntimeError("database down"))  # type: ignore[method-assign]
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+
+        with pytest.raises(PaperLedgerError, match="writer lock"):
+            async with repository.writer_lock(timeout_seconds=0.0):
+                pass
+
+    async def test_releases_the_lock_when_the_body_raises(self) -> None:
+        session = _FakeSession([_FakeResult(row={"locked": True})])
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+
+        with pytest.raises(ValueError, match="boom"):
+            async with repository.writer_lock(timeout_seconds=1.0):
+                raise ValueError("boom")
+
+        assert session.rolled_back is True
+
+    async def test_cancelled_writer_still_rolls_back(self) -> None:
+        session = _FakeSession([_FakeResult(row={"locked": True})])
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+
+        with pytest.raises(asyncio.CancelledError):
+            async with repository.writer_lock(timeout_seconds=1.0):
+                raise asyncio.CancelledError()
+
+        assert session.rolled_back is True
+
+    async def test_rollback_failure_is_logged_not_raised(self, caplog: pytest.LogCaptureFixture) -> None:
+        session = _FakeSession([_FakeResult(row={"locked": True})])
+        session.rollback = AsyncMock(side_effect=RuntimeError("rollback failed"))  # type: ignore[method-assign]
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+
+        with caplog.at_level("WARNING", logger="ares.paper_trading"):
+            async with repository.writer_lock(timeout_seconds=1.0):
+                pass
+
+        assert "Could not roll back the paper-ledger writer-lock transaction" in caplog.text
+
+
 class TestPaperTradingLedgerService:
     def _ledger(self, engine: PaperTradingEngine) -> tuple[PaperTradingLedger, MagicMock]:
         repository = MagicMock(spec=PaperLedgerRepository)
         repository.hydrate = AsyncMock(return_value=True)
         repository.persist = AsyncMock(return_value=True)
         repository.client_order_id_exists = AsyncMock(return_value=False)
+        repository.writer_lock = _WriterLockSpy()
         return PaperTradingLedger(engine=engine, repository=repository), repository
 
     async def test_execute_signal_persists_entry_and_reports_status(self) -> None:
@@ -440,6 +553,115 @@ class TestPaperTradingLedgerService:
         assert engine.get_last_prices()["BTC-USD"] == 50000.0
         assert engine.get_summary().equity == 100000.0
 
+    async def test_execute_signal_holds_the_writer_lock_for_the_whole_cycle(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        ledger, repository = self._ledger(engine)
+        spy = repository.writer_lock
+
+        async def hydrate(_engine: PaperTradingEngine) -> bool:
+            spy.events.append("hydrate")
+            return True
+
+        async def persist(*args: Any, **kwargs: Any) -> bool:
+            spy.events.append("persist")
+            return True
+
+        repository.hydrate = hydrate
+        repository.persist = persist
+
+        await ledger.execute_signal(
+            symbol="BTC-USD",
+            side="long",
+            quantity=1.0,
+            entry_price=50000.0,
+            client_order_id="client-1",
+        )
+
+        assert spy.events == ["lock_enter", "hydrate", "persist", "lock_exit"]
+        assert spy.entries == spy.exits == 1
+
+    async def test_execute_signal_releases_the_writer_lock_when_persist_fails(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        ledger, repository = self._ledger(engine)
+        repository.persist = AsyncMock(side_effect=PaperLedgerError("database down"))
+
+        with pytest.raises(PaperLedgerError, match="database down"):
+            await ledger.execute_signal(
+                symbol="BTC-USD",
+                side="long",
+                quantity=1.0,
+                entry_price=50000.0,
+            )
+
+        assert repository.writer_lock.entries == repository.writer_lock.exits == 1
+        assert engine.get_open_positions() == []
+
+    async def test_execute_signal_rejects_busy_ledger_without_touching_the_cache(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        ledger, repository = self._ledger(engine)
+
+        @asynccontextmanager
+        async def busy_lock(*, timeout_seconds: float = 10.0) -> AsyncIterator[None]:
+            raise PaperLedgerBusyError("Another paper-ledger writer is still running")
+            yield  # pragma: no cover - unreachable, keeps the generator contract
+
+        repository.writer_lock = busy_lock
+        before = engine.snapshot()
+
+        with pytest.raises(PaperLedgerBusyError):
+            await ledger.execute_signal(
+                symbol="BTC-USD",
+                side="long",
+                quantity=1.0,
+                entry_price=50000.0,
+            )
+
+        assert engine.snapshot() == before
+        repository.hydrate.assert_not_awaited()
+        repository.persist.assert_not_awaited()
+
+    async def test_process_candle_uses_the_writer_lock(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=49000.0)
+        ledger, repository = self._ledger(engine)
+
+        await ledger.process_candle(symbol="BTC-USD", high=49500.0, low=48000.0, close=48500.0)
+
+        assert repository.writer_lock.events == ["lock_enter", "lock_exit"]
+        assert repository.writer_lock.entries == repository.writer_lock.exits == 1
+
+    async def test_concurrent_writes_do_not_interleave_the_shared_cache(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        repository = MagicMock(spec=PaperLedgerRepository)
+        repository.writer_lock = _WriterLockSpy()
+        repository.client_order_id_exists = AsyncMock(return_value=False)
+        in_flight = 0
+        max_in_flight = 0
+
+        async def hydrate(_engine: PaperTradingEngine) -> bool:
+            nonlocal in_flight, max_in_flight
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+            await asyncio.sleep(0)
+            in_flight -= 1
+            return True
+
+        async def persist(*args: Any, **kwargs: Any) -> bool:
+            await asyncio.sleep(0)
+            return True
+
+        repository.hydrate = hydrate
+        repository.persist = persist
+        ledger = PaperTradingLedger(engine=engine, repository=repository)
+
+        await asyncio.gather(
+            ledger.execute_signal(symbol="BTC-USD", side="long", quantity=1.0, entry_price=50000.0),
+            ledger.execute_signal(symbol="ETH-USD", side="short", quantity=1.0, entry_price=3000.0),
+        )
+
+        assert max_in_flight == 1
+        assert len(engine.get_open_positions()) == 2
+
     async def test_initialize_warns_and_returns_false_without_seed(self) -> None:
         engine = PaperTradingEngine()
         repository = MagicMock(spec=PaperLedgerRepository)
@@ -454,6 +676,10 @@ class TestPaperTradingLedgerService:
         state: dict[str, Any] = {}
 
         class _MemoryRepository:
+            @asynccontextmanager
+            async def writer_lock(self, *, timeout_seconds: float = 10.0) -> AsyncIterator[None]:
+                yield
+
             async def hydrate(self, engine: PaperTradingEngine) -> bool:
                 if not state:
                     return False
@@ -491,6 +717,15 @@ class TestPaperTradingLedgerService:
         assert closed[0].exit_reason == "stop_loss"
         assert restarted_engine.get_open_positions() == []
         assert restarted_engine.get_summary().total_trades == 1
+
+    async def test_open_position_symbols_hydrates_under_the_cache_lock(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        engine.execute_signal("ETH-USD", "long", 0.1, 3000.0)
+        engine.execute_signal("BTC-USD", "long", 0.1, 50000.0)
+        ledger, repository = self._ledger(engine)
+
+        assert await ledger.get_open_position_symbols() == ["BTC-USD", "ETH-USD"]
+        repository.hydrate.assert_awaited_once()
 
     async def test_reads_refresh_from_repository(self) -> None:
         engine = PaperTradingEngine()

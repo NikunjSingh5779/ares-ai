@@ -15,6 +15,8 @@
 - Add a setting → `Settings` field + `.env.example` + compose env + a config test.
 - Paper fills use `paper_trading_commission_pct` and `paper_trading_slippage_pct`
   (decimal fractions, default 0.001 = 10 bps per side).
+- Paper writes wait at most `paper_trading_writer_lock_timeout_seconds` (default 10 s) for
+  the cross-process advisory lock; on timeout the API returns 503.
 - Production (`ENVIRONMENT=production`) must reject default secrets and default DB
   password. Use `docker-compose.prod.yml` (or `docker/docker-compose.prod.yml`) to set
   it; the development files intentionally do not.

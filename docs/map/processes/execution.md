@@ -15,7 +15,12 @@ Two callers share one ledger:
 
 The ledger refreshes the `PaperTradingEngine` cache from `PaperLedgerRepository`, applies
 configured commission and adverse slippage, then writes `positions`, entry/exit orders,
-reversal `trade_history`, and `portfolio` in one transaction. `client_order_id` is
+reversal `trade_history`, and `portfolio` in one transaction. Every write holds an
+in-process cache lock and a PostgreSQL transaction-scoped advisory lock
+(`pg_try_advisory_xact_lock`) across hydrate → mutate → persist, so API, worker, and runner
+serialize instead of overwriting each other. A writer that cannot get the lock within
+`PAPER_TRADING_WRITER_LOCK_TIMEOUT_SECONDS` fails with **503** and no mutation.
+`client_order_id` is
 required on the API path and checked before mutation; a partial unique index on
 `orders(account_id, client_order_id)` protects concurrent retries. A duplicate returns
 **409** and never creates a second position. A failed or conflicting write restores the
@@ -60,10 +65,13 @@ marks; the ledger writes SL/TP closures so normal exits count and survive restar
 `tests/test_agents/test_execution_live_routing.py`, `tests/test_paper_trading.py`.
 
 ## Known gaps
-`get_open_orders()` returns `[]`; no balance reconciliation. Concurrent API/worker/runner
-paper writes are last-writer-wins (no row lock or optimistic version); `client_order_id`
-prevents duplicate requests, not lost updates. `/execute` is approved-only but trusts the
-authenticated caller's agent payload; there is no signed/expiring signal token. No role
+`get_open_orders()` returns `[]`; no balance reconciliation. Paper writers serialize on a
+database-wide advisory lock (per account would be finer); `/execute` is approved-only but
+trusts the authenticated caller's agent payload, since there is no signed/expiring signal
+token. `ExecutionAgent` keeps a legacy in-memory/direct-SQL fallback when constructed
+without a `ledger`; production paths (`backend/routers/analysis.py`, `scripts/run_live.py`)
+always pass the ledger, and the fallback bypasses the writer lock — do not use it for paper
+writes. No role
 checks on trading/live controls. A Redis outage blocks orders and requires a human re-arm
 (intentional); the latch is process-local, so a runner that latched also needs a restart
 until a shared arm epoch exists.

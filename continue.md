@@ -3,12 +3,13 @@
 **Last updated:** 2026-10-21
 **Repository:** `C:\Users\ASUS\ares-ai`
 **Branch:** `fix/orchestration-reliability-frontend`
-**P1-B commit:** `feat(paper): require approved execution and client order ids` (read the
+**Head commit:** `fix(paper): serialize ledger writers with an advisory lock` (read the
 hash with `git log -1 --format=%h`).
-**Branch position:** **5 commits ahead / 4 behind `master`** (per
+**Branch position:** **6 commits ahead / 4 behind `master`** (per
 `git rev-list --left-right --count master...HEAD`).
-**Working tree:** clean. P1-A (`9c16122`) and P1-B (the commit above) are committed and
-**not pushed**. Do not reset, clean, or push unless the user explicitly asks.
+**Working tree:** clean. P1-A (`9c16122`), P1-B (`feat(paper): require approved execution
+and client order ids`), and P1-C (the head commit) are committed and **not pushed**. Do not
+reset, clean, or push unless the user explicitly asks.
 
 This is the fresh-session handoff. Read it fully before editing. It records what is done,
 what was verified, the behavior contracts that must not regress, the remaining defects, and
@@ -53,11 +54,22 @@ P1-B is committed as `feat(paper): require approved execution and client order i
 - Real PostgreSQL 16 checks passed for fresh migration, P1-A schema → `stamp 0002` →
   `upgrade head`, and duplicate rejection before/after restart.
 
-The next release blocker is **P1-C: concurrent paper-writer safety**. The engine is still
-a process-local cache; API, worker, and runner can race and last-writer-wins. P1-B's
-idempotency key prevents duplicate requests, not lost updates.
+P1-C is committed as `fix(paper): serialize ledger writers with an advisory lock`:
 
-**Do not start new feature work before reading sections 2, 3, 5, and 7.**
+- `PaperLedgerRepository.writer_lock()` holds a transaction-scoped PostgreSQL advisory
+  lock (`pg_try_advisory_xact_lock`) across hydrate → mutate → persist.
+- `PaperTradingLedger` also takes an in-process `asyncio.Lock` around every cache
+  operation, so a reader cannot re-hydrate mid-write.
+- A writer that waits longer than `paper_trading_writer_lock_timeout_seconds` (10 s)
+  raises `PaperLedgerBusyError`; `/execute` returns **503** with `Retry-After: 1`.
+- No schema change, no migration. Real PostgreSQL 16 check passed for concurrent fills,
+  duplicate client IDs, a held lock, lock release, and a cancelled writer.
+
+The next work is **P1.4 (automated PostgreSQL integration test in CI)**, then **P1.6
+role-based authorization**, then **P1.5 health/metrics**. Run the Phase 1 exit criterion
+against a Compose stack before claiming Phase 1 done.
+
+**Do not start new feature work before reading sections 2, 3, 5, 5a, 6, and 8.**
 
 ---
 
@@ -107,7 +119,7 @@ mypy .
 
 Expected today:
 
-- `pytest`: **1088 passed**, 2 warnings, **79.92%** coverage, exit 0.
+- `pytest`: **1103 passed**, 2 warnings, **80.08%** coverage, exit 0.
 - `ruff check .`: clean.
 - `ruff format --check .`: clean.
 - `mypy .`: **22 pre-existing errors in 8 test/script files**. The six P1-B production
@@ -167,16 +179,16 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 ### 3.1 Branch / worktree
 
 - Branch: `fix/orchestration-reliability-frontend`
-- 5 ahead / 4 behind `master`
-- Head: the P1-B commit `feat(paper): require approved execution and client order ids`
+- 6 ahead / 4 behind `master`.
+- Head: the P1-C commit `fix(paper): serialize ledger writers with an advisory lock`
   (the hash changes if the commit is amended; prefer `git log -1 --oneline`)
-- P1-A is committed as `9c16122` and P1-B as that commit; the working tree is clean.
-  P1-B covers `backend/schemas/trading.py`, `backend/routers/trading.py`,
-  `backend/db/models.py`, `paper_trading/repository.py`, `paper_trading/ledger.py`,
-  `database/schema.sql`, `database/init.sql`,
-  `migrations/versions/0003_order_idempotency.py`, `tests/test_paper_trading_ledger.py`,
-  `tests/test_trading_router.py`, `tests/test_schema.py`, `frontend/src/lib/api.ts`, and
-  the docs/context updates.
+- P1-A is committed as `9c16122`, P1-B as `feat(paper): require approved execution and
+  client order ids`, and P1-C as the head commit. P1-C touches
+  `paper_trading/repository.py`, `paper_trading/ledger.py`,
+  `paper_trading/worker.py`, `backend/routers/trading.py`, `configs/settings.py`,
+  `.env.example`, `tests/test_paper_trading_ledger.py`,
+  `tests/test_paper_trading_worker.py`, `tests/test_trading_router.py`,
+  `tests/test_config.py`, and the docs/context updates.
 - `migrations/versions/` is no longer gitignored and contains `.gitkeep`,
   `0001_initial_schema.py`, `0002_paper_ledger.py`, and `0003_order_idempotency.py`.
 - No push, PR, or merge has been performed for P1-A or P1-B.
@@ -185,18 +197,21 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 
 | Check | Result |
 |---|---|
-| `python -m pytest tests/ -q` | **1088 passed**, 2 warnings, exit 0 |
-| Coverage | **79.92%**, gate is 78% |
-| `tests/test_paper_trading_ledger.py` | **21 passed** |
-| `tests/test_trading_router.py` | **16 passed** |
+| `python -m pytest tests/ -q` | **1103 passed**, 2 warnings, exit 0 |
+| Coverage | **80.08%**, gate is 78% |
+| `tests/test_paper_trading_ledger.py` | **34 passed** |
+| `tests/test_trading_router.py` | **17 passed** |
 | `tests/test_schema.py` | **15 passed** |
+| `tests/test_paper_trading_worker.py` | **13 passed** |
+| `tests/test_config.py` | **17 passed** |
 | `ruff check .` | clean |
 | `ruff format --check .` | clean |
 | `mypy .` | **22 errors in 8 files**, all pre-existing tests/scripts |
-| Targeted P1-B mypy | clean on 6 production modules |
+| Targeted P1-B/P1-C mypy | clean on 5 production modules |
 | `python -m alembic heads` | **`0003_order_idempotency (head)`** |
 | Frontend `pnpm build` | passed (P1-B wrapper update) |
 | Manual PostgreSQL 16 P1-B checks | passed on a temporary container; container removed |
+| Manual PostgreSQL 16 P1-C checks | passed on a temporary container; container and script removed |
 
 The 22 mypy errors are in:
 
@@ -425,6 +440,64 @@ restart; exactly one order and one open position remained.
 
 ---
 
+## 5a. P1-C — paper writer serialization (committed)
+
+### 5a.1 Contract
+
+Every paper-ledger write runs as:
+
+1. `PaperTradingLedger` takes its in-process `asyncio.Lock` (covers the shared cache).
+2. `PaperLedgerRepository.writer_lock(timeout_seconds=...)` acquires
+   `pg_try_advisory_xact_lock(PAPER_LEDGER_WRITER_LOCK_KEY)` and holds the transaction.
+3. hydrate → mutate the engine → `persist(...)` in one transaction.
+4. Context exit rolls the lock transaction back, which releases the advisory lock.
+
+`/execute` maps `PaperLedgerBusyError` to **503** with `Retry-After: 1`. A timeout mutates
+nothing and leaves the cache untouched.
+
+### 5a.2 Why transaction-scoped, not session-scoped
+
+The first implementation used `pg_advisory_lock` + `pg_advisory_unlock`. Real PostgreSQL
+showed the lock leaking: SQLAlchemy returns the connection to the pool on `COMMIT`, so the
+unlock could run on a different pooled connection while the original backend stayed idle
+holding the lock. `pg_advisory_xact_lock` is released by the rollback/close, so it cannot
+outlive the operation. `pg_try_*` + polling keeps the wait bounded and surfaces busy state
+instead of hanging.
+
+### 5a.3 Code
+
+- `paper_trading/repository.py`: `PAPER_LEDGER_WRITER_LOCK_KEY`,
+  `WRITER_LOCK_POLL_INTERVAL_SECONDS`, `PaperLedgerBusyError`, `writer_lock`,
+  `_acquire_writer_lock`.
+- `paper_trading/ledger.py`: `_cache_lock`, `_hydrate`, `_execute_signal_locked`,
+  `_process_candle_locked`, `get_open_position_symbols`; `writer_timeout_seconds`.
+- `paper_trading/worker.py`: `_tick` now calls `ledger.get_open_position_symbols()`.
+- `backend/routers/trading.py`: passes the configured timeout; 503 busy mapping.
+- `configs/settings.py`, `.env.example`: `paper_trading_writer_lock_timeout_seconds=10.0`.
+
+No schema, migration, or frontend change.
+
+### 5a.4 Real-DB result (temporary PostgreSQL 16, port 55434)
+
+1. Two concurrent fills (BTC long, ETH short) both persisted; 2 positions, 2 orders,
+   cash exactly 78,000 with fees/slippage set to zero.
+2. Two concurrent requests with the same `client_order_id`: exactly one accepted, one
+   `PaperOrderConflictError`, 1 position and 1 order.
+3. A separate connection held the advisory lock: `execute_signal` raised
+   `PaperLedgerBusyError` within the 0.5 s timeout with no rows written; after release the
+   retry succeeded.
+4. A cancelled writer task released the lock (immediate re-acquire).
+5. `pg_locks` showed zero advisory locks afterwards; the container and script were removed.
+
+### 5a.5 Not covered
+
+- The lock is per database, not per paper account.
+- Reads skip the advisory lock (each process has its own cache); only the in-process lock
+  guards them.
+- No automated PostgreSQL test yet (P1.4).
+
+---
+
 ## 6. Behavior contracts that must not regress
 
 ### 6.1 Paper ledger
@@ -496,16 +569,13 @@ restart; exactly one order and one open position remained.
 
 ## 7. Known gaps — exact next targets
 
-### Gap 1 — Concurrent paper writers (P1-C, highest priority)
+### Gap 1 — Concurrent paper writers — closed by P1-C
 
-- API, worker, and runner each refresh then persist; there is no row lock, optimistic
-  version, or command log.
-- Simultaneous fills/marks are last-writer-wins and can lose an update.
-- `client_order_id` closes duplicate-request races only; it does not make a fill and a
-  mark serialize.
-- Add row locking or a version column on the ledger/portfolio, or serialize through one
-  writer with an idempotent command table.
-- Test two concurrent writes to the same paper account.
+- Fixed by `PaperLedgerRepository.writer_lock()` (transaction-scoped advisory lock) plus
+  the ledger's in-process `asyncio.Lock`.
+- Copy the pattern if another mutable domain cache is added; do not reintroduce a
+  refresh-then-write cycle outside these locks.
+- Remaining: no automated PostgreSQL test (see Gap 7).
 
 ### Gap 2 — Approved `/execute` trust boundary (P2)
 
@@ -524,7 +594,7 @@ restart; exactly one order and one open position remained.
 ### Gap 4 — `mypy` red (P1 CI)
 
 - 22 errors in 8 test/script files (list in section 3.2).
-- P1-B production modules are clean.
+- P1-B/P1-C production modules are clean.
 - Fix these before calling CI green; then add mypy to CI.
 
 ### Gap 5 — `/analyze` concurrency/cost control (P1)
@@ -578,16 +648,16 @@ high-fidelity paper results.
 
 ## 8. Recommended next work, in order
 
-### P1-C — Concurrent writer safety
+### P1-C — Concurrent writer safety — done
 
-- Add row locking/version checks or a single-writer command table.
-- Test concurrent API + worker writes and verify no lost fill.
-- Consider surfacing ledger version/revision in API responses.
-- Keep `client_order_id` idempotency; do not weaken the approved-only `/execute` gate.
+- Implemented: transaction-scoped advisory lock + in-process cache lock.
+- Preserve `client_order_id` idempotency and the approved-only `/execute` gate.
+- Do not replace the lock with a session-level advisory lock (it leaks via the pool).
 
 ### P1-D — PostgreSQL CI and type/CI hygiene
 
-- Add a Postgres-backed integration job, including duplicate client IDs and restart.
+- Add a Postgres-backed integration job, including duplicate client IDs, concurrent
+  writers, and restart.
 - Fix the 22 mypy errors; keep production modules clean.
 - Add CI: pytest, ruff check, ruff format --check, mypy, frontend build, frontend lint
   after fixing the script.
@@ -627,10 +697,10 @@ ruff format --check .
 # Type checks (expected 22 test/script errors today)
 mypy .
 
-# Targeted P1-B production check (should be clean)
+# Targeted P1-B/P1-C production check (should be clean)
 mypy backend/routers/trading.py backend/schemas/trading.py backend/db/models.py `
-  paper_trading/repository.py paper_trading/ledger.py `
-  migrations/versions/0003_order_idempotency.py
+  paper_trading/repository.py paper_trading/ledger.py paper_trading/worker.py `
+  configs/settings.py migrations/versions/0003_order_idempotency.py
 
 # Alembic
 python -m alembic heads
@@ -687,17 +757,24 @@ captured; `.env` may contain live keys.
 13. **Consensus exactly 80% is rejected.** Do not change back to `>=`.
 14. **The API and runner are separate processes.** A module singleton is per process;
     PostgreSQL is the shared state.
-15. **Concurrent writers are still unsafe.** `client_order_id` is not row locking. Do not
-    claim P1 is complete until P1-C lands.
-16. **`/execute` has no manual path.** It requires approvals. Do not add a raw body or a
+15. **Paper writers must take the locks.** `execute_signal`, `process_candle`, and any
+    read that hydrates the shared engine go through `PaperTradingLedger`, which holds the
+    cache lock and (for writes) the repository writer lock. Do not add a
+    refresh-then-write path that bypasses them.
+16. **Never use a session-level advisory lock (`pg_advisory_lock`) for the ledger.**
+    SQLAlchemy returns the connection to the pool on `COMMIT`, so the unlock can land on a
+    different connection and the lock leaks on an idle backend. Real PostgreSQL 16
+    reproduced this: the next writer blocked forever. Use `pg_try_advisory_xact_lock` and
+    let the context-manager rollback release it.
+17. **`/execute` has no manual path.** It requires approvals. Do not add a raw body or a
     `manual=true` shortcut without a separately designed label and promotion exclusion.
-17. **The client order ID belongs to the entry order only.** Exit orders must keep
+18. **The client order ID belongs to the entry order only.** Exit orders must keep
     `client_order_id=None`; the partial unique index is per request, not per leg.
-18. **Reject non-finite numbers.** The route checks `math.isfinite` for price, quantity,
+19. **Reject non-finite numbers.** The route checks `math.isfinite` for price, quantity,
     stop, risk score, equity, and notional. Do not remove those checks.
-19. **`pnpm lint` is broken by the Next 16 migration.** `pnpm build` passes; fix the
+20. **`pnpm lint` is broken by the Next 16 migration.** `pnpm build` passes; fix the
     script separately.
-20. **Never print resolved Compose output** or commit `.env`.
+21. **Never print resolved Compose output** or commit `.env`.
 
 ---
 
@@ -706,7 +783,7 @@ captured; `.env` may contain live keys.
 A change is not finished until:
 
 - the focused tests pass first,
-- `pytest tests/ -q` passes (current baseline 1088),
+- `pytest tests/ -q` passes (current baseline 1103),
 - coverage stays at or above 78%,
 - `ruff check .` and `ruff format --check .` are clean,
 - `mypy` has no new errors (ideally all 22 are fixed if claiming CI green),
@@ -727,13 +804,19 @@ durable paper ledger, `PaperTradingLedger` hydrates the engine cache and writes 
 fill/mark/closure in one transaction with rollback, the API/worker/runner use it, and
 `positions.side` plus cost/margin/equity fields are persisted. P1-B is committed as
 `feat(paper): require approved execution and client order ids`: `/execute` requires typed
-Market Analyst/Quant/Risk approvals, re-runs
-consensus, derives price/size, caps notional at 2% of equity, and rejects duplicate
-`client_order_id`s with 409; `orders.client_order_id` plus a partial unique index and
-migration `0003` back it. Verification today is **1088 tests / 79.92% coverage**, clean
-ruff, 22 pre-existing mypy errors in tests/scripts, a passing frontend build, and real
-PostgreSQL 16 checks for fresh migration, P1-A → `0002` → head, and duplicate rejection
-before/after restart. The next change is **P1-C: row locking or optimistic versions for
-concurrent paper writers**, followed by PostgreSQL CI, role-based live authorization, and
-the shared kill-switch arm epoch. The working tree is clean; the branch is not pushed. Do
-not push, reset, or rewrite history without explicit user approval.
+Market Analyst/Quant/Risk approvals, re-runs consensus, derives price/size, caps notional
+at 2% of equity, and rejects duplicate `client_order_id`s with 409;
+`orders.client_order_id` plus a partial unique index and migration `0003` back it. P1-C is
+committed as `fix(paper): serialize ledger writers with an advisory lock`: every paper write
+takes an in-process cache lock plus a transaction-scoped PostgreSQL advisory lock
+(`pg_try_advisory_xact_lock`) across hydrate → mutate → persist, so API, worker, and runner
+serialize instead of losing updates; a writer that cannot get the lock within 10 s gets 503
+with `Retry-After: 1`.
+Verification today is **1103 tests / 80.08% coverage**, clean ruff, 22 pre-existing mypy
+errors in tests/scripts, a passing frontend build, and real PostgreSQL 16 checks for fresh
+migration, P1-A → `0002` → head, duplicate rejection before/after restart, concurrent
+fills, a held lock, lock release, and a cancelled writer. The next change is **P1.4:
+automated PostgreSQL integration test in CI**, then **P1.6 role authorization**, then
+**P1.5 health/metrics**; run the Phase 1 exit criterion against a Compose stack before
+calling Phase 1 done. The branch is not pushed. Do not push, reset, or rewrite history
+without explicit user approval.

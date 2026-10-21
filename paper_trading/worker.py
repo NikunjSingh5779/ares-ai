@@ -86,12 +86,12 @@ class PaperTradingWorker:
     async def _tick(self) -> None:
         """Single iteration of the polling loop."""
         # 1. Get unique symbols with open positions. When a ledger is wired,
-        # hydrate first so a process that has been idle sees fills written by
-        # the API or runner.
+        # hydrate under its cache lock so a concurrent fill cannot be observed
+        # halfway through.
         if self.ledger is not None:
-            await self.ledger.refresh()
-        open_positions = self.engine.get_open_positions()
-        symbols = list({pos.symbol for pos in open_positions})
+            symbols = await self.ledger.get_open_position_symbols()
+        else:
+            symbols = sorted({pos.symbol for pos in self.engine.get_open_positions()})
 
         if not symbols:
             return

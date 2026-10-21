@@ -43,7 +43,13 @@ caller-supplied price or quantity and has no manual bypass.
 The ledger refreshes the in-memory `PaperTradingEngine` cache from
 `PaperLedgerRepository` (`paper_trading/repository.py`), lets the engine fill with
 configured commission and adverse slippage, then writes the position, orders, trade
-history, and portfolio in one PostgreSQL transaction. `client_order_id` is checked before
+history, and portfolio in one PostgreSQL transaction. Every write runs inside two locks:
+an in-process `asyncio.Lock` around the shared cache, and a PostgreSQL
+transaction-scoped advisory lock (`pg_try_advisory_xact_lock`) held across
+hydrate → mutate → persist. The API, worker, and runner therefore serialize instead of
+overwriting each other's committed state; a writer that cannot get the lock within
+`PAPER_TRADING_WRITER_LOCK_TIMEOUT_SECONDS` fails with 503 instead of mutating stale
+state. `client_order_id` is checked before
 mutation and protected by a partial unique index; duplicates return 409 and never create a
 second position. A failed write or duplicate restores the pre-action engine snapshot; an
 accepted fill with no seeded paper account is rejected instead of being kept only in
@@ -91,7 +97,7 @@ A router may validate and delegate; it must not own portfolio state or exchange 
 
 | Data | Current home | Writers | Risk |
 |---|---|---|---|
-| Paper portfolio/positions | PostgreSQL `portfolio` and `positions` | `PaperTradingLedger` through `PaperLedgerRepository`, used by API, worker, and runner | concurrent processes are still last-writer-wins; `client_order_id` prevents duplicate requests, not lost updates |
+| Paper portfolio/positions | PostgreSQL `portfolio` and `positions` | `PaperTradingLedger` through `PaperLedgerRepository`, used by API, worker, and runner | writes serialize on an advisory lock; `client_order_id` blocks duplicate requests |
 | Paper cache | in-memory `PaperTradingEngine` | hydrated from the ledger before every action; snapshot-restored on write failure | process-local cache only; never the source of truth |
 | Closed paper trades | `trade_history` table | ledger closures and execution-agent fallback | promotion gate reads this table |
 | Pipeline result | module-global `_last_state` | every `/analyze` call | last writer wins; no per-user isolation |
@@ -100,8 +106,9 @@ A router may validate and delegate; it must not own portfolio state or exchange 
 | Schema | `database/schema.sql`, `database/init.sql`, tracked `migrations/versions/` | Alembic / Compose bootstrap | `init.sql` is a byte-identical bootstrap copy; `0001` + `0002` + `0003` are the migration chain |
 
 ADR-005 is implemented for paper state; ADR-014 adds the approved `/execute` contract and
-client-order idempotency. The remaining ownership/isolation issue is the pipeline result
-(ADR-006 / Phase 2), not the paper portfolio.
+client-order idempotency; ADR-015 serializes paper writers across processes. The remaining
+ownership/isolation issue is the pipeline result (ADR-006 / Phase 2), not the paper
+portfolio.
 
 ## 5. Dependency rules (target, enforced by review)
 

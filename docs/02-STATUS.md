@@ -2,25 +2,28 @@
 # Status — verified state
 
 **Last verified:** 2026-10-21
-**Branch:** `fix/orchestration-reliability-frontend` — 5 commits ahead / 4 behind `master`.
+**Branch:** `fix/orchestration-reliability-frontend` — 6 commits ahead / 4 behind `master`.
 P1-A is committed as `9c16122`; P1-B (approved-only `/execute` plus client-order
 idempotency) is committed as `feat(paper): require approved execution and client order
-ids`. The working tree is clean and the branch is not pushed.
+ids`; P1-C (paper writer lock) is committed as `fix(paper): serialize ledger writers with
+an advisory lock`. The branch is not pushed.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
 ## Green
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1088 passed**, 2 warnings |
-| Coverage | `pytest tests/ -q` | **79.92%** (gate 78%) |
+| Test suite | `pytest tests/ -q` | **1103 passed**, 2 warnings |
+| Coverage | `pytest tests/ -q` | **80.08%** (gate 78%) |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
 | Lint | `ruff check .` | clean |
 | Format | `ruff format --check .` | clean |
-| Paper-ledger tests | `pytest tests/test_paper_trading_ledger.py -q` | **21 passed** — hydration, atomic write, duplicate ID, rejection/rollback, restart mid-trade |
-| Trading-route tests | `pytest tests/test_trading_router.py -q` | **16 passed** — approval, derivation, 409/422/503, non-finite rejection |
+| Paper-ledger tests | `pytest tests/test_paper_trading_ledger.py -q` | **34 passed** — hydration, atomic write, duplicate ID, writer lock, rejection/rollback, restart mid-trade |
+| Trading-route tests | `pytest tests/test_trading_router.py -q` | **17 passed** — approval, derivation, 409/422/503, busy-lock retry |
 | Schema tests | `pytest tests/test_schema.py -q` | **15 passed** — ledger/idempotency columns, init/schema parity, migration splitter |
-| Targeted mypy | six P1-B production modules | clean |
+| Worker tests | `pytest tests/test_paper_trading_worker.py -q` | **13 passed** — ledger delegation, locked symbol hydration |
+| Targeted mypy | P1-B/P1-C production modules | clean |
+| PostgreSQL 16 P1-C check | temporary container: concurrent fills, duplicate client ID, held lock → 503-equivalent busy error, released lock retry, cancelled writer | passed; no leaked advisory locks; container and script removed |
 | PostgreSQL 16 P1-B check | temporary container: fresh `upgrade head`, P1-A schema → `stamp 0002` → `upgrade head`, duplicate execute before/after restart | passed; container and temporary scripts removed |
 | Frontend build | `pnpm build` (in `frontend/`) | passed (P1-B client wrapper update) |
 | API ↔ frontend paths | `app.openapi()` vs `src/lib/api.ts` | every path resolves |
@@ -55,8 +58,8 @@ ids`. The working tree is clean and the branch is not pushed.
 | Migration repair | `0001` now splits comments and dollar-quoted PL/pgSQL correctly; `0002` is idempotent because `0001` executes the current schema. The duplicate ignored Alembic head `89145e7e47e6_initial_schema_migration.py` was removed. Real PostgreSQL check: old schema → `stamp 0001` → `upgrade head` backfilled a sell trade to `position_side='short'` and added the columns; fresh `upgrade head` also passed. |
 
 P1-A closes the old “two portfolio sources” and “positions cannot represent shorts” gaps.
-It does **not** make concurrent writers safe: API, worker, and runner still use
-last-writer-wins and have no row lock or optimistic version.
+P1-C closes concurrent-writer safety; API, worker, and runner now serialize on an advisory
+lock instead of overwriting each other.
 
 ## P1-B — approved execution + client-order idempotency (committed, verified 2026-10-21)
 
@@ -73,15 +76,30 @@ last-writer-wins and have no row lock or optimistic version.
 | Real PostgreSQL proof | Fresh `upgrade head` and P1-A schema → `stamp 0002_paper_ledger` → `upgrade head` both produced the column/index. A duplicate `client_order_id` was rejected before and after restart; exactly one order and one open position remained. |
 | Frontend client | `frontend/src/lib/api.ts::executeTrade` now sends the approved-only shape. It remains unused by pages; no UI bypass exists. |
 
-P1-B closes the raw-body `/execute` gap and the duplicate-order half of P1.3. It does
-**not** add row locking or optimistic versions, so simultaneous API/worker/runner writes
-can still lose an update.
+P1-B closes the raw-body `/execute` gap and the duplicate-order half of P1.3. P1-C closes
+the lost-update half.
+
+## P1-C — paper writer serialization (committed, verified 2026-10-21)
+
+| Piece | Evidence |
+|---|---|
+| Cross-process lock | `paper_trading/repository.py::PaperLedgerRepository.writer_lock` acquires `pg_try_advisory_xact_lock` before hydration and holds it through `persist`; the transaction-scoped lock is released by the rollback on context exit. |
+| Bounded wait | The lock is polled until `PAPER_TRADING_WRITER_LOCK_TIMEOUT_SECONDS` (default 10 s). A writer that cannot acquire it raises `PaperLedgerBusyError`; `/execute` returns **503** with `Retry-After: 1`, worker and runner log and retry next tick. |
+| In-process lock | `PaperTradingLedger` wraps every cache read/write in an `asyncio.Lock`, so a reader cannot re-hydrate the shared engine between another handler's mutation and its commit. |
+| Worker read path | `PaperTradingWorker` uses `PaperTradingLedger.get_open_position_symbols()` instead of refreshing then reading the engine directly. |
+| Schema unchanged | No migration; `alembic heads` remains `0003_order_idempotency`. |
+| Real PostgreSQL proof | Two concurrent fills on different symbols both persisted (2 positions, 2 orders, cash 78 000). Concurrent duplicate `client_order_id` → exactly one accepted, one `PaperOrderConflictError`, 1 order/1 position. A held advisory lock → `PaperLedgerBusyError` with no mutation; after release the retry succeeded. A cancelled writer released the lock (no advisory locks remained). |
+
+P1-C closes the concurrent-writer gap for paper state. The lock is database-wide, not
+per-account; that is acceptable at single-user scale. Reads do not take the advisory lock
+because each process has its own cache. Role authorization (P1.6) and a signed signal
+token (P2) remain open.
 
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
 |---|---|---|---|
-| 1 | Concurrent paper-ledger writes are last-writer-wins | API, worker, and runner each refresh then persist; `client_order_id` prevents duplicate requests, but there is no row lock or optimistic version. A simultaneous fill/mark can overwrite the other process. | P1 |
+| 1 | ~~Concurrent paper-ledger writes are last-writer-wins~~ | Closed by P1-C: writers serialize on `pg_try_advisory_xact_lock` across API/worker/runner, with an in-process cache lock. Busy writers fail closed with 503. | ~~P1~~ fixed |
 | 2 | `/execute` trusts the authenticated caller's agent payload | The server recomputes consensus and caps size, but an API-key holder can supply synthetic Market Analyst/Quant/Risk outputs. There is no signed or expiring signal token. The API key remains the trust boundary. | P2 |
 | 3 | No role-based authorization on trading/live routes | any valid API key or JWT reaches live controls; single-user bootstrap limits exposure, but a seeded non-admin JWT is operator-level. | P1 |
 | 4 | `mypy` fails | **22 errors in 8 files**, all in `tests/` + `scripts/` (6 in `test_test_free_models.py`, 4 in `test_error_handlers.py`, 3 in `test_analysis_router.py`, 3 in `test_paper_trading_worker.py`, 2 in `test_supervisor.py`, 2 in `scripts/test_free_models.py`, 1 each in `test_safety_edge_cases.py` and `test_engine_edge_cases.py`) | P1 (CI red) |

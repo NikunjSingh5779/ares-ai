@@ -30,5 +30,5 @@ Full suite green, `ruff check .`, `mypy .`, and no new warnings.
 ## Known gaps
 No full-pipeline e2e with a fake LLM. The route-auth test enumerates `/api/v1`;
 `/users/*` and `/auth/verify` are covered by per-route dependencies. PostgreSQL
-integration (including duplicate `client_order_id` races) is still a manual check, not a
-CI job.
+integration (duplicate `client_order_id` races and the writer advisory lock) is still a
+manual check, not a CI job.

@@ -24,7 +24,12 @@ from configs.settings import settings
 from database.connection import async_session_factory
 from paper_trading.engine import ClosedTrade, PaperPosition, PaperTradingEngine
 from paper_trading.ledger import PaperTradingLedger
-from paper_trading.repository import PaperLedgerError, PaperLedgerRepository, PaperOrderConflictError
+from paper_trading.repository import (
+    PaperLedgerBusyError,
+    PaperLedgerError,
+    PaperLedgerRepository,
+    PaperOrderConflictError,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["trading"])
 
@@ -46,6 +51,7 @@ def get_paper_trading_ledger() -> PaperTradingLedger:
         _ledger = PaperTradingLedger(
             engine=_engine,
             repository=PaperLedgerRepository(async_session_factory),
+            writer_timeout_seconds=settings.paper_trading_writer_lock_timeout_seconds,
         )
     return _ledger
 
@@ -208,6 +214,12 @@ async def execute(payload: ExecuteTradeRequest) -> dict[str, Any]:
         )
     except PaperOrderConflictError as exc:
         raise HTTPException(status_code=409, detail="client_order_id has already been used") from exc
+    except PaperLedgerBusyError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Paper ledger is busy; retry shortly",
+            headers={"Retry-After": "1"},
+        ) from exc
     except PaperLedgerError as exc:
         raise HTTPException(status_code=503, detail="Paper ledger unavailable") from exc
 

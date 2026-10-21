@@ -11,7 +11,9 @@ Completed 2026-10-21: **0.1 auth**, **0.2 one live-order path + fail-closed kill
 **0.5 production config enforcement**. Phase 0 is closed. P1-A (durable paper ledger)
 was committed as `9c16122` on 2026-10-21; P1-B (approved `/execute` plus client-order
 idempotency) followed in the next commit, `feat(paper): require approved execution and
-client order ids`. The remaining release risk in Phase 1 is concurrent-writer safety.
+client order ids`. P1-C (paper writer serialization) is committed as `fix(paper): serialize
+ledger writers with an advisory lock`; the remaining Phase 1 release risk is the missing
+automated PostgreSQL CI and role checks.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
@@ -33,20 +35,26 @@ P1-B is committed (`feat(paper): require approved execution and client order ids
 `/execute` requires typed Market Analyst/Quant/Risk
 approvals, the server re-runs consensus and derives price/size, and `client_order_id`
 rejects duplicates with **409**. Tests and a real-PostgreSQL duplicate/restart check pass.
-It does not add row locking or optimistic versions.
+
+P1-C is committed (`fix(paper): serialize ledger writers with an advisory lock`): paper
+writes take an in-process cache lock and a transaction-scoped PostgreSQL advisory lock
+across hydrate → mutate → persist, so API, worker, and runner cannot lose each other's
+updates. A writer that cannot get the lock within 10 s fails closed with **503**.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
 | 1.1 | Durable paper ledger, hydration, atomic persistence | `paper_trading/repository.py`, `paper_trading/ledger.py`, `paper_trading/engine.py`, `paper_trading/worker.py`, `backend/routers/trading.py`, `scripts/run_live.py`, schema/migrations | Restart preserves portfolio, positions, trades, and equity; failed writes restore the cache | **Done (P1-A)** |
 | 1.2 | Secure `/execute`: require an approved signal/risk payload or explicitly mark manual paper trades | `backend/routers/trading.py`, `agents/execution.py`, schemas | A request without approval cannot create a position; manual trades are labeled/excluded from promotion | **Done (P1-B, approved-only; no manual path)** |
-| 1.3 | Order idempotency + concurrent-writer safety | ledger/repository, order schema | Duplicate client order IDs are rejected; row locking or optimistic versions prevent lost updates across API/worker/runner | **Partial (P1-B): duplicate IDs rejected; row locking/versioning pending (P1-C)** |
+| 1.3 | Order idempotency + concurrent-writer safety | ledger/repository, order schema | Duplicate client order IDs are rejected; row locking or optimistic versions prevent lost updates across API/worker/runner | **Done (P1-B duplicates, P1-C writer lock)** |
 | 1.4 | PostgreSQL integration test in CI | `tests/`, CI workflow | Testcontainers/Compose runs hydrate → fill → restart → close on a real database | Pending |
 | 1.5 | `/health` returns 503 when degraded; real Prometheus metrics | `backend/main.py`, `backend/core/metrics.py` | Compose healthchecks use the enriched health signal; `/api/v1/metrics` no longer reads `_last_state` | Pending |
 | 1.6 | Role-based authorization for trading/live controls | auth/JWT/API-key mapping, route tests | Viewer cannot trade; operator/admin required for live start/kill/arm/mode changes | Pending |
 
 **Exit:** restart the stack mid-trade; portfolio, open positions, and promotion record are identical before and after, and no concurrent write can silently lose a fill.
-P1-B satisfies the restart and duplicate-order portions. The exit remains open until
-P1-C adds row locking or optimistic versions for concurrent API/worker/runner writes.
+P1-B satisfies the restart and duplicate-order portions; P1-C satisfies the lost-update
+portion. The Phase 1 exit stays open only because the statement has not been re-run against
+a running Compose stack with the lock in place, and P1.4's automated PostgreSQL test does
+not exist yet.
 
 ## Phase 2 — product realism and UI
 
@@ -75,7 +83,7 @@ P1-C adds row locking or optimistic versions for concurrent API/worker/runner wr
 ## Phase 3 — hygiene
 
 - Fix the 22 mypy errors (all in tests/scripts); keep CI green.
-- Re-verify README numbers (1088 / 79.92%) and roadmap status.
+- Re-verify README numbers (1103 / 80.08%) and roadmap status.
 - Improvement engine: persist history, rename “win rate”, remove the 75% consensus suggestion.
 - Add Prometheus alert rules; remove duplicate monitoring configs.
 - Prune stale branches and land Dependabot PRs.

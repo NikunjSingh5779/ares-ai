@@ -8,10 +8,11 @@
 **Homes:**
 - `paper_trading/engine.py` — `PaperPosition`, `ClosedTrade`, `PortfolioSummary`,
   cash, equity, marks, commissions, margin, snapshot/restore.
-- `paper_trading/repository.py` — `PaperLedgerRepository`; hydration and one-transaction
-  writes for portfolio/positions/orders/history.
-- `paper_trading/ledger.py` — `PaperTradingLedger`; refresh → mutate → persist, with
-  cache rollback on failure.
+- `paper_trading/repository.py` — `PaperLedgerRepository`; hydration, one-transaction
+  writes for portfolio/positions/orders/history, and `writer_lock()` (transaction-scoped
+  PostgreSQL advisory lock that serializes API/worker/runner writers).
+- `paper_trading/ledger.py` — `PaperTradingLedger`; refresh → mutate → persist under an
+  in-process cache lock and the repository writer lock, with cache rollback on failure.
 - `paper_trading/worker.py` — SL/TP polling; delegates candle processing to the ledger.
 - `backend/routers/trading.py` — ledger factory + `/portfolio`, `/positions`, `/orders`,
   approved-only `/execute` with server-side consensus/risk checks and 2% notional cap.
@@ -35,7 +36,9 @@ the same PostgreSQL ledger.
 (`live_trading/engine.py` queries `trade_history` and portfolio drawdown); frontend
 portfolio/paper pages.
 
-**Invariants:** one transaction per fill/mark/closure; cache rollback on failure or
+**Invariants:** one transaction per fill/mark/closure; writers serialize on the advisory
+lock, so a second process waits for the first commit instead of overwriting it; cache
+rollback on failure or
 rejection (a failed reversal keeps the old position); an accepted fill with no seeded
 paper account is rejected; configured fees and adverse
 slippage apply; a candle spanning both levels resolves to the stop;
@@ -47,13 +50,15 @@ before a second position is created.
 - Add a field → DB column + migration + Pydantic model + `to_dict` + frontend type + tests.
 - Change fill logic → `paper_trading/engine.py`, fee/slippage tests, promotion thresholds.
 - Change persistence → `repository.py`, `ledger.py`, `worker.py`, `run_live.py`, schema.
+- Change lock scope or timeout → `repository.py::writer_lock`, `paper_trading_writer_lock_timeout_seconds`,
+  ADR-015, ledger tests; keep the writer paths (execute, candle, worker) inside the lock.
 
 **Tests:** `tests/test_paper_trading.py`, `tests/test_paper_trading_ledger.py`,
 `tests/test_paper_trading_worker.py`, `tests/test_execution_agent.py`,
 `tests/test_trading_router.py`, `tests/test_schema.py`.
 
-**Known gaps:** concurrent API/worker/runner writes are last-writer-wins; `client_order_id`
-prevents duplicate requests but there is no row locking or optimistic version. `/execute`
+**Known gaps:** the advisory lock is database-wide rather than per account (fine at
+single-user scale); reads do not take it because each process has its own cache. `/execute`
 trusts the authenticated caller's agent payload and has no signed/expiring signal token.
 No automated PostgreSQL integration test in CI. Old short **positions** cannot be inferred
 during migration and default to long.

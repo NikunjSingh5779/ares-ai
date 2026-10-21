@@ -366,13 +366,13 @@ class _CapturingSessionFactory:
 async def test_worker_delegates_candle_processing_to_ledger(engine, ingestor, session_factory):
     """When a ledger is wired, the worker must not take the raw-SQL path twice."""
     ledger = MagicMock(spec=PaperTradingLedger)
-    ledger.refresh = AsyncMock(return_value=True)
+    ledger.get_open_position_symbols = AsyncMock(return_value=["BTC-USD"])
     ledger.process_candle = AsyncMock(return_value=[])
     worker = PaperTradingWorker(engine, ingestor, session_factory, poll_interval_seconds=1, ledger=ledger)
 
     await worker._tick()
 
-    ledger.refresh.assert_awaited_once()
+    ledger.get_open_position_symbols.assert_awaited_once()
     ledger.process_candle.assert_awaited_once_with(
         symbol="BTC-USD",
         high=56000.0,

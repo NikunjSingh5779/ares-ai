@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     # 0.001 = 10 bps. Direct engine construction defaults to zero for unit tests.
     paper_trading_commission_pct: float = Field(default=0.001, ge=0.0, lt=1.0)
     paper_trading_slippage_pct: float = Field(default=0.001, ge=0.0, lt=1.0)
+    # How long a paper-ledger writer waits for the cross-process advisory lock
+    # before the operation fails with 503 instead of mutating stale state.
+    paper_trading_writer_lock_timeout_seconds: float = Field(default=10.0, gt=0.0)
     kill_switch_enabled: bool = True
     # Paper-only by default. Live start/execution must be explicitly enabled
     # *and* still pass every live safety gate. Keep false for local runs.

@@ -8,9 +8,11 @@ restart can rebuild the cache from PostgreSQL.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
 
@@ -22,6 +24,12 @@ from paper_trading.engine import ClosedTrade, PaperPosition, PaperTradingEngine
 
 logger = logging.getLogger("ares.paper_trading")
 
+# One advisory-lock key shared by every paper-ledger writer. The value is a
+# fixed arbitrary 64-bit integer; it only has to be stable across processes,
+# not meaningful. 0x41524553_50415045 == b"ARESPAPE".
+PAPER_LEDGER_WRITER_LOCK_KEY = 0x4152455350415045
+WRITER_LOCK_POLL_INTERVAL_SECONDS = 0.05
+
 
 class PaperLedgerError(RuntimeError):
     """Raised when a paper-ledger read or write cannot be completed."""
@@ -29,6 +37,10 @@ class PaperLedgerError(RuntimeError):
 
 class PaperOrderConflictError(PaperLedgerError):
     """Raised when a client order ID was already used for this paper account."""
+
+
+class PaperLedgerBusyError(PaperLedgerError):
+    """Raised when another process holds the paper-ledger writer lock."""
 
 
 def _is_client_order_conflict(exc: IntegrityError) -> bool:
@@ -47,6 +59,63 @@ class PaperLedgerRepository:
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
+
+    @asynccontextmanager
+    async def writer_lock(self, *, timeout_seconds: float = 10.0) -> AsyncIterator[None]:
+        """Serialize paper-ledger writers across processes.
+
+        The lock is a PostgreSQL transaction-scoped advisory lock held for the
+        whole read-modify-write cycle. API, worker, and runner therefore cannot
+        hydrate the same state and then overwrite each other; the second writer
+        waits (bounded by ``timeout_seconds``) and then hydrates the state the
+        first one committed.
+
+        A transaction-scoped lock is used on purpose: SQLAlchemy returns a
+        connection to the pool on COMMIT, so a session-level lock could outlive
+        the operation on a pooled connection. This lock dies with the
+        transaction, which the context manager rolls back on exit, so a
+        cancelled writer cannot wedge the ledger. ``pg_try_advisory_xact_lock``
+        plus polling is used instead of the blocking variant so a stuck writer
+        surfaces as :class:`PaperLedgerBusyError` rather than an unbounded wait.
+        """
+        async with self._session_factory() as session:
+            try:
+                await self._acquire_writer_lock(session, timeout_seconds=timeout_seconds)
+            except PaperLedgerBusyError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - preserve DB failure context
+                raise PaperLedgerError(f"Could not acquire the paper-ledger writer lock: {exc}") from exc
+            try:
+                yield
+            finally:
+                try:
+                    await session.rollback()
+                except Exception:  # noqa: BLE001 - closing the session still ends the transaction
+                    logger.warning(
+                        "Could not roll back the paper-ledger writer-lock transaction; "
+                        "closing the connection will release the lock",
+                        exc_info=True,
+                    )
+
+    @staticmethod
+    async def _acquire_writer_lock(session: AsyncSession, *, timeout_seconds: float) -> None:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(timeout_seconds, 0.0)
+        while True:
+            granted = bool(
+                (
+                    await session.execute(
+                        text("SELECT pg_try_advisory_xact_lock(:key)"),
+                        {"key": PAPER_LEDGER_WRITER_LOCK_KEY},
+                    )
+                ).scalar()
+            )
+            if granted:
+                return
+            if loop.time() >= deadline:
+                await session.rollback()
+                raise PaperLedgerBusyError("Another paper-ledger writer is still running")
+            await asyncio.sleep(WRITER_LOCK_POLL_INTERVAL_SECONDS)
 
     async def client_order_id_exists(self, client_order_id: str) -> bool:
         """Return whether this client order ID is already recorded.

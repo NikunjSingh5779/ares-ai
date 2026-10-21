@@ -72,8 +72,8 @@ fill with no seeded paper account is rejected rather than kept only in memory.
 
 **Consequences:** P1-A is implemented and covered by repository/service/restart tests
 plus a manual PostgreSQL 16 round-trip. API reads now hydrate before responding.
-Concurrent API/worker/runner writes are still last-writer-wins. P1-B adds order
-idempotency, but row locking/optimistic versions remain P1-C. The pipeline result
+Concurrent writes were still last-writer-wins at P1-A; ADR-015 (P1-C) now serializes them.
+P1-B added order idempotency. The pipeline result
 (`_last_state`) is still process-global and is a separate ownership issue.
 
 ---
@@ -206,7 +206,7 @@ signal.
 long/short positions and their cost basis survive restart. The engine still requires
 the process to be constructed with the same configured fee/slippage settings; those
 settings are configuration, not part of the persisted portfolio state. Concurrent
-writers remain last-writer-wins (see ADR-005).
+writers were last-writer-wins through P1-B; ADR-015 (P1-C) now serializes them.
 
 ---
 
@@ -258,7 +258,49 @@ conflicting write restores the hydrated cache snapshot.
 **Consequences:** A request without approvals cannot create a position, and an ambiguous
 retry cannot duplicate a fill. The authenticated API key remains the trust boundary: a
 credential holder can still supply synthetic agent outputs, because there is no signed or
-expiring signal token yet. This decision does not add row locking or optimistic versions;
-concurrent API/worker/runner writers can still lose an update, which is P1-C. Existing
+expiring signal token yet. This decision did not add row locking or optimistic versions;
+concurrent API/worker/runner writers could still lose an update until ADR-015 (P1-C).
+Existing
 deployments must run `alembic upgrade head` for `0003_order_idempotency`. Generated trades
 continue through `/signal`; the frontend wrapper was updated but remains unused by pages.
+
+---
+
+## ADR-015 — Paper writes serialize on a transaction-scoped advisory lock
+**Date:** 2026-10-21 · **Status:** accepted, implemented (P1-C, committed)
+
+**Context:** `PaperTradingLedger` did `hydrate → mutate → persist` with no lock. API, worker,
+and runner each hold a process-local engine cache, so two processes could hydrate the same
+portfolio and then overwrite each other's committed cash, positions, and equity curve.
+`client_order_id` (ADR-014) prevents duplicate requests, not lost updates. A single-process
+cache also races internally: a reader could re-hydrate the engine between another handler's
+mutation and its `persist` call.
+
+**Decision:** Serialize paper writes with two locks taken in the same order:
+
+1. an in-process `asyncio.Lock` in `PaperTradingLedger` around every operation that touches
+   the shared cache (writes, refreshes, and reads that hydrate);
+2. a PostgreSQL **transaction-scoped** advisory lock (`pg_try_advisory_xact_lock`) in
+   `PaperLedgerRepository.writer_lock()`, acquired before hydrate and released by the
+   rollback that ends the context manager.
+
+The advisory lock is polled with a bounded timeout
+(`PAPER_TRADING_WRITER_LOCK_TIMEOUT_SECONDS`, default 10 s); a writer that cannot acquire it
+raises `PaperLedgerBusyError`, which `/execute` maps to **503** with `Retry-After: 1`.
+Worker and runner log the error and retry on their next tick.
+
+A session-level lock (`pg_advisory_lock`) was rejected: SQLAlchemy returns a connection to
+the pool on `COMMIT`, so the matching unlock can run on a different connection and the lock
+then leaks on an idle pooled backend — observed during real-PostgreSQL validation.
+Optimistic version columns were rejected as the primary mechanism because they detect
+conflicts after the engine has already mutated the cache; the lock prevents the conflicting
+read instead.
+
+**Consequences:** API, worker, and runner can no longer lose paper-ledger updates; the second
+writer waits and then hydrates the first writer's committed state. No schema change and no
+migration. The lock is per database, not per paper account, so unrelated paper accounts (when
+seeded) would serialize with each other; acceptable at single-user scale. Throughput is one
+paper write at a time, which is far above the platform's 60-second candle cadence. Reads
+still hydrate their local cache without the advisory lock, which is safe because caches are
+process-local. The pipeline result (`_last_state`) and role authorization remain separate
+issues (ADR-006, P1.6).

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from configs.settings import Settings, settings
 
@@ -33,6 +34,13 @@ def test_paper_accounting_defaults_are_realistic() -> None:
     fields = Settings.model_fields
     assert fields["paper_trading_commission_pct"].default == 0.001
     assert fields["paper_trading_slippage_pct"].default == 0.001
+
+
+def test_paper_writer_lock_timeout_is_positive() -> None:
+    """A non-positive lock timeout would make every paper write fail busy."""
+    assert Settings.model_fields["paper_trading_writer_lock_timeout_seconds"].default == 10.0
+    with pytest.raises(ValidationError):
+        Settings(paper_trading_writer_lock_timeout_seconds=0)
 
 
 def test_production_compose_overlays_enable_production() -> None:

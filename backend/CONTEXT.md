@@ -51,13 +51,14 @@ containing typed Market Analyst, Quant, and Risk approvals plus a required
 fill from the approved `current_price`, derives quantity from
 `risk.max_position_size`, and caps notional at 2% of paper equity. It has no raw
 price/quantity fields and no manual bypass. A duplicate `client_order_id` returns 409;
+a writer-lock timeout returns 503 with `Retry-After: 1`; other
 ledger failures return 503. The normal generated-trade path remains `/signal`.
 
 ## Known gaps
 - `/execute` trusts the authenticated caller's agent payload; there is no signed or
   expiring signal token. The API key remains the trust boundary.
-- Concurrent API/worker/runner paper writes are still last-writer-wins; `client_order_id`
-  does not add row locking or optimistic versions.
+- The paper writer lock is database-wide rather than per account; writes serialize
+  globally, which is fine for a single seeded paper account.
 - `analysis.py` still owns the module-global `_last_state`.
 - `/health` returns 200 even when degraded; `/metrics` product endpoint is derived from
   the last run, not Prometheus counters.

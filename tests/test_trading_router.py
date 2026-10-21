@@ -12,7 +12,7 @@ from agents.state import MarketAnalystOutput, QuantOutput, RiskOutput
 from backend.main import app
 from backend.routers import trading
 from paper_trading.engine import PortfolioSummary
-from paper_trading.repository import PaperLedgerError, PaperOrderConflictError
+from paper_trading.repository import PaperLedgerBusyError, PaperLedgerError, PaperOrderConflictError
 
 
 def _summary(equity: float = 100000.0) -> PortfolioSummary:
@@ -281,3 +281,13 @@ def test_ledger_failure_returns_service_unavailable(client: TestClient, fake_led
     response = client.post("/api/v1/execute", json=_body())
 
     assert response.status_code == 503
+
+
+def test_busy_ledger_returns_retryable_503(client: TestClient, fake_ledger: MagicMock) -> None:
+    fake_ledger.execute_signal = AsyncMock(side_effect=PaperLedgerBusyError("writer is still running"))
+
+    response = client.post("/api/v1/execute", json=_body())
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Paper ledger is busy; retry shortly"
+    assert response.headers["retry-after"] == "1"
