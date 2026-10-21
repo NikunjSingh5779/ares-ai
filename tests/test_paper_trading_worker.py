@@ -13,6 +13,7 @@ import pytest
 from backend.data.ingestor import MarketDataIngestor
 from backend.data.models import MarketDataResult, OHLCVData
 from paper_trading.engine import ClosedTrade, PaperTradingEngine
+from paper_trading.ledger import PaperTradingLedger
 from paper_trading.worker import PaperTradingWorker
 
 
@@ -359,3 +360,24 @@ class _CapturingSessionFactory:
 
     def __call__(self) -> _CapturingSessionContext:
         return _CapturingSessionContext(self._session)
+
+
+@pytest.mark.asyncio
+async def test_worker_delegates_candle_processing_to_ledger(engine, ingestor, session_factory):
+    """When a ledger is wired, the worker must not take the raw-SQL path twice."""
+    ledger = MagicMock(spec=PaperTradingLedger)
+    ledger.refresh = AsyncMock(return_value=True)
+    ledger.process_candle = AsyncMock(return_value=[])
+    worker = PaperTradingWorker(engine, ingestor, session_factory, poll_interval_seconds=1, ledger=ledger)
+
+    await worker._tick()
+
+    ledger.refresh.assert_awaited_once()
+    ledger.process_candle.assert_awaited_once_with(
+        symbol="BTC-USD",
+        high=56000.0,
+        low=49000.0,
+        close=55000.0,
+    )
+    session = session_factory.return_value.__aenter__.return_value
+    session.execute.assert_not_called()

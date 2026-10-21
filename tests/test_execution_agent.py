@@ -445,6 +445,43 @@ class TestExecutionAgent:
         assert result.fill_price == 50500.0
 
 
+class TestExecutionAgentLedgerPath:
+    async def test_uses_ledger_and_skips_direct_persistence(self, mock_live_engine) -> None:
+        """A wired ledger owns the fill transaction; the agent must not write twice."""
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        ledger = MagicMock()
+        ledger.execute_signal = AsyncMock(
+            return_value={
+                "accepted": True,
+                "position_id": "position-1",
+                "reversal": False,
+                "closed_trade": None,
+                "reason": "ok",
+                "fill_price": 50500.0,
+                "quantity": 1.5,
+                "commission": 75.75,
+                "margin": 0.0,
+                "ledger_persisted": True,
+            }
+        )
+        agent = ExecutionAgent(engine=engine, live_engine=mock_live_engine, ledger=ledger)
+
+        result = await agent.process(
+            ExecutionInput(
+                symbol="BTC-USD",
+                candles=default_candles(),
+                market_analyst_output=long_market_analyst(),
+                risk_output=approved_risk_output(),
+            )
+        )
+
+        assert result.executed is True
+        assert result.order_id == "position-1"
+        assert result.fill_price == 50500.0
+        ledger.execute_signal.assert_awaited_once()
+        assert engine.get_open_positions() == []
+
+
 class _FakeResult:
     def __init__(self, value: str = "fake-id") -> None:
         self._value = value

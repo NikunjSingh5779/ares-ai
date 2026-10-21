@@ -41,8 +41,17 @@ imported by domain packages.
 - Any `/api/v1/*` call without a key returns 401; with the default key returns 503.
 - `pytest tests/test_analysis_router.py tests/test_security/ -q`
 
+## Paper trading boundary
+`trading.py` keeps a process-local `PaperTradingEngine` cache but coordinates every
+read/write through `paper_trading.ledger.PaperTradingLedger`; PostgreSQL is the durable
+source. `/portfolio`, `/positions`, and `/orders` hydrate before responding and return
+503 when the ledger is unavailable. `/execute` goes through the ledger and returns 503
+if the paper account is not seeded, rather than accepting an unpersisted trade.
+
 ## Known gaps
-- `trading.py` owns an in-memory portfolio singleton; `analysis.py` owns `_last_state`.
+- `/execute` accepts a raw body and bypasses consensus/risk; it is paper-only but can
+  distort promotion statistics until P1-B.
+- `analysis.py` still owns the module-global `_last_state`.
 - `/health` returns 200 even when degraded; `/metrics` product endpoint is derived from
   the last run, not Prometheus counters.
 - No role-based authorization: any valid API key/JWT reaches trading and live controls.

@@ -268,6 +268,22 @@ class TestReversals:
         summary = engine.get_summary()
         assert summary.open_positions == 1  # Still just the original
 
+    def test_rejected_reversal_keeps_existing_position(self) -> None:
+        """A reversal that cannot fund the new side must not close the old one."""
+        engine = PaperTradingEngine(initial_capital=1000.0)
+        assert engine.execute_signal("BTC-USD", "short", 1.0, 900.0)["accepted"] is True
+        assert engine.execute_signal("ETH-USD", "long", 1.0, 100.0)["accepted"] is True
+
+        # The BTC short is now underwater enough to consume all free margin.
+        engine.mark_to_market("BTC-USD", 1001.0)
+        before = engine.snapshot()
+
+        result = engine.execute_signal("ETH-USD", "short", 1.0, 100.0)
+
+        assert result["accepted"] is False
+        assert result["reason"] == "Insufficient cash"
+        assert engine.snapshot() == before
+
 
 # ---------------------------------------------------------------------------
 # Portfolio summary

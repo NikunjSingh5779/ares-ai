@@ -32,13 +32,17 @@ returns or streams it. The graph order is `PIPELINE_ORDER`; consensus and risk a
 deterministic nodes, not LLM calls.
 
 **Paper execution** (`POST /api/v1/execute`, `scripts/run_live.py`)
-`ExecutionAgent` (`agents/execution.py`) asks `PaperTradingEngine`
-(`paper_trading/engine.py`) to fill with configured commission and adverse slippage,
-then persists the engine's actual fill/quantity via raw SQL. The engine marks open
-positions on every bar and reports equity-based PnL; shorts credit proceeds and report
-100% notional margin. The runner’s poll loop marks candles, checks stop-loss/take-profit,
-writes `trade_history`, and mirrors the engine snapshot to the DB portfolio
-(`paper_trading/worker.py`).
+`ExecutionAgent` (`agents/execution.py`) calls `PaperTradingLedger`
+(`paper_trading/ledger.py`). The ledger refreshes the in-memory `PaperTradingEngine`
+cache from `PaperLedgerRepository` (`paper_trading/repository.py`), lets the engine fill
+with configured commission and adverse slippage, then writes the position, orders,
+trade history, and portfolio in one PostgreSQL transaction. A failed write restores the
+pre-action engine snapshot; an accepted fill with no seeded paper account is rejected
+instead of being kept only in memory. The engine marks open positions on every bar and
+reports equity-based PnL; shorts credit proceeds and report 100% notional margin.
+`paper_trading/worker.py` and the runner poll loop process candles through the same
+ledger, so stop-loss/take-profit closures and marks are durable. API reads hydrate from
+the ledger before returning.
 
 **Live execution** (`/api/v1/live/*`, `scripts/run_live.py`)
 `ExecutionAgent` → `LiveTradingEngine.execute_signal()` → safety gates
@@ -75,19 +79,20 @@ slippage modelled; entry at next candle open when no fixed price).
 Rule of thumb: **routers translate, domain modules decide, agents interpret.**
 A router may validate and delegate; it must not own portfolio state or exchange calls.
 
-## 4. Data ownership (current, not target)
+## 4. Data ownership (current)
 
-| Data | Current home | Also written by | Risk |
+| Data | Current home | Writers | Risk |
 |---|---|---|---|
-| Paper portfolio/positions | in-memory `PaperTradingEngine` singleton | runner process has a second engine; DB `portfolio`/`positions` are projections | restart loses state; UI and DB disagree |
-| Closed paper trades | `trade_history` table | worker SL/TP closures + agent reversals | promotion gate reads this table; `positions` has no side column |
+| Paper portfolio/positions | PostgreSQL `portfolio` and `positions` | `PaperTradingLedger` through `PaperLedgerRepository`, used by API, worker, and runner | concurrent processes are still last-writer-wins; no row lock or idempotency |
+| Paper cache | in-memory `PaperTradingEngine` | hydrated from the ledger before every action; snapshot-restored on write failure | process-local cache only; never the source of truth |
+| Closed paper trades | `trade_history` table | ledger closures and execution-agent fallback | promotion gate reads this table |
 | Pipeline result | module-global `_last_state` | every `/analyze` call | last writer wins; no per-user isolation |
 | Live orders | exchange + `OrderAuditor` | `LiveTradingEngine.execute_signal` only | single path; kill switch is shared Redis state |
 | Model roster | `configs/models.yaml` | — | validated free IDs + universal fallback appended by `AgentModelConfig` |
-| Schema | `database/schema.sql`, `database/init.sql`, `migrations/` | — | three sources; migrations untracked |
+| Schema | `database/schema.sql`, `database/init.sql`, tracked `migrations/versions/` | Alembic / Compose bootstrap | `init.sql` is a byte-identical bootstrap copy; `0001` + `0002` are the migration chain |
 
-Target ownership is decided in ADR-005/006 and implemented in Phase 1 of
-`05-NEXT.md`. Until then, treat the table above as the truth.
+ADR-005 is implemented for paper state. The remaining ownership/isolation issue is the
+pipeline result (ADR-006 / Phase 2), not the paper portfolio.
 
 ## 5. Dependency rules (target, enforced by review)
 

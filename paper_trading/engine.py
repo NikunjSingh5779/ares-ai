@@ -14,6 +14,8 @@ Usage::
 
 from __future__ import annotations
 
+import copy
+import math
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -58,6 +60,7 @@ class ClosedTrade:
     strategy_name: str = ""
     entry_commission: float = 0.0
     exit_commission: float = 0.0
+    position_id: str = ""
 
 
 @dataclass
@@ -170,24 +173,38 @@ class PaperTradingEngine:
         # Check for existing position in the same symbol
         existing = self._find_position(symbol)
 
-        if existing is not None:
-            if existing.side == side:
-                # Same direction — ignore
-                return {"accepted": False, "reason": f"Already in {side} position for {symbol}"}
+        if existing is not None and existing.side == side:
+            # Same direction — ignore
+            return {"accepted": False, "reason": f"Already in {side} position for {symbol}"}
 
-            # Opposite direction — close existing, open new
-            closed = self.close_position(existing.id, entry_price, exit_reason="signal")
-            result["reversal"] = True
-            if closed is not None:
-                result["closed_trade"] = self._trade_to_dict(closed)
-
-        # Apply adverse slippage to the signal price. A long pays up; a short
-        # receives less. This is the actual fill recorded on the position.
+        # Apply adverse slippage to the signal price before mutating anything.
+        # A long pays up; a short receives less. This is the actual fill
+        # recorded on the position.
         fill_price = (
             entry_price * (1.0 + self._slippage_pct) if side == "long" else entry_price * (1.0 - self._slippage_pct)
         )
         if fill_price <= 0:
             return {"accepted": False, "reason": "Invalid fill price after slippage"}
+
+        # Reversals close first because the freed cash/margin determines the
+        # new position's buying power. Keep a light rollback of the fields
+        # close_position() touches so a rejected reversal cannot leave the
+        # existing position silently closed.
+        reversal_state: tuple[float, list[PaperPosition], int, int, dict[str, float]] | None = None
+        if existing is not None:
+            reversal_state = (
+                self._cash,
+                list(self._positions),
+                len(self._closed_trades),
+                len(self._equity_curve),
+                dict(self._last_prices),
+            )
+            closed = self.close_position(existing.id, entry_price, exit_reason="signal")
+            if closed is None:
+                self._restore_reversal_state(reversal_state)
+                return {"accepted": False, "reason": "Could not close existing position"}
+            result["reversal"] = True
+            result["closed_trade"] = self._trade_to_dict(closed)
 
         # Longs are limited by free cash and by equity not already reserved as
         # short margin. Shorts require 100% notional margin, so their notional
@@ -199,6 +216,8 @@ class PaperTradingEngine:
         max_affordable = max(buying_power, 0.0) / (fill_price * (1.0 + self._commission_pct))
         actual_quantity = min(quantity, max_affordable)
         if actual_quantity <= 0:
+            if reversal_state is not None:
+                self._restore_reversal_state(reversal_state)
             return {"accepted": False, "reason": "Insufficient cash"}
 
         notional = actual_quantity * fill_price
@@ -235,6 +254,18 @@ class PaperTradingEngine:
         result["margin"] = margin
 
         return result
+
+    def _restore_reversal_state(
+        self,
+        state: tuple[float, list[PaperPosition], int, int, dict[str, float]],
+    ) -> None:
+        """Undo a provisional reversal close after the new fill is rejected."""
+        cash, positions, closed_count, curve_count, last_prices = state
+        self._cash = cash
+        self._positions = positions
+        del self._closed_trades[closed_count:]
+        del self._equity_curve[curve_count:]
+        self._last_prices = last_prices
 
     def close_position(
         self,
@@ -299,6 +330,7 @@ class PaperTradingEngine:
                     strategy_name=pos.strategy_name,
                     entry_commission=pos.entry_commission,
                     exit_commission=exit_commission,
+                    position_id=pos.id,
                 )
                 self._closed_trades.append(trade)
                 self._last_prices.pop(pos.symbol, None)
@@ -403,6 +435,79 @@ class PaperTradingEngine:
             equity=round(equity, 2),
             margin_used=round(margin_used, 2),
         )
+
+    # ------------------------------------------------------------------
+    # Durable-ledger support
+    # ------------------------------------------------------------------
+
+    def get_open_positions(self) -> list[PaperPosition]:
+        """Return a copy of the open-position list for persistence/read APIs."""
+        return list(self._positions)
+
+    def get_closed_trades(self) -> list[ClosedTrade]:
+        """Return a copy of the closed-trade list for persistence/read APIs."""
+        return list(self._closed_trades)
+
+    def get_equity_curve(self) -> list[float]:
+        """Return a copy of the equity curve (one point per mark/closure)."""
+        return list(self._equity_curve)
+
+    def get_last_prices(self) -> dict[str, float]:
+        """Return a copy of the latest marks."""
+        return dict(self._last_prices)
+
+    def snapshot(self) -> dict[str, Any]:
+        """Capture the mutable state needed to roll back a failed DB write."""
+        return {
+            "cash": self._cash,
+            "positions": copy.deepcopy(self._positions),
+            "closed_trades": copy.deepcopy(self._closed_trades),
+            "equity_curve": list(self._equity_curve),
+            "last_prices": dict(self._last_prices),
+        }
+
+    def restore_snapshot(self, snapshot: dict[str, Any]) -> None:
+        """Restore a snapshot produced by :meth:`snapshot`."""
+        self.restore_state(
+            cash=float(snapshot["cash"]),
+            positions=snapshot["positions"],
+            closed_trades=snapshot["closed_trades"],
+            equity_curve=snapshot["equity_curve"],
+            last_prices=snapshot["last_prices"],
+        )
+
+    def restore_state(
+        self,
+        *,
+        cash: float,
+        positions: list[PaperPosition],
+        closed_trades: list[ClosedTrade],
+        equity_curve: list[float],
+        last_prices: dict[str, float] | None = None,
+        initial_capital: float | None = None,
+    ) -> None:
+        """Hydrate an engine from a durable ledger snapshot.
+
+        The constructor owns the initial capital; this method is the only
+        supported way to replace the in-memory cache with persisted state.
+        """
+        if initial_capital is not None:
+            self._initial_capital = max(float(initial_capital), 1000.0)
+        self._cash = float(cash)
+        self._positions = copy.deepcopy(positions)
+        self._closed_trades = copy.deepcopy(closed_trades)
+        self._last_prices = dict(last_prices or {})
+
+        curve = [float(point) for point in equity_curve]
+        if not curve:
+            curve = [self._initial_capital]
+        self._equity_curve = curve
+
+        # Include the current mark in the drawdown series without creating a
+        # duplicate point on every process refresh.
+        current_equity = self._compute_equity()
+        if not math.isclose(self._equity_curve[-1], current_equity, rel_tol=1e-9, abs_tol=0.01):
+            self._equity_curve.append(current_equity)
 
     def reset(self) -> None:
         """Reset the portfolio to its initial state."""

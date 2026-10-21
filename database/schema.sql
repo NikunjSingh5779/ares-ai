@@ -1,7 +1,7 @@
 -- =============================================================================
 -- ARES AI — Database Schema (PostgreSQL 16+)
 -- =============================================================================
--- All 17 tables for the ARES AI trading platform.
+-- All 18 tables for the ARES AI trading platform.
 -- Run this against a fresh PostgreSQL 16+ database to initialize.
 -- =============================================================================
 
@@ -47,13 +47,16 @@ CREATE TABLE accounts (
 CREATE TABLE portfolio (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    initial_capital NUMERIC(20, 8) NOT NULL DEFAULT 100000,
     total_value NUMERIC(20, 8) NOT NULL DEFAULT 0,
     cash_balance NUMERIC(20, 8) NOT NULL DEFAULT 0,
     invested_amount NUMERIC(20, 8) NOT NULL DEFAULT 0,
     unrealized_pnl NUMERIC(20, 8) NOT NULL DEFAULT 0,
     realized_pnl NUMERIC(20, 8) NOT NULL DEFAULT 0,
+    margin_used NUMERIC(20, 8) NOT NULL DEFAULT 0,
     roi_pct NUMERIC(10, 4) NOT NULL DEFAULT 0,
     max_drawdown_pct NUMERIC(10, 4) NOT NULL DEFAULT 0,
+    equity_curve JSONB NOT NULL DEFAULT '[]'::jsonb,
     currency VARCHAR(10) NOT NULL DEFAULT 'USD',
     last_rebalanced_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -66,8 +69,12 @@ CREATE TABLE positions (
     symbol VARCHAR(20) NOT NULL,
     asset_type VARCHAR(20) NOT NULL
         CHECK (asset_type IN ('crypto', 'stock', 'forex', 'commodity', 'etf', 'option')),
+    side VARCHAR(10) NOT NULL DEFAULT 'long'
+        CHECK (side IN ('long', 'short')),
     quantity NUMERIC(20, 8) NOT NULL DEFAULT 0,
     entry_price NUMERIC(20, 8) NOT NULL DEFAULT 0,
+    entry_commission NUMERIC(20, 8) NOT NULL DEFAULT 0,
+    margin NUMERIC(20, 8) NOT NULL DEFAULT 0,
     current_price NUMERIC(20, 8) NOT NULL DEFAULT 0,
     market_value NUMERIC(20, 8) NOT NULL DEFAULT 0,
     unrealized_pnl NUMERIC(20, 8) NOT NULL DEFAULT 0,
@@ -152,15 +159,20 @@ CREATE TABLE trade_history (
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     signal_id UUID REFERENCES signals(id),
     symbol VARCHAR(20) NOT NULL,
+    position_side VARCHAR(10) NOT NULL DEFAULT 'long'
+        CHECK (position_side IN ('long', 'short')),
     side VARCHAR(10) NOT NULL CHECK (side IN ('buy', 'sell')),
     quantity NUMERIC(20, 8) NOT NULL,
     entry_price NUMERIC(20, 8) NOT NULL,
     exit_price NUMERIC(20, 8),
+    entry_commission NUMERIC(20, 8) NOT NULL DEFAULT 0,
+    exit_commission NUMERIC(20, 8) NOT NULL DEFAULT 0,
     entry_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     exit_at TIMESTAMPTZ,
     pnl NUMERIC(20, 8),
     pnl_pct NUMERIC(10, 4),
     roi_pct NUMERIC(10, 4),
+    exit_reason VARCHAR(30) NOT NULL DEFAULT 'signal',
     is_closed BOOLEAN NOT NULL DEFAULT false,
     strategy_name VARCHAR(100),
     agent_rationale JSONB,

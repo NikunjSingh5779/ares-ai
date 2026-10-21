@@ -13,7 +13,7 @@ Per AGENT I/O CONTRACTS (see CLAUDE.md):
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -26,6 +26,9 @@ from configs.settings import settings
 from live_trading.engine import LiveTradingEngine
 from live_trading.safety import TradingMode
 from paper_trading.engine import PaperTradingEngine
+
+if TYPE_CHECKING:
+    from paper_trading.ledger import PaperTradingLedger
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +87,14 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         engine: PaperTradingEngine,
         session_factory: async_sessionmaker[AsyncSession] | None = None,
         live_engine: LiveTradingEngine | None = None,
+        ledger: PaperTradingLedger | None = None,
         context: AgentContext | None = None,
     ) -> None:
         super().__init__(context=context)
         self.engine = engine
         self.live_engine = live_engine
         self.session_factory = session_factory
+        self.ledger = ledger
 
     async def _get_default_ids(self, session: AsyncSession) -> tuple[str, str] | None:
         account_id = (await session.execute(text("SELECT id FROM accounts WHERE exchange='paper' LIMIT 1"))).scalar()
@@ -233,15 +238,26 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         # PAPER EXECUTION (the live-execution branch above always returns,
         # so control only reaches here for paper trades — but the block is
         # scoped explicitly rather than relying on that as an invariant.)
-        result = self.engine.execute_signal(
-            symbol=inputs.symbol,
-            side=direction,
-            quantity=quantity,
-            entry_price=fill_price,
-            stop_loss=stop_loss,
-            take_profit=None,
-            strategy_name=strategy_name,
-        )
+        if self.ledger is not None:
+            result = await self.ledger.execute_signal(
+                symbol=inputs.symbol,
+                side=direction,
+                quantity=quantity,
+                entry_price=fill_price,
+                stop_loss=stop_loss,
+                take_profit=None,
+                strategy_name=strategy_name,
+            )
+        else:
+            result = self.engine.execute_signal(
+                symbol=inputs.symbol,
+                side=direction,
+                quantity=quantity,
+                entry_price=fill_price,
+                stop_loss=stop_loss,
+                take_profit=None,
+                strategy_name=strategy_name,
+            )
         if not result.get("accepted", False):
             return ExecutionOutput(
                 executed=False,
@@ -262,17 +278,23 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
             parts.append(f"Closed previous trade with PnL=${pnl:.2f}")
 
         # --- Persist to DB ---
-        await self._persist_paper_trade(
-            inputs=inputs,
-            position_id=position_id,
-            quantity=actual_quantity,
-            fill_price=actual_fill_price,
-            stop_loss=stop_loss,
-            strategy_name=strategy_name,
-            reversal=bool(result.get("reversal")),
-            closed_trade=closed_trade,
-            parts=parts,
-        )
+        # The ledger path already wrote the fill, reversal, and portfolio in
+        # one transaction. The fallback keeps direct-engine callers working.
+        if self.ledger is None:
+            await self._persist_paper_trade(
+                inputs=inputs,
+                position_id=position_id,
+                quantity=actual_quantity,
+                fill_price=actual_fill_price,
+                stop_loss=stop_loss,
+                strategy_name=strategy_name,
+                side=direction,
+                entry_commission=float(result.get("commission", 0.0)),
+                margin=float(result.get("margin", 0.0)),
+                reversal=bool(result.get("reversal")),
+                closed_trade=closed_trade,
+                parts=parts,
+            )
 
         return ExecutionOutput(
             executed=True,
@@ -291,6 +313,9 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         fill_price: float,
         stop_loss: float | None,
         strategy_name: str,
+        side: str,
+        entry_commission: float,
+        margin: float,
         reversal: bool,
         closed_trade: dict[str, Any] | None,
         parts: list[str],
@@ -315,12 +340,21 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                     await session.execute(
                         text("""
                         UPDATE positions
-                        SET is_open = false, closed_at = NOW()
+                        SET is_open = false, closed_at = :closed_at,
+                            current_price = :exit_price, market_value = 0,
+                            unrealized_pnl = 0, unrealized_pnl_pct = 0
                         WHERE symbol = :symbol
+                          AND side = :side
                           AND is_open = true
                           AND portfolio_id = :portfolio_id
                     """),
-                        {"symbol": inputs.symbol, "portfolio_id": portfolio_id},
+                        {
+                            "symbol": inputs.symbol,
+                            "portfolio_id": portfolio_id,
+                            "side": closed_trade.get("side", "long"),
+                            "closed_at": closed_trade.get("exit_at"),
+                            "exit_price": closed_trade.get("exit_price"),
+                        },
                     )
                     # trade_history.side is constrained to buy/sell while the
                     # engine records long/short. Map at the persistence boundary.
@@ -329,28 +363,35 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                         text("""
                         INSERT INTO trade_history
                         (
-                            account_id, symbol, side, quantity, entry_price,
-                            exit_price, entry_at, exit_at, pnl, pnl_pct,
-                            is_closed, strategy_name
+                            account_id, symbol, position_side, side, quantity,
+                            entry_price, exit_price, entry_at, exit_at, pnl,
+                            pnl_pct, is_closed, strategy_name, entry_commission,
+                            exit_commission, exit_reason
                         )
                         VALUES
                         (
-                            :account_id, :symbol, :side, :quantity, :entry_price,
-                            :exit_price, :entry_at, NOW(), :pnl, :pnl_pct,
-                            true, :strategy_name
+                            :account_id, :symbol, :position_side, :side, :quantity,
+                            :entry_price, :exit_price, :entry_at, :exit_at, :pnl,
+                            :pnl_pct, true, :strategy_name, :entry_commission,
+                            :exit_commission, :exit_reason
                         )
                     """),
                         {
                             "account_id": account_id,
                             "symbol": closed_trade.get("symbol"),
+                            "position_side": closed_trade.get("side", "long"),
                             "side": db_side,
                             "quantity": closed_trade.get("quantity"),
                             "entry_price": closed_trade.get("entry_price"),
                             "exit_price": closed_trade.get("exit_price"),
                             "entry_at": closed_trade.get("entry_at"),
+                            "exit_at": closed_trade.get("exit_at"),
                             "pnl": closed_trade.get("pnl"),
                             "pnl_pct": closed_trade.get("pnl_pct"),
                             "strategy_name": closed_trade.get("strategy_name", ""),
+                            "entry_commission": closed_trade.get("entry_commission", 0.0),
+                            "exit_commission": closed_trade.get("exit_commission", 0.0),
+                            "exit_reason": closed_trade.get("exit_reason", "signal"),
                         },
                     )
                 # Insert new position
@@ -358,23 +399,26 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                     text("""
                     INSERT INTO positions
                     (
-                        id, portfolio_id, symbol, asset_type, quantity,
-                        entry_price, current_price, market_value, stop_loss,
-                        take_profit, strategy_name
+                        id, portfolio_id, symbol, asset_type, side, quantity,
+                        entry_price, entry_commission, margin, current_price,
+                        market_value, stop_loss, take_profit, strategy_name
                     )
                     VALUES
                     (
-                        :id, :portfolio_id, :symbol, 'crypto', :quantity,
-                        :entry_price, :entry_price, :market_value, :stop_loss,
-                        :take_profit, :strategy_name
+                        :id, :portfolio_id, :symbol, 'crypto', :side, :quantity,
+                        :entry_price, :entry_commission, :margin, :entry_price,
+                        :market_value, :stop_loss, :take_profit, :strategy_name
                     )
                 """),
                     {
                         "id": position_id,
                         "portfolio_id": portfolio_id,
                         "symbol": inputs.symbol,
+                        "side": side,
                         "quantity": quantity,
                         "entry_price": fill_price,
+                        "entry_commission": entry_commission,
+                        "margin": margin,
                         "market_value": quantity * fill_price,
                         "stop_loss": stop_loss,
                         "take_profit": None,

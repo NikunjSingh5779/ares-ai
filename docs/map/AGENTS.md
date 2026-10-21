@@ -14,7 +14,7 @@ the tests that catch a break. They do not duplicate code.
 | Object | Card | Home |
 |---|---|---|
 | Agent state and every agent output | `objects/agent-state.md` | `agents/state.py` |
-| Portfolio, position, order, paper record | `objects/portfolio.md` | `paper_trading/engine.py`, DB tables |
+| Portfolio, position, order, paper record | `objects/portfolio.md` | `paper_trading/engine.py`, `repository.py`, `ledger.py`, DB tables |
 | Model roster, fallback chain, breaker | `objects/model-roster.md` | `configs/models.yaml`, `agents/router.py` |
 
 ## Processes (movements)

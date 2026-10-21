@@ -56,17 +56,25 @@ with a date. Roadmap rows are historical; they do not override status.
 
 ---
 
-## ADR-005 — One portfolio source of truth (accepted, implementation pending)
-**Date:** 2026-10-20 · **Status:** accepted, **not implemented**
+## ADR-005 — One portfolio source of truth (accepted, implemented 2026-10-21)
+**Date:** 2026-10-20 · **Status:** accepted, **implemented for paper state**
 
-**Context:** The API keeps an in-memory `PaperTradingEngine` while the runner and DB
-hold separate state. A restart silently resets capital to $100k.
+**Context:** The API kept an in-memory `PaperTradingEngine` while the runner and DB
+held separate state. A restart silently reset capital to $100k, and DB position rows
+could not represent shorts.
 
-**Decision:** Persist portfolio/positions/trades in PostgreSQL and make every process
-read/write through one repository. The in-memory engine may remain a cache only.
+**Decision:** Persist the paper portfolio, positions, orders, closed trades, and equity
+curve in PostgreSQL and make every process read/write through one repository
+(`paper_trading/repository.py`) behind one service (`paper_trading/ledger.py`). The
+in-memory engine remains a hydrated calculation cache. Each fill/mark/closure writes
+one transaction; a failed write restores the pre-action cache snapshot. An accepted
+fill with no seeded paper account is rejected rather than kept only in memory.
 
-**Consequences:** Phase 1 work. Until it lands, `02-STATUS.md` records the dual source
-and no feature may add a third.
+**Consequences:** P1-A is implemented and covered by repository/service/restart tests
+plus a manual PostgreSQL 16 round-trip. API reads now hydrate before responding.
+Concurrent API/worker/runner writes are still last-writer-wins; row locking and order
+idempotency remain P1-B. The pipeline result (`_last_state`) is still process-global and
+is a separate ownership issue.
 
 ---
 
@@ -187,15 +195,18 @@ margin, and subtract the liability from equity. When one candle spans both the s
 and target, the engine assumes the stop was reached first rather than taking the
 optimistic path. `mark_to_market` records equity on every bar;
 `total_pnl = equity - initial_capital`, including unrealized PnL and fees.
-The worker marks each candle, persists SL/TP closures to `trade_history`, and on a
-closure mirrors the engine snapshot to the portfolio projection. The execution agent
+The worker and runner process each candle through `PaperTradingLedger`, which persists
+SL/TP closures, marks, orders, trade history, and the portfolio together. The raw-SQL
+worker path remains only as a fallback for direct-engine callers. The execution agent
 reports and persists the engine's actual fill price and quantity, not the requested
 signal.
 
-**Consequences:** Paper results now include costs and intra-trade drawdown. The DB
-`positions` table has no side column, so short positions remain an unsigned projection
-until the P1 schema/durability work. The in-memory engine is still not durable across
-restart.
+**Consequences:** Paper results now include costs and intra-trade drawdown. P1-A adds
+`positions.side`, entry/exit commissions, margin, and a persisted equity curve, so
+long/short positions and their cost basis survive restart. The engine still requires
+the process to be constructed with the same configured fee/slippage settings; those
+settings are configuration, not part of the persisted portfolio state. Concurrent
+writers remain last-writer-wins (see ADR-005).
 
 ---
 

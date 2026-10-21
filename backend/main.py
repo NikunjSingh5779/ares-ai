@@ -28,7 +28,7 @@ from backend.routers import (
 from backend.routers.auth import router as auth_router
 from backend.routers.backtest import router as backtest_router
 from backend.routers.predictions import router as predictions_router
-from backend.routers.trading import _get_engine as get_paper_trading_engine
+from backend.routers.trading import get_paper_trading_ledger
 from backend.routers.users import router as users_router
 from configs.settings import settings
 from database.connection import async_session_factory
@@ -50,14 +50,22 @@ async def lifespan(app: FastAPI):
         },
     )
 
-    # Start Paper Trading background worker
-    engine = get_paper_trading_engine()
+    # Hydrate the durable paper ledger, then start its background worker.
+    ledger = get_paper_trading_ledger()
+    try:
+        await ledger.initialize()
+    except Exception:
+        # Keep the API reachable when PostgreSQL is temporarily down; the
+        # ledger refresh will retry, and /health reports the dependency gap.
+        logger.error("Could not hydrate the paper ledger at startup", exc_info=True)
+
     ingestor = MarketDataIngestor()
     worker = PaperTradingWorker(
-        engine=engine,
+        engine=ledger.engine,
         ingestor=ingestor,
         session_factory=async_session_factory,
         poll_interval_seconds=60,
+        ledger=ledger,
     )
     worker.start()
     app.state.paper_trading_worker = worker

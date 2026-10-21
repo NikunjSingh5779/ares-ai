@@ -5,11 +5,14 @@
 or the runner loop in `scripts/run_live.py`.
 
 ## Paper path
-`agents/execution.py` → `PaperTradingEngine.execute_signal()` (configured commission
-and adverse slippage, actual fill/quantity) → `positions` + reversal `trade_history`
-rows → `ExecutionOutput`. `paper_trading/worker.py` marks each candle, closes SL/TP,
-writes `trade_history`, and mirrors the portfolio projection. PnL is equity-based,
-including open marks and fees.
+`agents/execution.py` → `PaperTradingLedger.execute_signal()` → refresh the
+`PaperTradingEngine` cache from `PaperLedgerRepository` → engine fill with configured
+commission and adverse slippage → one transaction writing `positions`, entry/exit
+orders, reversal `trade_history`, and `portfolio` → `ExecutionOutput`.
+`PaperTradingLedger.process_candle()` (used by `paper_trading/worker.py` and the
+runner) checks SL/TP, marks the remaining position, and persists the result. A failed
+write restores the cache snapshot; an accepted fill with no seeded account is rejected.
+PnL is equity-based, including open marks and fees.
 
 ## Live path
 `ExecutionAgent` → `LiveTradingEngine.execute_signal()` →
@@ -28,9 +31,8 @@ production `exchange.create_order` call site is `live_trading/engine.py`.
 ## Promotion
 `PromotionGate` queries `trade_history` for closed trades and distinct days, and
 `portfolio.max_drawdown_pct` for the drawdown check. Passing it is a prerequisite for
-`set_mode(auto)`. Paper accounting now includes fees, adverse slippage, and intra-trade
-marks; the worker inserts SL/TP closures so normal exits count. The remaining durability
-gap is that the engine is in memory and the DB is a projection.
+`set_mode(auto)`. Paper accounting includes fees, adverse slippage, and intra-trade
+marks; the ledger writes SL/TP closures so normal exits count and survive restart.
 
 ## Human check
 - `/api/v1/live/status` shows mode, kill-switch state, paper record, engine state.
@@ -48,7 +50,8 @@ gap is that the engine is in memory and the DB is a projection.
 
 ## Known gaps
 Order idempotency; `get_open_orders()` returns `[]`; no balance reconciliation.
-The paper engine is in-memory and the DB portfolio is only synced when the worker
-closes a trade; `positions` has no side column. A Redis outage blocks orders and
+Concurrent API/worker/runner paper writes are last-writer-wins (no row lock or
+optimistic version). `/execute` bypasses consensus/risk and role checks; promotion can
+therefore be distorted by a manual paper trade. A Redis outage blocks orders and
 requires a human re-arm (intentional); the latch is process-local, so a runner that
 latched also needs a restart until a shared arm epoch exists.

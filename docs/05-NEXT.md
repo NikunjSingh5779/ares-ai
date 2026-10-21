@@ -8,8 +8,9 @@ Do not start a phase before the previous exit criterion is met unless a human sa
 
 Completed 2026-10-21: **0.1 auth**, **0.2 one live-order path + fail-closed kill switch**,
 **0.3 validated roster + universal fallback**, **0.4 realistic paper accounting**, and
-**0.5 production config enforcement**. Phase 0 is closed; the remaining release risk is
-Phase 1 (durability/one source of truth).
+**0.5 production config enforcement**. Phase 0 is closed. P1-A (durable paper ledger)
+landed on 2026-10-21; the remaining release risks are P1-B (secure `/execute`) and
+concurrent-writer safety.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
@@ -21,14 +22,22 @@ Phase 1 (durability/one source of truth).
 
 ## Phase 1 — one source of truth
 
-- Persist portfolio/positions/orders; single repository used by API, worker, and runner (ADR-005).
-- Add a `positions.side` column and make the DB ledger the durable source; the engine is
-  still in-memory and the worker's portfolio row is only a projection today.
-- Order idempotency (client order ID) and exchange reconciliation; implement `get_open_orders`.
-- `/health` returns 503 when degraded; compose healthchecks use it.
-- Real `/api/v1/metrics` from Prometheus counters, not `_last_state`.
-- Track `migrations/versions/`, collapse the two Alembic heads, delete the duplicate SQL schema.
-**Exit:** restart the stack mid-trade; portfolio, open positions, and promotion record are identical before and after.
+P1-A completed 2026-10-21: PostgreSQL is the durable paper ledger
+(`paper_trading/repository.py`), `PaperTradingLedger` coordinates the cache, and the
+API, worker, and runner all use it. `positions.side`, cost, margin, and the equity curve
+are persisted; `migrations/versions/` is tracked with one head. A restart-mid-trade test
+and a manual PostgreSQL 16 round-trip pass.
+
+| # | Work | Files | Exit criterion | State |
+|---|---|---|---|---|
+| 1.1 | Durable paper ledger, hydration, atomic persistence | `paper_trading/repository.py`, `paper_trading/ledger.py`, `paper_trading/engine.py`, `paper_trading/worker.py`, `backend/routers/trading.py`, `scripts/run_live.py`, schema/migrations | Restart preserves portfolio, positions, trades, and equity; failed writes restore the cache | **Done (P1-A)** |
+| 1.2 | Secure `/execute`: require an approved signal/risk payload or explicitly mark manual paper trades | `backend/routers/trading.py`, `agents/execution.py`, schemas | A request without approval cannot create a position; manual trades are labeled/excluded from promotion | **Next (P1-B)** |
+| 1.3 | Order idempotency + concurrent-writer safety | ledger/repository, order schema | Duplicate client order IDs are rejected; row locking or optimistic versions prevent lost updates across API/worker/runner | Pending |
+| 1.4 | PostgreSQL integration test in CI | `tests/`, CI workflow | Testcontainers/Compose runs hydrate → fill → restart → close on a real database | Pending |
+| 1.5 | `/health` returns 503 when degraded; real Prometheus metrics | `backend/main.py`, `backend/core/metrics.py` | Compose healthchecks use the enriched health signal; `/api/v1/metrics` no longer reads `_last_state` | Pending |
+| 1.6 | Role-based authorization for trading/live controls | auth/JWT/API-key mapping, route tests | Viewer cannot trade; operator/admin required for live start/kill/arm/mode changes | Pending |
+
+**Exit:** restart the stack mid-trade; portfolio, open positions, and promotion record are identical before and after, and no concurrent write can silently lose a fill.
 
 ## Phase 2 — product realism and UI
 
@@ -56,8 +65,8 @@ Phase 1 (durability/one source of truth).
 
 ## Phase 3 — hygiene
 
-- Fix the mypy errors (all in tests/scripts); keep CI green.
-- Re-verify README numbers (1044 / 79.08%) and roadmap status.
+- Fix the 22 mypy errors (all in tests/scripts); keep CI green.
+- Re-verify README numbers (1067 / 79.54%) and roadmap status.
 - Improvement engine: persist history, rename “win rate”, remove the 75% consensus suggestion.
 - Add Prometheus alert rules; remove duplicate monitoring configs.
 - Prune stale branches and land Dependabot PRs.
