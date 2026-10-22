@@ -2,11 +2,10 @@
 # Status — verified state
 
 **Last verified:** 2026-10-22
-**Branch:** `fix/orchestration-reliability-frontend` — 16 commits ahead / 4 behind `master`
-at verification time.
-The verification baseline is `caae9d6` (`feat(phase-2): wire real market, settings, live,
-and strategy data`), which passed GitHub Actions run **39780863063** on all five jobs:
-`lint`, `test`, `postgres-integration`, `frontend`, and `docker`.
+**Branch:** `fix/orchestration-reliability-frontend` — 17 commits ahead / 4 behind `master`.
+The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
+strategy data`) passed GitHub Actions run **39780873063** on all five jobs: `lint`,
+`test`, `postgres-integration`, `frontend`, and `docker`.
 P1-A is committed as `9c16122`; P1-B (approved-only `/execute` plus client-order
 idempotency) is committed as `feat(paper): require approved execution and client order
 ids`; P1-C (paper writer lock) is committed as `fix(paper): serialize ledger writers with
@@ -15,7 +14,8 @@ an advisory lock`; P1.4 (real-PostgreSQL integration job) is committed as
 Earlier GitHub Actions runs **39742069953** (code), **39745749404** (docs), and
 **39747241203** (handoff) also passed all five jobs.
 The fifth Phase 2 slice — frontend lint, typecheck, tests, and their CI steps — is
-verified below and included in this commit. The local `.env` key is unique (never
+committed as **`88bdfef`** and passed GitHub Actions run **39785044719**, including the
+new lint, typecheck, test, and build steps. The local `.env` key is unique (never
 committed), so authenticated `/api/v1/*` calls work locally.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 

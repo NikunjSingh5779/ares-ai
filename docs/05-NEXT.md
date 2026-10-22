@@ -19,9 +19,10 @@ the Compose bootstrap fixes are committed and pushed at `34ff7b8`; docs reconcil
 `0d55263`, the handoff refresh `e406d5d`, and the conventional docs set are on top. The
 Phase 1 Compose exit
 was run successfully on 2026-10-21 (portfolio, positions, orders, and promotion record
-identical across a full-stack restart). The Phase 2 slices through `caae9d6` passed
-GitHub Actions run **39780863063** on all five jobs: `lint`, `test`,
-`postgres-integration`, `frontend`, and `docker`. Phase 1 is closed.
+identical across a full-stack restart). The Phase 2 slices through `88bdfef` passed
+GitHub Actions run **39780873063** (feature slices) and **39785044719** (frontend CI)
+on all five jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`.
+Phase 1 is closed.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
