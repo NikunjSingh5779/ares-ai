@@ -16,7 +16,8 @@ ledger writers with an advisory lock`. P1.4 (real-PostgreSQL integration job) is
 as `test(paper): run the ledger suite against real PostgreSQL in CI`. P1.6 (role-based
 authorization), the mypy cleanup, P1.5 (degraded health plus Prometheus-backed metrics), and
 the Compose bootstrap fixes are committed and pushed at `34ff7b8`; docs reconciliation
-`0d55263` and this new-session handoff refresh are on top. The Phase 1 Compose exit
+`0d55263`, the handoff refresh `e406d5d`, and the conventional docs set are on top. The
+Phase 1 Compose exit
 was run successfully on 2026-10-21 (portfolio, positions, orders, and promotion record
 identical across a full-stack restart). GitHub Actions run **39742069953** passed all five
 jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`. Phase 1 is closed.

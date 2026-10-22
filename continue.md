@@ -4,17 +4,18 @@
 **Repository:** `C:\Users\ASUS\ares-ai`
 **Branch:** `fix/orchestration-reliability-frontend`
 **Head commit:** code head `34ff7b8 chore(lint): rename load test script to a valid module name`;
-docs reconciliation `0d55263`; this handoff refresh is the latest commit (read the hash with
-`git log -1 --format=%h`).
-**Branch position:** **14 commits ahead / 4 behind `master`** including this handoff
-refresh (per `git rev-list --left-right --count master...HEAD`).
+docs commits `0d55263` and `e406d5d`; the conventional docs set plus this handoff refresh
+is the latest commit (read the hash with `git log -1 --format=%h`).
+**Branch position:** **15 commits ahead / 4 behind `master`** including this docs commit
+(per `git rev-list --left-right --count master...HEAD`).
 **Working tree:** **clean**. P1-A (`9c16122`), P1-B, P1-C, P1.4, the mypy cleanup, P1.6,
 P1.5, and the Compose bootstrap fixes are committed and pushed to
-`origin/fix/orchestration-reliability-frontend` through `0d55263`; this handoff refresh is
-on top. GitHub Actions runs **39742069953** (code) and **39745749404** (docs) passed all
-five jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`. A unique local
-`API_SECRET_KEY` is set in `.env` (never committed), and authenticated `/api/v1/*` returns
-200. Do not reset, clean, or rewrite history unless the user explicitly asks.
+`origin/fix/orchestration-reliability-frontend` through `e406d5d`; this docs set is on
+top. GitHub Actions runs **39742069953** (code), **39745749404** (docs), and
+**39747241203** (handoff) passed all five jobs: `lint`, `test`, `postgres-integration`,
+`frontend`, and `docker`. A unique local `API_SECRET_KEY` is set in `.env` (never
+committed), and authenticated `/api/v1/*` returns 200. Do not reset, clean, or rewrite
+history unless the user explicitly asks.
 
 This is the fresh-session handoff. Read it fully before editing. It records what is done,
 what was verified, the behavior contracts that must not regress, the remaining defects, and
@@ -25,11 +26,12 @@ the recommended order of work.
 ## 0a. New-session snapshot (read this first)
 
 **Current position:** Phase 0 and Phase 1 are closed. Code head is `34ff7b8`; docs
-reconciliation is `0d55263`; this handoff refresh is the latest commit. The branch is
-**14 commits ahead / 4 behind `master`** including this refresh. The working tree is clean,
-`origin` matches, and CI runs **39742069953** (code) and **39745749404** (docs) passed all
-five jobs. The local stack is healthy, `/health` is 200, and authenticated `/api/v1/*`
-returns 200 with a unique local `.env` key (never commit or print it).
+commits are `0d55263` and `e406d5d`; this docs set is the latest commit. The branch is
+**15 commits ahead / 4 behind `master`** including this docs commit. The working tree is
+clean, `origin` matches, and CI runs **39742069953** (code), **39745749404** (docs), and
+**39747241203** (handoff) passed all five jobs. The local stack is healthy, `/health` is
+200, and authenticated `/api/v1/*` returns 200 with a unique local `.env` key (never
+commit or print it).
 
 **Done — do not rebuild:**
 - P0: auth on every non-public route, one live-order path, fail-closed kill switch, free
@@ -49,6 +51,13 @@ returns 200 with a unique local `.env` key (never commit or print it).
   stamp, Chroma 1.5.9 mounted at `/data` (restart preserved `chroma.sqlite3`).
 - Quality gates: 1129 passed / 1 skipped / 80.29% coverage; Ruff, format, mypy (184 files),
   frontend build, and Compose validation all clean.
+- Conventional docs set: `docs/PRD.md`, `FEATURES.md`, `SETUP.md`, `API.md`,
+  `DATABASE.md`, `IMPLEMENTATION.md`, `DEPLOYMENT.md`, `AUTH_SECURITY.md`, `MCP.md`,
+  `INTEGRATIONS.md`, `TESTING.md`, `DEBUGGING.md`, `TASKS.md`, `ROADMAP.md`,
+  `DECISIONS.md`, `CONVENTIONS.md`, plus `CHANGELOG.md` and a proprietary `LICENSE`.
+  `CLAUDE.md` is exactly `@AGENTS.md`; `docs/architecture.md` is a pointer to the
+  canonical `docs/03-ARCHITECTURE.md`; `docs/00-INDEX.md` indexes both sets;
+  `tests/test_icm_structure.py` is 20/20 and all relative links resolve.
 
 **Remaining, in order:**
 1. **Phase 2 — product realism and UI** (`docs/05-NEXT.md`): replace `Math.random()` market
@@ -64,8 +73,9 @@ returns 200 with a unique local `.env` key (never commit or print it).
    Prometheus alerts, and branch/Dependabot cleanup.
 
 **First actions:** read `AGENTS.md` → `docs/02-STATUS.md` → `docs/05-NEXT.md` → this file
-→ the routed `CONTEXT.md`. Confirm the tree is clean and the stack is healthy. Start with
-Phase 2; **never** weaken a safety gate, enable real-capital trading, or commit `.env`.
+→ `docs/00-INDEX.md` → the routed `CONTEXT.md`. Confirm the tree is clean and the stack is
+healthy. Start with Phase 2; **never** weaken a safety gate, enable real-capital trading, or
+commit `.env`.
 
 ---
 
@@ -281,7 +291,7 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 ### 3.1 Branch / worktree
 
 - Branch: `fix/orchestration-reliability-frontend`
-- 14 ahead / 4 behind `master` (including this handoff refresh).
+- 15 ahead / 4 behind `master` (including this docs commit).
 - Code head: `34ff7b8 chore(lint): rename load test script to a valid module name`
   (prefer `git log -1 --oneline` if the branch moves).
 - P1-A is committed as `9c16122`, P1-B as `feat(paper): require approved execution and
@@ -305,7 +315,8 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
   `0004_role_hierarchy.py` (new head).
 - `origin/fix/orchestration-reliability-frontend` contains the code through `34ff7b8`
   (P1.4, P1.6, the mypy cleanup, P1.5, and the Compose fixes), the docs reconciliation
-  `0d55263`, and this handoff refresh on top. No PR or merge has been performed.
+  `0d55263`, the handoff refresh `e406d5d`, and this conventional docs set on top. No PR
+  or merge has been performed.
 
 ### 3.2 Verified commands and results
 
@@ -924,9 +935,10 @@ high-fidelity paper results.
   `_last_state`. The public `/metrics` mount remains the scrape target.
 - Frontend analytics consumes the new counter fields; `pnpm build` passes.
 - The Phase 1 Compose mid-trade restart exit passed on 2026-10-21 (section 5d). All code
-  work is pushed at `34ff7b8`; docs reconciliation `0d55263` and this handoff refresh are
-  on top. CI runs 39742069953 (code) and 39745749404 (docs) are green. The local `.env` key
-  is unique, so `/api/v1/*` returns 200. The next work is Phase 2.
+  work is pushed at `34ff7b8`; docs reconciliation `0d55263`, the handoff refresh
+  `e406d5d`, and this conventional docs set are on top. CI runs 39742069953 (code),
+  39745749404 (docs), and 39747241203 (handoff) are green. The local `.env` key is unique,
+  so `/api/v1/*` returns 200. The next work is Phase 2.
 
 ### P2 — Paper realism, frontend, observability
 
@@ -1109,8 +1121,9 @@ migration (including a legacy `user` row). The **Phase 1 Compose mid-trade resta
 passed on 2026-10-21** (section 5d): two concurrent fills, full-stack restart, exact
 portfolio/positions/orders/promotion match, duplicate 409 after restart.
 All code work is pushed at `34ff7b8`: P1-A through P1.5, P1.6, the mypy cleanup, and the
-Compose fixes; docs reconciliation `0d55263` and this handoff refresh are on top. GitHub
-Actions runs **39742069953** (code) and **39745749404** (docs) passed all five jobs (`lint`,
-`test`, `postgres-integration`, `frontend`, `docker`). The local `.env` has a unique
+Compose fixes; docs reconciliation `0d55263`, the handoff refresh `e406d5d`, and this
+conventional docs set are on top. GitHub Actions runs **39742069953** (code),
+**39745749404** (docs), and **39747241203** (handoff) passed all five jobs (`lint`, `test`,
+`postgres-integration`, `frontend`, `docker`). The local `.env` has a unique
 `API_SECRET_KEY` (never committed), and authenticated `/api/v1/*` returns 200. The next
 work is Phase 2. Do not push, reset, or rewrite history without explicit user approval.

@@ -3,10 +3,11 @@
     "ares-postgres": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@modelcontextprotocol/server-postgres"],
-      "env": {
-        "DATABASE_URL": "postgresql+asyncpg://ares:changeme_in_production@localhost:5432/ares_ai"
-      }
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://ares:changeme_in_production@localhost:5432/ares_ai"
+      ]
     }
   }
 }

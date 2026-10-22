@@ -12,6 +12,8 @@ env/
 # Environment
 .env
 .env.local
+.env.*
+!.env.example
 *.key
 
 # IDE
@@ -36,7 +38,7 @@ grafana/
 # Testing
 .coverage
 coverage.xml
-htmlcov/
+coverage/
 htmlcov/
 .pytest_cache/
 .mypy_cache/
@@ -45,6 +47,13 @@ pytest_results.txt
 old_pytest_results.txt
 pytest_v_output.txt
 
+# Node / Next.js / Astro
+node_modules/
+.next/
+out/
+.astro/
+*.tsbuildinfo
+
 # ChromaDB
 chromadb/
 
@@ -52,4 +61,13 @@ chromadb/
 *.log
 /logs/
 
-# Database
+# Local database / vector files
+*.sqlite3
+*.db
+postgres-data/
+chroma-data/
+
+# Build artifacts
+*.zip
+*.tar
+*.tar.gz

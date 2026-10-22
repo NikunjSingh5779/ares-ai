@@ -2,18 +2,19 @@
 # Status — verified state
 
 **Last verified:** 2026-10-22
-**Branch:** `fix/orchestration-reliability-frontend` — 14 commits ahead / 4 behind `master`.
+**Branch:** `fix/orchestration-reliability-frontend` — 15 commits ahead / 4 behind `master`.
 P1-A is committed as `9c16122`; P1-B (approved-only `/execute` plus client-order
 idempotency) is committed as `feat(paper): require approved execution and client order
 ids`; P1-C (paper writer lock) is committed as `fix(paper): serialize ledger writers with
 an advisory lock`; P1.4 (real-PostgreSQL integration job) is committed as
 `test(paper): run the ledger suite against real PostgreSQL in CI`.
 `origin/fix/orchestration-reliability-frontend` contains the code through `34ff7b8`, the
-docs reconciliation `0d55263`, and this new-session handoff refresh on top. GitHub Actions
-runs **39742069953** (code) and **39745749404** (docs) passed all five jobs: `lint`, `test`,
-`postgres-integration`, `frontend`, and `docker`.
-The working tree is clean. The local `.env` key is unique (never committed), so
-authenticated `/api/v1/*` calls work locally.
+docs reconciliation `0d55263`, the handoff refresh `e406d5d`, and this conventional docs
+set on top. GitHub Actions runs **39742069953** (code), **39745749404** (docs), and
+**39747241203** (handoff) passed all five jobs: `lint`, `test`, `postgres-integration`,
+`frontend`, and `docker`.
+The working tree is clean after this docs commit. The local `.env` key is unique (never
+committed), so authenticated `/api/v1/*` calls work locally.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
 ## Green
@@ -189,3 +190,10 @@ Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISI
 
 README documents the required `API_SECRET_KEY` and dashboard login instead of quoting
 stale test counts. The milestone table is historical; per-area truth lives here.
+The conventional docs set added on 2026-10-22 (`docs/PRD.md`, `docs/API.md`,
+`docs/DATABASE.md`, `docs/SETUP.md`, `docs/DEPLOYMENT.md`,
+`docs/AUTH_SECURITY.md`, `docs/MCP.md`, `docs/INTEGRATIONS.md`,
+`docs/TESTING.md`, `docs/DEBUGGING.md`, `docs/TASKS.md`, `docs/ROADMAP.md`,
+`docs/DECISIONS.md`, `docs/CONVENTIONS.md`, `docs/FEATURES.md`,
+`docs/IMPLEMENTATION.md`) summarizes and links to the numbered ICM docs rather
+than replacing them.

@@ -1,6 +1,6 @@
 # ARES AI — Autonomous Research Execution System
 
-ARES AI is an institutional-grade, fully autonomous multi-agent AI trading platform. It orchestrates a roster of 10 specialized AI agents in a directed graph (using LangGraph) to analyze financial markets, manage portfolio risk, execute trades, and continuously learn from historical outcomes.
+ARES AI is an institutional-grade, fully autonomous multi-agent AI trading platform. A supervisor routes a roster of specialized agents in a directed graph (using LangGraph) to analyze financial markets, manage portfolio risk, execute trades, and continuously learn from historical outcomes.
 
 Designed for resilience and offline-first/graceful degradation, ARES AI is configured to run entirely on **free-tier AI models** (via OpenRouter or OpenCode APIs) and uses a layered microservice architecture containerized with Docker.
 
@@ -20,6 +20,33 @@ stating its inputs, process, outputs, and human check.
 | Decisions (ADRs) | `docs/04-DECISIONS.md` |
 | Prioritized plan | `docs/05-NEXT.md` |
 | Object/process map | `docs/map/AGENTS.md` |
+
+### Standard reference docs
+
+These are concise, task-oriented companions to the ICM set above. The numbered
+docs remain the canonical source of truth.
+
+| Need | File |
+|---|---|
+| Product summary | `docs/PRD.md` |
+| Feature status map | `docs/FEATURES.md` |
+| Local setup | `docs/SETUP.md` |
+| API route map (live schema at `/docs`) | `docs/API.md` |
+| Database tables and migrations | `docs/DATABASE.md` |
+| Code placement and change map | `docs/IMPLEMENTATION.md` |
+| Deployment and production overlay | `docs/DEPLOYMENT.md` |
+| Auth, roles, and secrets | `docs/AUTH_SECURITY.md` |
+| MCP configuration | `docs/MCP.md` |
+| External systems | `docs/INTEGRATIONS.md` |
+| Testing and CI checks | `docs/TESTING.md` |
+| Troubleshooting | `docs/DEBUGGING.md` |
+| Current task queue | `docs/TASKS.md` |
+| Roadmap summary | `docs/ROADMAP.md` |
+| ADR index | `docs/DECISIONS.md` |
+| Engineering conventions | `docs/CONVENTIONS.md` |
+| Release history | `CHANGELOG.md` |
+| Visual identity system | `docs/design.md` |
+| Historical M1 architecture pointer | `docs/architecture.md` |
 
 ---
 
@@ -46,7 +73,7 @@ graph TD
     Reflection --> Memory[Memory Agent]
 ```
 
-### The 10 Specialized Agents
+### The pipeline: supervisor + 10 stages
 1. **Supervisor**: Coordinates the agent state flow and acts as the router.
 2. **Market Analyst**: Conducts technical analysis on price feeds.
 3. **Quant**: Assesses quantitative metrics and statistical models.
@@ -90,7 +117,7 @@ ARES AI is built with strict safety gates that cannot be bypassed:
 Make sure you have the following installed on your machine:
 * [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 * [Node.js & pnpm](https://nodejs.org/) (or npm/yarn)
-* [Python 3.12+](https://www.python.org/)
+* [Python 3.11+](https://www.python.org/) (CI installs 3.14) and [uv](https://docs.astral.sh/uv/)
 
 ### 1. Setup Environment Configuration
 Copy the template configuration file to `.env`:
@@ -219,6 +246,16 @@ model-discovery mechanism.
 
 Run the full pytest suite to verify no regressions in the agent graph, endpoints, or DB layer:
 ```powershell
-python -m pytest tests/ -v
+python -m pytest tests/ -q
 ```
-The suite currently passes at the 78% coverage gate. Verified test counts, coverage, and the current health of every check live in `docs/02-STATUS.md` — that file is the single source of truth.
+The configured coverage gate is 78%; the configured lint, format, type, and
+frontend checks are in `docs/TESTING.md`. Verified test counts, current
+coverage, and the health of every check live in `docs/02-STATUS.md` — that file
+is the single source of truth.
+
+---
+
+## 📄 License
+
+Proprietary; all rights reserved. See `LICENSE`. Third-party dependencies and
+model providers remain under their own terms.

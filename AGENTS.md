@@ -6,6 +6,21 @@ Redis / ChromaDB, Next.js dashboard, Docker Compose, free-tier LLMs.
 
 **Where am I:** repo root. **Where do I go:** the table below.
 
+Claude Code entry: `CLAUDE.md` is exactly `@AGENTS.md`; there is one source of
+truth for project instructions.
+
+## Commands
+
+```powershell
+uv sync --locked --all-extras --dev
+python -m pytest tests/test_icm_structure.py -q --no-cov   # docs/structure
+python -m pytest tests/ -q                                 # full suite
+ruff check .; ruff format --check .; mypy .                # quality gates
+cd frontend; pnpm install --frozen-lockfile; pnpm build    # dashboard
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+uv run python scripts/simulate_pipeline.py                 # wiring check
+```
+
 ## Start here (read in this order)
 
 | Need | File |
@@ -17,7 +32,9 @@ Redis / ChromaDB, Next.js dashboard, Docker Compose, free-tier LLMs.
 | What to do next, in order | `docs/05-NEXT.md` |
 | Milestone history | `docs/milestone-roadmap.md` |
 | Object + process map of the codebase | `docs/map/AGENTS.md` |
-| Doc index | `docs/00-INDEX.md` |
+| Doc index (ICM + conventional references) | `docs/00-INDEX.md` |
+| Product summary / feature status | `docs/PRD.md`, `docs/FEATURES.md` |
+| Setup / API / database / deployment | `docs/SETUP.md`, `docs/API.md`, `docs/DATABASE.md`, `docs/DEPLOYMENT.md` |
 
 ## Where do I go for task X?
 
