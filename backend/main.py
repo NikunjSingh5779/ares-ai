@@ -23,7 +23,10 @@ from backend.routers import (
     analysis_router,
     journal_router,
     live_router,
+    market_router,
     monitoring_router,
+    settings_router,
+    strategies_router,
     trading_router,
 )
 from backend.routers.auth import router as auth_router
@@ -137,6 +140,9 @@ app.include_router(monitoring_router, dependencies=_auth)
 app.include_router(live_router, dependencies=_auth)
 app.include_router(backtest_router, dependencies=_auth)
 app.include_router(predictions_router, dependencies=_auth)
+app.include_router(market_router, dependencies=_auth)
+app.include_router(settings_router, dependencies=_auth)
+app.include_router(strategies_router, dependencies=_auth)
 
 # ── Prometheus /metrics endpoint (ASGI mount) ─────────────────────────
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -157,7 +157,7 @@ class CoinGeckoSource(BaseDataSource):
                     symbol=symbol,
                     source=self.source_name,
                     interval=interval,
-                    timestamp=datetime.fromtimestamp(ts_ms / 1000),
+                    timestamp=datetime.fromtimestamp(ts_ms / 1000, tz=UTC),
                     open=float(o),
                     high=float(h),
                     low=float(lo),

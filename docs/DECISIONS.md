@@ -25,7 +25,8 @@
 | ADR-012 | Paper PnL is equity-based, with costs and marks | Fees, slippage, short proceeds, and mark-to-market are part of paper results |
 | ADR-014 | API paper execution requires upstream approvals and idempotency | `/execute` needs typed approvals; duplicates return 409 |
 | ADR-015 | Paper writes serialize on a transaction-scoped advisory lock | API/worker/runner cannot lose each other's updates; busy writer -> 503 |
-| ADR-017 | Compose bootstrap is shared by `init.sql` and Alembic | Fresh volumes stamp 0001 and apply 0002–0004; one migration head |
+| ADR-017 | Compose bootstrap is shared by `init.sql` and Alembic | Fresh volumes stamp 0001 and apply 0002–0005; one migration head |
+| ADR-019 | Strategy drafts reuse `strategies`; lifecycle fields stay server-owned | Authenticated drafts save/load; status, live enablement, and promotion counters reject writes and stay gated |
 
 ## Models, safety, and operations
 
@@ -36,6 +37,7 @@
 | ADR-010 | The kill switch latches closed and requires human re-arm | A restart does not silently re-enable trading |
 | ADR-011 | Live trading is opt-in at every layer | Default off; human approval and promotion gate before autonomous mode |
 | ADR-013 | Production safety is an explicit Compose overlay | `ENVIRONMENT=production` rejects default API/JWT/DB secrets |
+| ADR-018 | Dashboard preferences are durable; safety limits stay read-only | `app_settings` persists non-safety preferences; `PUT /settings` cannot raise a cap or threshold |
 
 ## Role authorization
 

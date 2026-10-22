@@ -30,12 +30,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }, [isLogin, router]);
 
   if (isLogin) {
-    return <main className="flex-1 overflow-y-auto p-6">{children}</main>;
+    return (
+      <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-6">
+        {children}
+      </main>
+    );
   }
 
   if (!ready) {
     return (
       <main
+        id="main-content"
+        tabIndex={-1}
         className="flex flex-1 items-center justify-center p-6"
         role="status"
         aria-live="polite"
@@ -48,7 +54,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <>
       <Sidebar />
-      <main className="flex-1 overflow-y-auto p-6">{children}</main>
+      <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-6">
+        {children}
+      </main>
     </>
   );
 }

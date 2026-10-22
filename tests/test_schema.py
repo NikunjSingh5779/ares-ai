@@ -31,8 +31,8 @@ def test_schema_not_empty() -> None:
     assert "CREATE TABLE" in content, "Schema must contain CREATE TABLE statements"
 
 
-def test_all_18_tables_present() -> None:
-    """Schema must define all 18 required tables."""
+def test_all_19_tables_present() -> None:
+    """Schema must define all 19 required tables."""
     content = SCHEMA_PATH.read_text()
     tables = TABLE_PATTERN.findall(content)
     table_names = {t.lower() for t in tables}
@@ -40,6 +40,7 @@ def test_all_18_tables_present() -> None:
     expected_tables = {
         "users",
         "accounts",
+        "app_settings",
         "portfolio",
         "positions",
         "orders",
@@ -150,6 +151,15 @@ def test_order_idempotency_columns_present() -> None:
     assert "client_order_id VARCHAR(100)" in content
     assert "uq_orders_client_order_id" in content
     assert "WHERE client_order_id IS NOT NULL" in content
+
+
+def test_app_settings_is_a_single_non_safety_row() -> None:
+    """Dashboard preferences are one JSON row; safety limits stay out of the table."""
+    content = SCHEMA_PATH.read_text()
+    assert "CREATE TABLE app_settings" in content
+    assert "id SMALLINT PRIMARY KEY CHECK (id = 1)" in content
+    assert "preferences JSONB NOT NULL DEFAULT '{}'::jsonb" in content
+    assert "max_position_size" not in content.split("CREATE TABLE app_settings", 1)[1].split(";", 1)[0]
 
 
 def test_init_schema_is_byte_identical_copy() -> None:

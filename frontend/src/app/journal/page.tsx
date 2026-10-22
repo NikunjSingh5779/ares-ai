@@ -87,7 +87,7 @@ export default function JournalPage() {
                   <div key={entry.id} className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] p-4">
                     <div className="flex items-center justify-between mb-3">
                       <span className="font-mono text-xs text-[#a1a1aa]">{new Date(entry.created_at).toLocaleString()}</span>
-                      <span className="font-mono text-[10px] text-[#52525b]">
+                      <span className="font-mono text-[10px] text-[#8b8b93]">
                         ID: {entry.id.slice(0, 8)}
                       </span>
                     </div>
@@ -109,7 +109,7 @@ export default function JournalPage() {
                             ))}
                           </ul>
                         ) : (
-                          <p className="font-mono text-[11px] text-[#52525b]">None</p>
+                          <p className="font-mono text-[11px] text-[#8b8b93]">None</p>
                         )}
                       </div>
 
@@ -129,12 +129,12 @@ export default function JournalPage() {
                             ))}
                           </ul>
                         ) : (
-                          <p className="font-mono text-[11px] text-[#52525b]">None</p>
+                          <p className="font-mono text-[11px] text-[#8b8b93]">None</p>
                         )}
                       </div>
 
                       <div className="border-t border-[rgba(255,255,255,0.06)] pt-2">
-                        <p className="font-mono text-xs text-[#71717a] leading-relaxed">
+                        <p className="font-mono text-xs text-[#a1a1aa] leading-relaxed">
                           {entry.content}
                         </p>
                       </div>
@@ -143,7 +143,7 @@ export default function JournalPage() {
                 ))}
               </div>
             ) : (
-              <p className="font-mono text-sm text-[#52525b] py-4">
+              <p className="font-mono text-sm text-[#8b8b93] py-4">
                 No journal entries yet. Run a pipeline to generate journal data.
               </p>
             )}
@@ -182,7 +182,7 @@ export default function JournalPage() {
                             <span className="font-mono text-xs text-[#a1a1aa]">
                               {mem.type || "unknown"}
                             </span>
-                            <span className="font-mono text-[10px] text-[#52525b]">
+                            <span className="font-mono text-[10px] text-[#8b8b93]">
                               importance: {mem.importance ?? "N/A"}
                             </span>
                           </div>
@@ -193,12 +193,12 @@ export default function JournalPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="font-mono text-xs text-[#52525b]">No memory records</p>
+                    <p className="font-mono text-xs text-[#8b8b93]">No memory records</p>
                   )}
                 </div>
               </div>
             ) : (
-              <p className="font-mono text-sm text-[#52525b] py-4">
+              <p className="font-mono text-sm text-[#8b8b93] py-4">
                 No memory records yet.
               </p>
             )}

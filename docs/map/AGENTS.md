@@ -16,6 +16,8 @@ the tests that catch a break. They do not duplicate code.
 | Agent state and every agent output | `objects/agent-state.md` | `agents/state.py` |
 | Portfolio, position, order, paper record | `objects/portfolio.md` | `paper_trading/engine.py`, `repository.py`, `ledger.py`, DB tables |
 | Model roster, fallback chain, breaker | `objects/model-roster.md` | `configs/models.yaml`, `agents/router.py` |
+| Dashboard preferences | `objects/app-settings.md` | `app_settings` row, `backend/services/settings_service.py` |
+| Strategy drafts | `objects/strategy.md` | `strategies` table, `backend/services/strategy_service.py` |
 
 ## Processes (movements)
 

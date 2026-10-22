@@ -363,8 +363,8 @@ server only spoke v1 while the Python client was 1.5.9, with the volume mounted 
 **Decision:**
 - Keep `init.sql` as the fresh-volume schema bootstrap.
 - Before `alembic upgrade head`, the entrypoint checks whether `users` exists without an
-  `alembic_version` row; if so, it runs `alembic stamp 0001`. Revisions `0002`–`0004` are
-  idempotent and then bring the database to head.
+  `alembic_version` row; if so, it runs `alembic stamp 0001`. The later revisions
+  (currently `0002`–`0005`) are idempotent and then bring the database to head.
 - Force LF for `*.sh` in `.gitattributes`, and keep `backend-entrypoint.sh` LF in the tree.
 - Force container-internal service hostnames in the backend environment. The root `.env`
   remains host-oriented; it is not the container network contract.
@@ -389,3 +389,88 @@ are untouched. A database initialized by `init.sql` is stamped at `0001` and upg
 through the idempotent later revisions. The backend is the readiness authority for Chroma
 while the Chroma container is starting. The Phase 1 Compose restart exit passed with this
 bootstrap and left the local `.env` key unchanged.
+
+---
+
+## ADR-018 — Dashboard preferences are durable; safety limits stay read-only
+**Date:** 2026-10-22 · **Status:** accepted
+
+**Context:** `/settings` was a static page whose save was a `setTimeout`. It displayed a
+10% position cap while the execution path enforces 2%, showed a WebSocket endpoint that
+does not exist, and rendered a fake secret preview. The Phase 2 exit forbids a page that
+renders invented settings. A preference must survive a backend restart, but making risk
+limits editable from the dashboard would create a second source of truth for the safety
+gate.
+
+**Decision:**
+- Persist non-safety preferences in a singleton `app_settings` row (`id = 1`,
+  `preferences JSONB`), introduced by migration `0005_app_settings`.
+- Expose two preferences that the dashboard actually consumes: `default_symbol` (dashboard
+  quick analysis and the initial markets chart) and `live_refresh_seconds` (the `/live`
+  poll interval, 5–30 seconds). Unknown fields are rejected.
+- `GET /api/v1/settings` returns read-only safety values computed from the enforcing
+  modules (`agents.risk`, `agents.consensus`) and `configs.settings`.
+- `PUT /api/v1/settings/preferences` accepts only `DashboardPreferences`. A `safety`
+  object, position cap, confidence threshold, drawdown limit, or promotion-gate field is a
+  **422**, never a write.
+- Remove the unused `MAX_POSITION_SIZE_PCT` environment field. The 2% cap lives only in
+  `agents/risk.py`, so an env edit cannot silently raise it.
+
+**Alternatives considered:**
+- *Store preferences in `localStorage`.* Rejected: the requirement is a durable API
+  round-trip, and a browser-local value is not shared by the API or a second process.
+- *Add a per-user `users.preferences` column.* Rejected for now: the dashboard uses the
+  shared API key, which has no user row, and the deployment is single-user. A singleton
+  row is the honest scope; per-user preferences would need a user resolution path first.
+- *Make the position cap editable within 0–2%.* Rejected: the signal path, `/execute`
+  route, and risk agent would all need to read the same runtime value consistently. A
+  partially applied cap is worse than a fixed, tested one.
+- *Keep the old `MAX_POSITION_SIZE_PCT` env field and align it to 2%.* Rejected: it would
+  still be a dead duplicate that invites an operator to think the cap is tunable.
+
+**Consequences:** Settings survive a process restart and the API proves the round-trip.
+Safety values cannot be raised through this endpoint. Preferences are global, matching the
+single-user deployment; a future multi-user mode needs an explicit user-scoped store.
+Adding a preference is a schema-free JSONB change, but every new field must be consumed by
+a page or it does not belong in the response.
+
+---
+
+## ADR-019 — Strategy drafts reuse `strategies`; lifecycle fields stay server-owned
+**Date:** 2026-10-22 **Status:** accepted
+
+**Context:** The strategy-builder page had a `setTimeout` save and never persisted
+anything, while the database already had a `strategies` table with type, config,
+parameters, version, status, promotion counters, and `live_trading_enabled`. Adding a
+second draft table would duplicate that shape; allowing the browser to set status or
+live enablement would create a shortcut around the promotion gate.
+
+**Decision:**
+- Use the existing `strategies` table and add no migration or schema change.
+- Expose only draft configuration through authenticated `GET/POST/PUT
+  /api/v1/strategies`; create always lands as the table default `draft`.
+- `StrategyCreate`/`StrategyUpdate` use `extra="forbid"`. `status`,
+  `live_trading_enabled`, and promotion counters are **422** and never written.
+- Edit only rows whose stored status is `draft` or `paused`; all other statuses are
+  **409**. An edit bumps `version` and leaves lifecycle fields alone.
+- Treat `position_size_pct`, `stop_loss_pct`, and `take_profit_pct` as draft inputs, not
+  safety limits. Risk, consensus, promotion, execution, and the kill switch remain
+  authoritative.
+- Hand a draft type to the backtest page only when the backtest engine supports it;
+  unsupported types fail honestly instead of sending an invalid run.
+
+**Alternatives considered:**
+- *Add a `strategy_drafts` table.* Rejected: duplicates the existing schema and splits
+  strategy history.
+- *Let the client set `status` and `live_trading_enabled` in the same request.* Rejected:
+  that would bypass the promotion gate and the human approval path.
+- *Use `localStorage`.* Rejected: drafts must survive a browser and process restart and
+  be readable by a second client.
+- *Make every draft editable, including paper/live rows.* Rejected for now: editing a
+  live strategy in place changes behavior without a promotion record.
+
+**Consequences:** Drafts survive restarts and the UI has a real save/load path. Promotion
+remains a separate gated process; a future feature that edits paper/live strategies needs
+an explicit versioned-copy or approval design. The strategy service uses the proven
+JSONB/`RETURNING` pattern; a disposable-PostgreSQL round-trip for the new routes remains a
+follow-up test.

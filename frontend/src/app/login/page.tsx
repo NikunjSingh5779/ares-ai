@@ -107,7 +107,7 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <p className="mt-6 text-xs leading-5 text-[#71717a]">
+      <p className="mt-6 text-xs leading-5 text-[#a1a1aa]">
         Generate a key with{" "}
         <code className="text-[#a1a1aa]">
           python -c &quot;import secrets; print(secrets.token_urlsafe(32))&quot;

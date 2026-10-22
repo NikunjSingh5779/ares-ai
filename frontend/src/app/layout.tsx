@@ -34,6 +34,9 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="flex h-screen overflow-hidden bg-[var(--color-bg)]" suppressHydrationWarning>
+        <a href="#main-content" className="skip-link">
+          Skip to main content
+        </a>
         <AuthGate>{children}</AuthGate>
       </body>
     </html>

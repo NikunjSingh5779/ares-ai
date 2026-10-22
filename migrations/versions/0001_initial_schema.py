@@ -1,4 +1,4 @@
-"""Initial schema — all 18 tables for ARES AI.
+"""Initial schema — baseline for the ARES AI tables.
 
 Revision ID: 0001
 Revises:

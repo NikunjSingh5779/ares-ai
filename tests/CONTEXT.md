@@ -10,6 +10,9 @@
 - `test_monitoring/` — metrics, health, middleware.
 - `test_security/` — auth, rate limiting, headers, crypto, error handlers.
 - Root `test_*.py` — one file per module (supervisor, consensus, risk, paper, backtest…).
+- `test_settings_router.py` / `test_settings_service.py` — read-only safety block,
+  preference validation/normalization, 422 on override attempts, 503 on store failure,
+  and durable merge/upsert behavior.
 - `test_postgres_integration.py` — opt-in real-PostgreSQL ledger tests; skipped unless
   `ARES_TEST_POSTGRES_URL` points at a disposable database whose name contains `test`.
 - `conftest.py` — shared fixtures; overrides `verify_auth` **and** the role dependencies
@@ -29,7 +32,7 @@
 - Full: `pytest tests/ -q`
 - Real PostgreSQL: `ARES_TEST_POSTGRES_URL=postgresql+asyncpg://ares:ares_test@localhost:5432/ares_ai_test pytest tests/test_postgres_integration.py -q --no-cov`
   (CI job `postgres-integration` does this on `postgres:16-alpine`).
-- Types: `mypy .` (clean on 183 files as of 2026-10-21)
+- Types: `mypy .` (clean on 193 files as of 2026-10-22)
 
 ## Human check
 Full suite green, `ruff check .`, `mypy .`, and no new warnings.

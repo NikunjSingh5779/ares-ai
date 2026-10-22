@@ -42,22 +42,22 @@
 | Web research / DuckDuckGo | Working | Research endpoints; treat external content as untrusted data |
 | Kronos OHLCV forecasting | Optional | Downloads `NeoQuasar/Kronos-small` on first use; not required by the core pipeline |
 | Improvement engine | Partial | Suggestions/metrics exist; history persistence and naming cleanup are Phase 3 |
-| Strategy builder | Partial | Page exists; currently local-only, not persisted |
-| Chat interface | Partial | Page exists; a real chat workflow remains Phase 2 |
+| Strategy builder | Working | Drafts persist through `/api/v1/strategies`; only draft/paused rows are editable and live/promotion fields stay server-owned |
+| Chat interface | Partial | Calls `POST /api/v1/analyze` and shows the accepted status; multi-turn agent chat remains Phase 2 |
 
 ## Dashboard
 
 | Page | Status | Notes |
 |---|---|---|
 | Dashboard, portfolio, signals, risk, journal, memory, analytics | Working | Reads backend endpoints |
-| Markets | Partial | Candles are generated with `Math.random()`; auto-runs analysis; Phase 2 replaces both |
+| Markets | Working | Real candles from `/api/v1/market/candles` (Binance for crypto, Yahoo for equities); analysis is an explicit action; chart disposes on unmount |
 | Paper trading | Working | Uses the paper ledger path |
-| Live trading | Partial | Status/audit are real; polling and controls need Phase 2 hardening |
+| Live trading | Partial | Status/audit and controls are real; polling is concurrent, single-flight, pause-aware, and abortable. Execution remains paper-only and disabled by default. |
 | Agents and logs | Working | Agent status and logs endpoints |
 | Backtests | Working | Calls the backtest endpoint |
-| Settings | Partial | Save is a `setTimeout`; displayed API URL and position size are inconsistent with the backend |
-| Strategy builder | Partial | Local-only |
-| Chat | Partial | Real chat workflow pending |
+| Settings | Working | Loads/saves `app_settings` through authenticated GET/PUT; safety limits (including the 2% cap) are read-only; default symbol and live refresh are wired into the pages |
+| Strategy builder | Working | Real load/save against `strategies`; unsupported backtest types fail honestly |
+| Chat | Partial | Pipeline trigger; multi-turn chat workflow pending |
 
 ## Platform and operations
 

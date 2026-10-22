@@ -65,8 +65,8 @@ const statusIcons: Record<NodeStatus, LucideIcon> = {
 const statusColors: Record<NodeStatus, string> = {
   completed: "text-[#22c55e]",
   failed: "text-[#ef4444]",
-  skipped: "text-[#52525b]",
-  pending: "text-[#3f3f46]",
+  skipped: "text-[#8b8b93]",
+  pending: "text-[#8b8b93]",
   active: "text-[#6366f1]",
 };
 

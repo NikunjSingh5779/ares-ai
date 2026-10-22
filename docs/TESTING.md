@@ -31,7 +31,7 @@ python -m pytest tests/ -q
 
 The default `addopts` in `pyproject.toml` enables coverage over `backend`,
 `agents`, `database`, `backtesting`, `paper_trading`, and `live_trading`, and
-fails under 78%. The last verified run was **1129 passed, 1 skipped, 80.29%**
+fails under 78%. The last verified run was **1196 passed, 1 skipped, 81.11%**
 (2026-10-22). Do not copy that number into a new claim without re-running.
 
 ## Real PostgreSQL tests
@@ -56,7 +56,7 @@ mypy .
 ```
 
 The CI `lint` job installs Python 3.14 with `uv` and runs all three. Mypy is
-clean on 184 source files as of the last verification. New code must not add
+clean on 198 source files as of 2026-10-22. New code must not add
 `# type: ignore` to hide a real mismatch.
 
 ## Frontend

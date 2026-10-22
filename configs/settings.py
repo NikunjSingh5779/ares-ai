@@ -88,7 +88,9 @@ class Settings(BaseSettings):
     # *and* still pass every live safety gate. Keep false for local runs.
     live_trading_enabled: bool = False
     default_trading_mode: str = "human_approval"
-    max_position_size_pct: float = 5.0
+    # Position sizing is enforced in agents/risk.py (2% of paper equity) and is
+    # deliberately not environment-configurable. A setting here could silently
+    # raise the cap without the rest of the risk gate noticing.
     max_drawdown_pct: float = 20.0
 
     # Live trading exchange

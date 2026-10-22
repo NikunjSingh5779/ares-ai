@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   activateKillSwitch,
   armKillSwitch,
   getLiveAudit,
   getLiveStatus,
+  getSettings,
   setLiveMode,
   startLiveEngine,
   stopLiveEngine,
@@ -15,6 +16,13 @@ import { Loader2, Power, PowerOff, Skull, Shield, ShieldOff } from "lucide-react
 
 type ViewState = "loading" | "disconnected" | "connected" | "error" | "kill-switched";
 
+function progressPercent(current: number, required: number): number {
+  if (!Number.isFinite(current) || !Number.isFinite(required) || required <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, (current / required) * 100));
+}
+
 export default function LivePage() {
   const [status, setStatus] = useState<LiveStatusResponse | null>(null);
   const [viewState, setViewState] = useState<ViewState>("loading");
@@ -22,38 +30,121 @@ export default function LivePage() {
   const [killDialog, setKillDialog] = useState(false);
   const [confirmArm, setConfirmArm] = useState(false);
   const [error, setError] = useState("");
+  const [refreshSeconds, setRefreshSeconds] = useState(5);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshAbortRef = useRef<AbortController | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const s = await getLiveStatus();
-      setStatus(s);
-      const a = await getLiveAudit(20);
-      setAuditLog(a);
-      if (s.kill_switch.active) {
-        setViewState("kill-switched");
-      } else if (s.connected) {
-        setViewState("connected");
-      } else {
-        setViewState("disconnected");
+  const refresh = useCallback((): Promise<void> => {
+    const inFlight = refreshInFlightRef.current;
+    if (inFlight) return inFlight;
+
+    const controller = new AbortController();
+    refreshAbortRef.current = controller;
+
+    const run = async () => {
+      try {
+        const [nextStatus, nextAudit] = await Promise.all([
+          getLiveStatus(controller.signal),
+          getLiveAudit(20, controller.signal),
+        ]);
+        if (controller.signal.aborted) return;
+
+        setStatus(nextStatus);
+        setAuditLog(nextAudit);
+        if (nextStatus.kill_switch.active) {
+          setViewState("kill-switched");
+        } else if (nextStatus.connected) {
+          setViewState("connected");
+        } else {
+          setViewState("disconnected");
+        }
+        setError("");
+      } catch (e) {
+        if (controller.signal.aborted) return;
+        // Keep the last known status visible during a transient poll failure;
+        // only the initial load has no status to fall back to.
+        setViewState((previous) => (previous === "loading" ? "error" : previous));
+        setError(e instanceof Error ? e.message : "Failed to fetch status");
+      } finally {
+        if (refreshAbortRef.current === controller) {
+          refreshAbortRef.current = null;
+        }
       }
-      setError("");
-    } catch (e) {
-      setViewState("error");
-      setError(e instanceof Error ? e.message : "Failed to fetch status");
-    }
+    };
+
+    const promise = run();
+    refreshInFlightRef.current = promise;
+    void promise.finally(() => {
+      if (refreshInFlightRef.current === promise) {
+        refreshInFlightRef.current = null;
+      }
+    });
+    return promise;
+  }, []);
+
+  // Discard a poll that started before a control action, then fetch the new
+  // state immediately instead of waiting for the next interval.
+  const forceRefresh = useCallback((): Promise<void> => {
+    refreshAbortRef.current?.abort();
+    refreshInFlightRef.current = null;
+    return refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getSettings(controller.signal)
+      .then((settings) => setRefreshSeconds(settings.preferences.live_refresh_seconds))
+      .catch(() => {});
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 5000);
-    return () => clearInterval(interval);
-  }, [refresh]);
+    return () => {
+      refreshAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const tick = () => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+      }
+    };
+
+    const start = () => {
+      if (interval !== null) return;
+      tick();
+      interval = setInterval(tick, Math.max(1, refreshSeconds) * 1000);
+    };
+
+    const stop = () => {
+      if (interval !== null) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) stop();
+      else start();
+    };
+
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refresh, refreshSeconds]);
 
   const handleStart = async () => {
     try {
       const r = await startLiveEngine();
       if (r.connected) setViewState("connected");
-      await refresh();
+      await forceRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start");
     }
@@ -63,7 +154,7 @@ export default function LivePage() {
     try {
       await stopLiveEngine();
       setViewState("disconnected");
-      await refresh();
+      await forceRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to stop");
     }
@@ -74,7 +165,7 @@ export default function LivePage() {
       await activateKillSwitch("operator");
       setViewState("kill-switched");
       setKillDialog(false);
-      await refresh();
+      await forceRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to activate kill switch");
     }
@@ -84,7 +175,7 @@ export default function LivePage() {
     try {
       await armKillSwitch();
       setConfirmArm(false);
-      await refresh();
+      await forceRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to arm kill switch");
     }
@@ -93,7 +184,7 @@ export default function LivePage() {
   const handleModeChange = async (mode: string) => {
     try {
       await setLiveMode(mode);
-      await refresh();
+      await forceRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to change mode");
     }
@@ -102,8 +193,13 @@ export default function LivePage() {
   // ── Loading state ─────────────────────────────────────────
   if (viewState === "loading") {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#6366f1]" />
+      <div
+        className="flex h-full items-center justify-center"
+        role="status"
+        aria-live="polite"
+      >
+        <Loader2 className="h-8 w-8 animate-spin text-[#6366f1]" aria-hidden="true" />
+        <span className="sr-only">Loading live trading status</span>
       </div>
     );
   }
@@ -112,9 +208,9 @@ export default function LivePage() {
   if (viewState === "error" && !status) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="text-center">
+        <div className="text-center" role="alert">
           <p className="text-[#ef4444] font-medium">Failed to load live trading status</p>
-          <p className="mt-2 font-mono text-xs text-[#71717a]">{error}</p>
+          <p className="mt-2 font-mono text-xs text-[#a1a1aa]">{error}</p>
           <button
             onClick={refresh}
             className="btn-ghost !text-sm mt-4"
@@ -137,16 +233,21 @@ export default function LivePage() {
         <div>
           <h1 className="text-heading text-xl text-white">Live Trading</h1>
           <p className="text-label mt-1">Engine Control & Safety Management</p>
+          <p className="mt-1 font-mono text-[10px] text-[#a1a1aa]">
+            Auto-refresh every {refreshSeconds}s
+          </p>
         </div>
         <div className="flex items-center gap-3">
           {/* Connection badge */}
           <span
+            role="status"
+            aria-live="polite"
             className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-xs ${
               viewState === "connected"
                 ? "bg-[rgba(34,197,94,0.1)] text-[#22c55e] border-[rgba(34,197,94,0.2)]"
                 : viewState === "kill-switched"
                   ? "bg-[rgba(239,68,68,0.1)] text-[#ef4444] border-[rgba(239,68,68,0.2)]"
-                  : "bg-[rgba(255,255,255,0.04)] text-[#52525b] border-[rgba(255,255,255,0.08)]"
+                  : "bg-[rgba(255,255,255,0.04)] text-[#8b8b93] border-[rgba(255,255,255,0.08)]"
             }`}
           >
             <span
@@ -155,7 +256,7 @@ export default function LivePage() {
                   ? "bg-[#22c55e] animate-pulse"
                   : viewState === "kill-switched"
                     ? "bg-[#ef4444]"
-                    : "bg-[#52525b]"
+                    : "bg-[#8b8b93]"
               }`}
             />
             {viewState === "connected"
@@ -189,7 +290,10 @@ export default function LivePage() {
 
       {/* ── Error banner ──────────────────────────────────── */}
       {error && (
-        <div className="rounded-xl border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.08)] px-4 py-3">
+        <div
+          role="alert"
+          className="rounded-xl border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.08)] px-4 py-3"
+        >
           <p className="font-mono text-xs text-[#ef4444]">{error}</p>
         </div>
       )}
@@ -208,7 +312,7 @@ export default function LivePage() {
             <div className="mb-5 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-white">Kill Switch</p>
-                <p className="font-mono text-xs text-[#71717a] mt-0.5">
+                <p className="font-mono text-xs text-[#a1a1aa] mt-0.5">
                   {ks?.active
                     ? `Active — triggered by: ${ks.triggered_by ?? "unknown"}`
                     : "Inactive — trading allowed"}
@@ -238,12 +342,22 @@ export default function LivePage() {
             {/* Mode Selector */}
             <div className="flex items-center justify-between border-t border-[rgba(255,255,255,0.06)] pt-5">
               <div>
-                <p className="text-sm font-semibold text-white">Trading Mode</p>
-                <p className="font-mono text-xs text-[#71717a] mt-0.5">
+                <label
+                  htmlFor="trading-mode"
+                  className="text-sm font-semibold text-white"
+                >
+                  Trading Mode
+                </label>
+                <p
+                  id="trading-mode-current"
+                  className="font-mono text-xs text-[#a1a1aa] mt-0.5"
+                >
                   Current: {status?.mode.replace("_", " ")}
                 </p>
               </div>
               <select
+                id="trading-mode"
+                aria-describedby="trading-mode-current"
                 value={status?.mode ?? "human_approval"}
                 onChange={(e) => handleModeChange(e.target.value)}
                 disabled={ks?.active}
@@ -280,7 +394,7 @@ export default function LivePage() {
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-[#6366f1] to-[#22c55e] transition-all duration-500"
                       style={{
-                        width: `${Math.min(100, (promo.trades.current / promo.trades.required) * 100)}%`,
+                        width: `${progressPercent(promo.trades.current, promo.trades.required)}%`,
                       }}
                     />
                   </div>
@@ -302,12 +416,12 @@ export default function LivePage() {
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-[#6366f1] to-[#22c55e] transition-all duration-500"
                       style={{
-                        width: `${Math.min(100, (promo.days.current / promo.days.required) * 100)}%`,
+                        width: `${progressPercent(promo.days.current, promo.days.required)}%`,
                       }}
                     />
                   </div>
                 </div>
-                <p className={`pt-2 font-mono text-xs ${promoOk ? "text-[#22c55e]" : "text-[#71717a]"}`}>
+                <p className={`pt-2 font-mono text-xs ${promoOk ? "text-[#22c55e]" : "text-[#a1a1aa]"}`}>
                   {promoOk
                     ? "✓ Promotion requirements met"
                     : "Paper record insufficient for auto mode"}
@@ -335,7 +449,7 @@ export default function LivePage() {
                   className={
                     status?.running
                       ? "text-[#22c55e] font-medium"
-                      : "text-[#52525b]"
+                      : "text-[#8b8b93]"
                   }
                 >
                   {status?.running ? "Yes" : "No"}
@@ -373,7 +487,7 @@ export default function LivePage() {
                       ? "Semi-Autonomous"
                       : "Full Auto"}
                 </span>
-                <p className="font-mono text-[10px] text-[#52525b] mt-0.5">
+                <p className="font-mono text-[10px] text-[#8b8b93] mt-0.5">
                   {status?.mode === "human_approval"
                     ? "Orders require manual confirmation"
                     : status?.mode === "semi"
@@ -394,11 +508,12 @@ export default function LivePage() {
           </h2>
         </div>
         {auditLog.length === 0 ? (
-          <p className="font-mono text-xs text-[#52525b] px-5 py-6">No audit entries yet</p>
+          <p className="font-mono text-xs text-[#8b8b93] px-5 py-6">No audit entries yet</p>
         ) : (
-          <div className="divide-y divide-[rgba(255,255,255,0.04)]">
+          <div role="list" className="divide-y divide-[rgba(255,255,255,0.04)]">
             {auditLog.map((entry, i) => (
               <div
+                role="listitem"
                 key={i}
                 className="px-5 py-3 transition-colors hover:bg-[rgba(255,255,255,0.02)]"
               >
@@ -406,14 +521,14 @@ export default function LivePage() {
                   <span className="font-mono text-xs font-medium text-[#6366f1]">
                     {entry.order_intent?.symbol as string ?? "—"}
                   </span>
-                  <span className="font-mono text-[10px] text-[#52525b]">
+                  <span className="font-mono text-[10px] text-[#8b8b93]">
                     {entry.timestamp
                       ? new Date(entry.timestamp).toLocaleTimeString()
                       : ""}
                   </span>
                 </div>
                 <div className="mt-1 flex items-center gap-3">
-                  <span className="font-mono text-[10px] text-[#71717a]">
+                  <span className="font-mono text-[10px] text-[#a1a1aa]">
                     {entry.order_intent?.side as string ?? ""}{" "}
                     {entry.order_intent?.quantity as number ?? 0}
                   </span>
@@ -438,17 +553,30 @@ export default function LivePage() {
       {/* ── Kill confirmation dialog ───────────────────────── */}
       {killDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="w-96 rounded-2xl border border-[rgba(239,68,68,0.2)] bg-[#111111] p-6 shadow-2xl shadow-black/50">
-            <h3 className="text-lg font-bold text-[#ef4444]">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kill-dialog-title"
+            aria-describedby="kill-dialog-description"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setKillDialog(false);
+            }}
+            className="w-96 rounded-2xl border border-[rgba(239,68,68,0.2)] bg-[#111111] p-6 shadow-2xl shadow-black/50"
+          >
+            <h3 id="kill-dialog-title" className="text-lg font-bold text-[#ef4444]">
               Activate Kill Switch?
             </h3>
-            <p className="mt-3 text-sm text-[#a1a1aa] leading-relaxed">
+            <p
+              id="kill-dialog-description"
+              className="mt-3 text-sm text-[#a1a1aa] leading-relaxed"
+            >
               This will immediately halt all live order placement. You must manually re-arm
               to resume.
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <button
                 onClick={() => setKillDialog(false)}
+                autoFocus
                 className="btn-ghost !py-2 !text-sm"
               >
                 Cancel
@@ -467,17 +595,30 @@ export default function LivePage() {
       {/* ── Arm confirmation dialog ─────────────────────────── */}
       {confirmArm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="w-96 rounded-2xl border border-[rgba(34,197,94,0.2)] bg-[#111111] p-6 shadow-2xl shadow-black/50">
-            <h3 className="text-lg font-bold text-[#22c55e]">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="arm-dialog-title"
+            aria-describedby="arm-dialog-description"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setConfirmArm(false);
+            }}
+            className="w-96 rounded-2xl border border-[rgba(34,197,94,0.2)] bg-[#111111] p-6 shadow-2xl shadow-black/50"
+          >
+            <h3 id="arm-dialog-title" className="text-lg font-bold text-[#22c55e]">
               Re-arm Kill Switch?
             </h3>
-            <p className="mt-3 text-sm text-[#a1a1aa] leading-relaxed">
+            <p
+              id="arm-dialog-description"
+              className="mt-3 text-sm text-[#a1a1aa] leading-relaxed"
+            >
               Confirm that you want to re-arm the kill switch and allow live trading to
               resume.
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <button
                 onClick={() => setConfirmArm(false)}
+                autoFocus
                 className="btn-ghost !py-2 !text-sm"
               >
                 Cancel

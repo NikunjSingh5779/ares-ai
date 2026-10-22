@@ -174,15 +174,15 @@ export default function PaperTradingPage() {
         <div className="border-b border-[rgba(255,255,255,0.06)] px-5 py-4">
           <div className="flex items-center justify-between">
             <p className="text-label">Open Positions</p>
-            <span className="font-mono text-xs text-[#52525b]">{positions.length} positions</span>
+            <span className="font-mono text-xs text-[#8b8b93]">{positions.length} positions</span>
           </div>
         </div>
         {positions.length > 0 ? (
           <DataTable columns={positionColumns} data={positions} />
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Wallet size={24} className="text-[#52525b] mb-3" />
-            <p className="font-mono text-xs text-[#52525b]">No open positions</p>
+            <Wallet size={24} className="text-[#8b8b93] mb-3" />
+            <p className="font-mono text-xs text-[#8b8b93]">No open positions</p>
           </div>
         )}
       </div>
@@ -192,15 +192,15 @@ export default function PaperTradingPage() {
         <div className="border-b border-[rgba(255,255,255,0.06)] px-5 py-4">
           <div className="flex items-center justify-between">
             <p className="text-label">Trade History</p>
-            <span className="font-mono text-xs text-[#52525b]">{trades.length} trades</span>
+            <span className="font-mono text-xs text-[#8b8b93]">{trades.length} trades</span>
           </div>
         </div>
         {trades.length > 0 ? (
           <DataTable columns={columns} data={trades} />
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <BarChart3 size={24} className="text-[#52525b] mb-3" />
-            <p className="font-mono text-xs text-[#52525b]">No trades yet</p>
+            <BarChart3 size={24} className="text-[#8b8b93] mb-3" />
+            <p className="font-mono text-xs text-[#8b8b93]">No trades yet</p>
           </div>
         )}
       </div>

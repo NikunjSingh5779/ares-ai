@@ -63,7 +63,7 @@ python -m alembic upgrade head
 - More than one head is a branch bug; merge the revisions, do not stamp over
   them.
 - A fresh Compose volume runs `init.sql`, stamps `0001`, then applies
-  `0002`–`0004`. If the stamp is wrong, inspect the entrypoint logs.
+  `0002`–`0005`. If the stamp is wrong, inspect the entrypoint logs.
 - Never edit an applied migration; create a new revision.
 
 ## Paper trading errors
@@ -105,8 +105,11 @@ writing to memory only; the request must fail closed.
   `AuthGate` sends you to `/login`.
 - `pnpm build` is the supported check. `pnpm lint` is invalid under Next 16
   until the Phase 2 CI work lands.
-- Markets and settings pages still contain mock behavior in Phase 2; do not
-  treat their values as real backend data.
+- Markets, settings, and strategy-builder now read/write the backend; there is no
+  mock-data fallback. If they show defaults or an empty list, check auth and
+  `NEXT_PUBLIC_API_URL` connectivity rather than looking for seeded UI values.
+- The chat page triggers `POST /api/v1/analyze`; it does not yet maintain a
+  multi-turn agent conversation.
 
 ## CI failures
 

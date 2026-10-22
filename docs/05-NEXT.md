@@ -77,31 +77,50 @@ Python client.
 ## Phase 2 — product realism and UI
 
 **Data and trust**
-- `markets/page.tsx`: replace `Math.random()` candles (`:74-124`) with a real candles
-  endpoint; stop auto-running analysis on mount/symbol change (`:26-29`) — make it an
-  explicit action; dispose the chart on unmount (`chart.remove()`); guard concurrent runs.
-- `settings/page.tsx`: persist through the API (save is a `setTimeout` today, `:74-80`);
-  fix the displayed API URL `localhost:8080` vs client `8000` (`:170`); align
-  `max_position_size` 10% with the backend 2% (`:22`); remove the fake secret preview.
-- `live/page.tsx`: fetch status and audit with `Promise.all` (`:28-31`); pause polling
-  when the tab is hidden; add an in-flight guard.
+- `markets/page.tsx`: **done 2026-10-22** — real candles from
+  `GET /api/v1/market/candles`, explicit **Analyze** action (no mount/symbol
+  auto-run), `chart.remove()` on unmount, and a concurrent-run guard.
+- `settings/page.tsx`: **done 2026-10-22** — loads and saves through
+  `GET/PUT /api/v1/settings`; preferences live in the singleton `app_settings` row.
+  Safety limits are read-only from the enforcing constants, including the **2%**
+  position cap; the API URL comes from `NEXT_PUBLIC_API_URL`; no fake token or
+  WebSocket preview remains; labels and `aria-live`/`role="alert"` are in place.
+- `live/page.tsx`: **done 2026-10-22** — status and audit load concurrently with
+  `Promise.all`; polling pauses while the tab is hidden and resumes on visibility;
+  refreshes are single-flight and abort on unmount; control actions force a fresh
+  read so stale polls cannot overwrite them. The interval comes from the saved
+  `live_refresh_seconds` preference.
 
 **React and accessibility**
-- `usePipelinePolling.ts`: in-flight guard in `runAnalysis`, one poll at a time, abort on
-  unmount, backoff on errors (`:35-91`).
-- `api.ts`: request timeout/abort and typed errors; the auth header and 401
-  redirect are already in place (`frontend/src/lib/auth.ts`, `AuthGate.tsx`).
-- Accessibility: label the symbol `<select>`, connect settings labels with `htmlFor`,
-  make toggles `role="switch"` with `aria-checked`, add `aria-live` for run/error state,
-  a skip link, and raise contrast for `#52525b`/`#71717a` small text.
-- Functional strategy builder and a real chat interface.
-- Frontend lint/typecheck/test job in CI.
-**Exit:** no page renders invented data; settings round-trip through the API; axe/Lighthouse pass.
+- `usePipelinePolling.ts`: **done 2026-10-22** — polling starts after `POST /analyze`
+  is accepted, one status request at a time, abort on unmount, and 1/2/4/8 s backoff
+  under the 60 s safety timeout. `runAnalysis` rejects concurrent triggers.
+- `api.ts`: **done 2026-10-22** — bounded request timeouts, caller `AbortSignal`
+  support, and typed `ApiError`/`ApiTimeoutError`; the auth header and 401 redirect
+  remain in place.
+- Accessibility: **largely done 2026-10-22** — skip link to `#main-content`, sidebar
+  `aria-label`/`aria-current`, labelled live controls, dialog roles/labels/Escape/
+  initial focus, strategy-builder labels and `aria-pressed`, and muted-text contrast
+  raised to `#8b8b93`/`#a1a1aa`. A manual axe/Lighthouse pass remains.
+- Strategy builder: **done 2026-10-22** — drafts persist through
+  `GET/POST/PUT /api/v1/strategies`; status, live enablement, and promotion fields
+  stay server-owned; the form loads saved drafts and hands supported types to the
+  backtest page. A mock-session test suite covers create/list/get/update and the
+  404/409/422/503 boundaries.
+- Chat: **partial** — `chat/page.tsx` already calls `POST /api/v1/analyze` and shows
+  the accepted status, but it is not a multi-turn conversational agent. A real chat
+  workflow remains.
+- Frontend lint/typecheck/test job in CI (`pnpm build` type-checks, but `pnpm lint`
+  is still the removed `next lint`).
+**Exit:** no page renders invented data; settings round-trip through the API (met
+2026-10-22); live/pipeline polling is bounded and pause-aware (met 2026-10-22);
+strategy drafts round-trip through the API (met 2026-10-22); axe/Lighthouse pass
+remains.
 
 ## Phase 3 — hygiene
 
-- Keep `mypy .` green (clean on 184 files as of 2026-10-21; the 22 errors are fixed).
-- Re-verify README numbers (1129 / 80.29%) and roadmap status.
+- Keep `mypy .` green (clean on 198 files as of 2026-10-22).
+- Re-verify README numbers (current suite: 1196 passed / 81.11%) and roadmap status.
 - Improvement engine: persist history, rename “win rate”, remove the 75% consensus suggestion.
 - Add Prometheus alert rules; remove duplicate monitoring configs.
 - Prune stale branches and land Dependabot PRs.

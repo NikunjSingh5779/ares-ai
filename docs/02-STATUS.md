@@ -13,32 +13,37 @@ docs reconciliation `0d55263`, the handoff refresh `e406d5d`, and this conventio
 set on top. GitHub Actions runs **39742069953** (code), **39745749404** (docs), and
 **39747241203** (handoff) passed all five jobs: `lint`, `test`, `postgres-integration`,
 `frontend`, and `docker`.
-The working tree is clean after this docs commit. The local `.env` key is unique (never
-committed), so authenticated `/api/v1/*` calls work locally.
+The working tree now contains the uncommitted Phase 2 market-candles, persisted-settings,
+live-polling/accessibility, and strategy-draft persistence slices (see below); commit/push
+awaits explicit approval. The local `.env` key is unique
+(never committed), so authenticated `/api/v1/*` calls work locally.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
 ## Green
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1129 passed, 1 skipped** (integration module skips without `ARES_TEST_POSTGRES_URL`) |
-| Coverage | `pytest tests/ -q` | **80.29%** default (gate 78%); the P1.4 integration module adds 5 tests when its URL is set |
+| Test suite | `pytest tests/ -q` | **1196 passed, 1 skipped** (integration module skips without `ARES_TEST_POSTGRES_URL`) |
+| Coverage | `pytest tests/ -q` | **81.11%** default (gate 78%); the P1.4 integration module adds 5 tests when its URL is set |
 | Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
 | Health and metrics | `pytest tests/test_monitoring -q` | **34 passed** — 503 on each degraded dependency, 200 only when all answer, Prometheus-backed JSON snapshot, `/metrics` exposition mount |
-| Type check | `mypy .` | **clean, 184 source files** (the 22 test/script errors are fixed) |
+| Type check | `mypy .` | **clean, 198 source files** |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
+| Market candles | `pytest tests/test_market_router.py -q` | **13 passed** — validation, ordering, deduplication, 404/502/504, source selection |
+| Settings | `pytest tests/test_settings_router.py tests/test_settings_service.py -q` | **23 passed** — GET/PUT round-trip, normalization, 422 on safety overrides, 503 when the store is unavailable |
+| Strategy drafts | `pytest tests/test_strategy_router.py tests/test_strategy_service.py -q` | **29 passed** — create/list/get/update, JSON parsing, version bump, 404/409/422/503, and rejection of lifecycle/live fields |
 | Lint | `ruff check .` | clean |
 | Format | `ruff format --check .` | clean |
 | PostgreSQL integration | `ARES_TEST_POSTGRES_URL=... pytest tests/test_postgres_integration.py -q` | **5 passed** — real hydrate → fill → restart → close, duplicate ID, concurrent fills, one-winner duplicate race, busy lock → retry |
 | CI PostgreSQL job | GitHub Actions `CI` run 39742069953 | **passed** on `postgres:16-alpine` — all 5 tests, no skip |
 | Paper-ledger tests | `pytest tests/test_paper_trading_ledger.py -q` | **34 passed** — hydration, atomic write, duplicate ID, writer lock, rejection/rollback, restart mid-trade |
 | Trading-route tests | `pytest tests/test_trading_router.py -q` | **17 passed** — approval, derivation, 409/422/503, busy-lock retry |
-| Schema tests | `pytest tests/test_schema.py -q` | **15 passed** — ledger/idempotency columns, init/schema parity, migration splitter |
+| Schema tests | `pytest tests/test_schema.py -q` | **16 passed** — 19 tables, ledger/idempotency columns, app_settings, init/schema parity, migration splitter |
 | Worker tests | `pytest tests/test_paper_trading_worker.py -q` | **13 passed** — ledger delegation, locked symbol hydration |
-| Alembic | `python -m alembic heads` | **`0004_role_hierarchy (head)`** |
+| Alembic | `python -m alembic heads` | **`0005_app_settings (head)`** |
 | PostgreSQL 16 P1-C check | temporary container: concurrent fills, duplicate client ID, held lock → 503-equivalent busy error, released lock retry, cancelled writer | passed; no leaked advisory locks; container and script removed |
 | PostgreSQL 16 P1-B check | temporary container: fresh `upgrade head`, P1-A schema → `stamp 0002` → `upgrade head`, duplicate execute before/after restart | passed; container and temporary scripts removed |
-| Frontend build | `pnpm build` (in `frontend/`) | passed (P1.5 analytics metrics contract) |
+| Frontend build | `pnpm build` (in `frontend/`) | passed (real candle chart on `/markets`; real settings read/write on `/settings`; bounded live/status polling plus skip-link/ARIA/contrast changes on `/live`; persisted draft save/load and backtest handoff on `/strategy-builder`; Next 16.2.12) |
 | API ↔ frontend paths | `app.openapi()` vs `src/lib/api.ts` | every path resolves |
 
 ## P0 fixes landed (2026-10-21)
@@ -168,6 +173,60 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 0.5.0 path to `/data`; a container restart preserved `chroma.sqlite3` and `/health` stayed
 200.
 
+## Phase 2 — first slice: real market candles (verified 2026-10-22)
+
+| Piece | Evidence |
+|---|---|
+| Candles endpoint | `GET /api/v1/market/candles?symbol=&interval=&limit=&source=` in `backend/routers/market.py`. It auto-selects Binance for the mapped crypto symbols and Yahoo for equities, validates interval/source/limit, caps the response at 500 candles, returns ascending deduplicated UTC epoch timestamps, and maps no-data/upstream failure/timeout to **404/502/504**. Mounted behind `verify_auth` in `backend/main.py`. |
+| Response schema | `backend/schemas/market.py` defines `Candle`/`CandlesResponse` with finite floats and non-negative volume. |
+| Dashboard | `frontend/src/app/markets/page.tsx` fetches real candles through `getCandles`; the chart is created once and disposed with `chart.remove()`; analysis is an explicit **Analyze** button action (no auto-run on mount or symbol change); a ref guards concurrent runs; the symbol select has a label; loading, error, and empty states are explicit, and run state is announced with `aria-live`. |
+| Focused tests | `pytest tests/test_market_router.py -q` — **13 passed** (schema/limit/source validation, ordering, deduplication, 404, 502, 504, source selection). |
+| Route auth | `pytest tests/test_security/test_route_auth.py -q` — **5 passed**; the new router is covered by the existing mount guard. |
+| Real-source smoke check | Direct call on 2026-10-22 returned 5 AAPL candles from Yahoo and 5 BTC-USD candles from Binance. |
+| Source timestamps | `yahoo.py` and `coingecko.py` now emit timezone-aware UTC timestamps instead of host-local naive times; `tests/test_data_sources.py` asserts the epoch. The smoke check showed the AAPL daily candle at **13:30 UTC** and BTC-USD at **00:00 UTC**. |
+| Full verification (at that slice) | `pytest tests/ -q` — **1142 passed, 1 skipped / 80.54%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **187 files**. |
+| Frontend build | `pnpm build` passed (Next 16.2.12, TypeScript clean). |
+
+## Phase 2 — second slice: persisted dashboard settings (verified 2026-10-22)
+
+| Piece | Evidence |
+|---|---|
+| Settings API | `backend/routers/settings.py` exposes `GET /api/v1/settings` and `PUT /api/v1/settings/preferences`, mounted behind `verify_auth` in `backend/main.py`. The GET response has a read-only `safety` block and a persisted `preferences` block; the PUT body is `DashboardPreferences` only. |
+| Safety limits are read-only | `SafetyLimits` is built from the enforcing modules: `agents.risk.MAX_POSITION_SIZE_PCT` (**2.0%**), `agents.risk.MAX_RISK_SCORE` (**70.0**), `agents.consensus.REQUIRED_CONFIDENCE` (**80.0**), `live_max_drawdown_pct` (**15.0%**), promotion gate (**50 trades / 30 days**), and `live_trading_enabled` (default **false**). The preferences model uses `extra="forbid"`; sending `safety`, a cap, or a confidence field returns **422** and writes nothing. |
+| Persisted preferences | `backend/schemas/settings.py` defines `DashboardPreferences` with `default_symbol` (1–20 chars, trimmed/uppercased, `^[A-Z0-9^.=:/-]+$`) and `live_refresh_seconds` (5–30 s). `backend/services/settings_service.py` loads defaults before the first save, merges new defaults over older JSON, and upserts `app_settings` with `ON CONFLICT (id) DO UPDATE ... RETURNING`. |
+| Store and migration | `database/schema.sql` and `database/init.sql` are byte-identical and now define **19 tables**, including the singleton `app_settings` row (`id SMALLINT PRIMARY KEY CHECK (id = 1)`, `preferences JSONB`, `updated_at`). `migrations/versions/0005_app_settings.py` adds the table/row/trigger idempotently; `alembic heads` reports **`0005_app_settings (head)`**. |
+| Frontend settings page | `frontend/src/app/settings/page.tsx` now loads from `GET /api/v1/settings` and saves through `PUT /api/v1/settings/preferences` (no `setTimeout`). It shows the enforced 2% cap, reads the API URL from `API_BASE_URL` (`NEXT_PUBLIC_API_URL`, default `localhost:8000`), renders no token/WebSocket preview, and has explicit loading/error/saved states with `htmlFor` labels, `aria-invalid`, and `aria-live`/`role="alert"`. |
+| Preferences are consumed | `default_symbol` seeds dashboard quick analysis and the initial markets chart (a saved symbol outside the preset list is kept as a select option); `live_refresh_seconds` controls the `/live` polling interval. A missing settings store falls back to the built-in defaults on those pages. |
+| Dead config removed | The unused `MAX_POSITION_SIZE_PCT` env field is gone from `configs/settings.py` and `.env.example`. `agents.risk.MAX_POSITION_SIZE_PCT` is the single 2% source; `tests/test_config.py` asserts the field is not environment-configurable. |
+| Focused tests | `pytest tests/test_settings_router.py tests/test_settings_service.py -q` — **23 passed**; `pytest tests/test_schema.py -q` — **16 passed**; `pytest tests/test_security/test_route_auth.py -q` — **5 passed**, including `/api/v1/settings`. |
+| Real PostgreSQL proof | Temporary PostgreSQL 16 container: fresh `alembic upgrade head` reached `0005_app_settings`; a second path at `0004` with `app_settings` dropped also upgraded cleanly and recreated the seeded row plus trigger; GET returned defaults; PUT ` eth-usd `/15 persisted as `ETH-USD`/15; a payload containing `safety.max_position_size_pct=100` returned **422**; a second Python process reloaded the persisted preferences. Container and temporary scripts were removed. |
+| Full verification (current tree) | `pytest tests/ -q` — **1196 passed, 1 skipped / 81.11%**; `mypy .` clean on **198 source files**; `ruff check .` and `ruff format --check .` clean; `pnpm build` passed. |
+
+## Phase 2 — third slice: live polling, API errors, accessibility (verified 2026-10-22)
+
+| Piece | Evidence |
+|---|---|
+| Live page polling | `frontend/src/app/live/page.tsx` fetches status and audit concurrently with `Promise.all`, keeps one refresh in flight, aborts the active request on unmount, pauses the interval while the document is hidden, resumes immediately on visibility, and force-refreshes after start/stop/kill/arm/mode actions so a stale in-flight poll cannot overwrite the action result. The interval still comes from `live_refresh_seconds`. |
+| Pipeline polling | `frontend/src/lib/usePipelinePolling.ts` starts polling only after `POST /analyze` is accepted (avoiding the previous run's state), performs one status request at a time, polls immediately, aborts on unmount, backs off **1 → 2 → 4 → 8 s** on transient failures, and enforces the **60 s** safety timeout. `runAnalysis` rejects a second concurrent trigger. |
+| API client | `frontend/src/lib/api.ts` gives every request a bounded timeout (30 s default; 10 s status/audit/agent, 20 s analyze/candles, 120 s backtest), honours caller `AbortSignal`s, exposes typed `ApiError` (with FastAPI `detail`) and `ApiTimeoutError`, and bounds `/auth/verify`. The existing 401 clear-and-redirect behavior is unchanged. |
+| Accessibility | Root layout has a skip link to `#main-content`; `AuthGate` renders the focusable `main` target. The sidebar has `aria-label`s and `aria-current="page"`. Live actions have labelled status regions, error `role="alert"`, a labelled trading-mode select, and kill/arm dialogs with `role="dialog"`, `aria-modal`, labelled titles/descriptions, Escape handling, and safe initial focus. Strategy-builder inputs are labelled and toggle buttons expose `aria-pressed`. |
+| Contrast | Muted small text was raised from `#52525b` to **`#8b8b93`** (5.86:1 on the base background) and `#71717a` to **`#a1a1aa`** (7.72:1); the `#3f3f46` captions were raised to `#8b8b93` as well. The `--color-text-muted` token now matches. |
+| Verification (current tree) | `pnpm build` passed (Next 16.2.12, TypeScript clean). `pytest tests/ -q` — **1196 passed, 1 skipped / 81.11%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **198 source files**. No safety gate or live-trading default changed; live remains paper-only and disabled by default. Frontend lint/typecheck/test CI and a manual axe/Lighthouse pass remain open. |
+
+## Phase 2 — fourth slice: strategy draft persistence (verified 2026-10-22)
+
+| Piece | Evidence |
+|---|---|
+| Draft API | `backend/routers/strategies.py` exposes authenticated `GET/POST /api/v1/strategies`, `GET/PUT /api/v1/strategies/{id}`. The router is mounted with `verify_auth` in `backend/main.py`; the route-auth test enumerates it. |
+| Server-owned lifecycle | `backend/schemas/strategy.py` uses `extra="forbid"` for create/update. A request containing `status`, `live_trading_enabled`, `paper_trade_closed_trades`, or a promotion field returns **422** before the service runs. Create always lands as the table default `draft`; update only touches name/description/type/config/parameters and bumps `version`. |
+| Editable boundary | `backend/services/strategy_service.py` permits edits only when the stored status is `draft` or `paused`; any other status returns **409**. The `UPDATE` re-checks that status, so a concurrent promotion fails closed. A missing row is **404**; a store failure is **503**. The trading, Risk, consensus, promotion, and live paths do not read drafts from this service. |
+| Persistence shape | The existing `strategies` table stores `config JSONB` (`indicators`) and `parameters JSONB` (`position_size_pct`, `stop_loss_pct`, `take_profit_pct`). No schema or migration change was needed; `0005_app_settings` remains the Alembic head. |
+| Frontend builder | `frontend/src/app/strategy-builder/page.tsx` now lists saved drafts, loads one into the form, creates or updates it, and shows explicit loading/error/saved states. Draft parameters are controlled inputs; `aria-pressed` and labels remain. The page states that saving never enables live trading. |
+| Backtest handoff | Supported draft types link to `/backtests?strategy=...`; the backtests page accepts only its real `momentum`, `mean_reversion`, `trend_following`, or `breakout` options. Unsupported draft types show a disabled explanation instead of sending an invalid request. |
+| Focused tests | `pytest tests/test_strategy_router.py tests/test_strategy_service.py -q` — **29 passed**: create/list/get/update, normalization, version bump, JSON row parsing, 404/409/422/503, rejection of lifecycle/live fields, and fail-closed promotion-race handling. The route-auth test now enumerates `/api/v1/strategies`. |
+| Full verification (current tree) | `pytest tests/ -q` — **1196 passed, 1 skipped / 81.11%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **198 source files**; `pnpm build` passed. No safety gate, live default, promotion rule, or test assertion changed. |
+| Not yet run | The strategy service tests use a mock SQLAlchemy session. A disposable-PostgreSQL round-trip for the new routes was not run in this slice; the table already exists in the initial schema and the SQL mirrors the proven settings upsert/cast pattern. |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
@@ -179,10 +238,12 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 5 | `/analyze` concurrency/cost control absent | global `_last_state`, unbounded `BackgroundTasks`; auth is required, but runs are still not isolated. `/api/v1/metrics` no longer reads `_last_state`; `/agents/status` and `/risk` still do. | P1 |
 | 6 | Kill-switch latch is process-local | a Redis outage latches each process; `/live/arm` clears the API process, but a runner that also latched stays blocked until restarted (fail-closed, never auto-trades) | P1 operational |
 | 7 | ~~No automated PostgreSQL integration test in CI~~ | Closed by P1.4: `postgres-integration` runs hydrate → fill → restart → close, duplicate IDs, concurrent fills, and the busy lock on `postgres:16-alpine`; the local default suite skips the module without `ARES_TEST_POSTGRES_URL`. | ~~P2~~ fixed |
-| 8 | UI has mock data and fake settings | `frontend/src/app/markets/page.tsx:81`, `settings/page.tsx` (no API call, 10% vs backend 2%) | P2 |
+| 8 | ~~Remaining UI polling and accessibility gaps~~ | Closed 2026-10-22: `/live` fetches status/audit concurrently, pauses when hidden, guards in-flight refreshes, aborts on unmount, and force-refreshes after controls; `usePipelinePolling` single-polls with abort/backoff; `api.ts` has bounded timeouts and typed errors; skip link, navigation/dialog ARIA, labelled controls, and stronger muted-text contrast are in place. | ~~P2~~ fixed |
 | 9 | Model catalog removals are not checked in CI | manual check only; `scripts/test_free_models.py` exists but is not a CI job | P2 |
-| 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency` and `0004_role_hierarchy` (plus P1-A columns); `0004` rewrites legacy `user` → `operator` and makes `viewer` the default. `init.sql` only runs on first container start; the backend entrypoint now stamps `0001` when `init.sql` initialized the schema, then applies the later idempotent revisions. Old short **positions** still cannot be inferred and default to long. | Operational |
+| 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency`, `0004_role_hierarchy`, and `0005_app_settings` (plus P1-A columns). `0004` rewrites legacy `user` → `operator` and makes `viewer` the default; `0005` creates the singleton `app_settings` row and its trigger, so `/api/v1/settings` returns **503** until it is applied. `init.sql` only runs on first container start; the backend entrypoint stamps `0001` when `init.sql` initialized the schema, then applies the later idempotent revisions. Old short **positions** still cannot be inferred and default to long. | Operational |
 | 11 | ~~Local `.env` API key is the default placeholder~~ | Closed locally: a unique `API_SECRET_KEY` is set in `.env` (never committed), and authenticated `/api/v1/*` returns 200. Other environments must set their own key. | ~~Operational~~ fixed locally |
+| 12 | Frontend lint/typecheck/test is not a CI job | `pnpm lint` still runs `next lint`, which Next 16 removed; CI runs `pnpm build` (including TypeScript) but no component or hook tests. | P2 |
+| 13 | Chat is a pipeline trigger, not a conversational agent | `chat/page.tsx` calls `POST /api/v1/analyze` and displays the accepted status; it does not stream agent replies or maintain multi-turn agent memory. Strategy drafts now persist through `/api/v1/strategies` (fourth slice); the remaining gap is the conversational workflow. | P2 |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 

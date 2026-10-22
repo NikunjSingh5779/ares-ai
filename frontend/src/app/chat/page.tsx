@@ -119,7 +119,7 @@ export default function ChatPage() {
                 {msg.content}
               </p>
               <p className={`mt-1.5 font-mono text-[10px] ${
-                msg.role === "user" ? "text-[rgba(0,0,0,0.5)]" : "text-[#52525b]"
+                msg.role === "user" ? "text-[rgba(0,0,0,0.5)]" : "text-[#8b8b93]"
               }`}>
                 {msg.timestamp.toLocaleTimeString()}
               </p>
@@ -162,7 +162,7 @@ export default function ChatPage() {
             key={suggestion}
             onClick={() => handleSend(suggestion)}
             disabled={loading}
-            className="rounded-lg border border-[rgba(255,255,255,0.08)] px-3 py-1.5 font-mono text-[10px] text-[#52525b] transition-colors hover:border-[#6366f1] hover:text-white disabled:opacity-50"
+            className="rounded-lg border border-[rgba(255,255,255,0.08)] px-3 py-1.5 font-mono text-[10px] text-[#8b8b93] transition-colors hover:border-[#6366f1] hover:text-white disabled:opacity-50"
           >
             {suggestion}
           </button>
@@ -178,7 +178,7 @@ export default function ChatPage() {
           onKeyDown={handleKeyDown}
           placeholder="Ask about markets, analysis, or portfolio..."
           disabled={loading}
-          className="flex-1 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-4 py-3 font-mono text-sm text-white placeholder-[#52525b] outline-none transition-colors focus:border-[#6366f1] disabled:opacity-50"
+          className="flex-1 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-4 py-3 font-mono text-sm text-white placeholder-[#8b8b93] outline-none transition-colors focus:border-[#6366f1] disabled:opacity-50"
         />
         <button
           onClick={() => handleSend()}

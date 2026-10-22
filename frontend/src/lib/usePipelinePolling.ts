@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { analyze, getAgentStatus } from "@/lib/api";
 import type { AgentStatusResponse } from "@/types/api";
 
 /** Default polling interval in ms. */
 const POLL_INTERVAL_MS = 1000;
+
+/** Maximum backoff after a transient status failure. */
+const MAX_BACKOFF_MS = 8000;
 
 /** Safety timeout — stop polling after this many ms. */
 const SAFETY_TIMEOUT_MS = 60_000;
@@ -17,7 +20,10 @@ const SAFETY_TIMEOUT_MS = 60_000;
  * Call `runAnalysis(symbol, requestText)` to trigger a new analysis.
  * The hook internally:
  *   - Calls the POST /api/v1/analyze endpoint
- *   - Polls the backend status every second
+ *   - Polls the backend status every second after the request is accepted
+ *   - Allows only one in-flight request at a time
+ *   - Backs off exponentially after transient status failures
+ *   - Aborts the active poll on unmount
  *   - Detects pipeline completion (when the "memory" node is done)
  *   - Resets `running` to false on completion or on a 60s safety timeout
  *
@@ -30,63 +36,135 @@ export function usePipelinePolling() {
   const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
 
-  /** Trigger a pipeline analysis.  Returns immediately; polling picks up
-   *  the result asynchronously. */
-  async function runAnalysis(symbol: string, requestText: string) {
-    setError(null);
-    setTimedOut(false);
-    setRunning(true);
-    try {
-      await analyze(symbol, requestText);
-    } catch {
-      setError(`Analysis failed for ${symbol}`);
-      setRunning(false);
-    }
-  }
+  const runningRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  /** Trigger a pipeline analysis.  Returns after the backend accepts it;
+   *  polling picks up the result asynchronously. */
+  const runAnalysis = useCallback(
+    async (symbol: string, requestText: string): Promise<void> => {
+      if (runningRef.current) return;
+
+      runningRef.current = true;
+      setError(null);
+      setTimedOut(false);
+
+      try {
+        await analyze(symbol, requestText);
+        if (!mountedRef.current) return;
+        // Polling starts only after the backend has installed the new
+        // pipeline state, so an immediate poll cannot read the previous run.
+        setRunning(true);
+      } catch (e) {
+        if (!mountedRef.current) return;
+        setError(
+          e instanceof Error ? e.message : `Analysis failed for ${symbol}`,
+        );
+        runningRef.current = false;
+        setRunning(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!running) return;
 
     let cancelled = false;
-    const startTime = Date.now();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = null;
+    let pollDelay = POLL_INTERVAL_MS;
 
-    const interval = setInterval(async () => {
-      // Safety timeout — stop polling and surface the error
-      if (Date.now() - startTime > SAFETY_TIMEOUT_MS) {
-        clearInterval(interval);
-        setTimedOut(true);
-        setRunning(false);
-        return;
+    const clearTimer = () => {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
       }
+    };
+
+    const finish = () => {
+      if (cancelled) return;
+      cancelled = true;
+      clearTimer();
+      if (safetyTimer !== null) {
+        clearTimeout(safetyTimer);
+        safetyTimer = null;
+      }
+      controller?.abort();
+      runningRef.current = false;
+      setRunning(false);
+    };
+
+    const schedule = (delay: number) => {
+      if (cancelled) return;
+      clearTimer();
+      timer = setTimeout(() => {
+        void poll();
+      }, delay);
+    };
+
+    async function poll(): Promise<void> {
+      if (cancelled) return;
+      timer = null;
+
+      const current = new AbortController();
+      controller = current;
 
       try {
-        const s = await getAgentStatus();
+        const next = await getAgentStatus(current.signal);
         if (cancelled) return;
 
-        setStatus(s);
+        setStatus(next);
 
-        // Check if pipeline is finished (memory is the last node)
-        const completed = s.pipeline_status?.completed_nodes ?? [];
-        const failed = s.pipeline_status?.failed_nodes ?? [];
-        const skipped = s.pipeline_status?.skipped_nodes ?? [];
+        const pipeline = next.pipeline_status;
+        const completed = pipeline?.completed_nodes ?? [];
+        const failed = pipeline?.failed_nodes ?? [];
+        const skipped = pipeline?.skipped_nodes ?? [];
 
         if (
           completed.includes("memory") ||
           failed.includes("memory") ||
           skipped.includes("memory") ||
-          (s.pipeline_status?.current_node === "" && s.has_run)
+          (pipeline?.current_node === "" && next.has_run)
         ) {
-          clearInterval(interval);
-          setRunning(false);
+          finish();
+          return;
         }
+
+        pollDelay = POLL_INTERVAL_MS;
+        schedule(pollDelay);
       } catch {
-        // Ignore transient polling errors
+        if (cancelled || current.signal.aborted) return;
+
+        // Transient status failures should not end the run; retry with a
+        // bounded exponential backoff until the safety timeout.
+        pollDelay = Math.min(pollDelay * 2, MAX_BACKOFF_MS);
+        schedule(pollDelay);
       }
-    }, POLL_INTERVAL_MS);
+    }
+
+    safetyTimer = setTimeout(() => {
+      if (cancelled) return;
+      setTimedOut(true);
+      finish();
+    }, SAFETY_TIMEOUT_MS);
+
+    // Poll immediately instead of waiting for the first interval.
+    void poll();
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearTimer();
+      if (safetyTimer !== null) clearTimeout(safetyTimer);
+      controller?.abort();
     };
   }, [running]);
 

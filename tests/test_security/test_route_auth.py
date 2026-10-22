@@ -35,6 +35,8 @@ def test_protected_get_routes_return_401_without_credentials(unauthenticated_cli
         "/api/v1/portfolio",
         "/api/v1/live/status",
         "/api/v1/agents/status",
+        "/api/v1/settings",
+        "/api/v1/strategies",
     ):
         response = unauthenticated_client.get(path)
         assert response.status_code == 401, f"{path} returned {response.status_code}: {response.text}"

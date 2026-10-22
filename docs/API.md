@@ -65,6 +65,50 @@ Public routes: `/health`, `/metrics`, `/docs`, `/redoc`, `/openapi.json`,
 | POST | `/api/v1/signal` | Required | Generate and process a trading signal through the agent path |
 | GET | `/api/v1/signals/history` | Required | Recent signal history |
 
+### Market data
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/v1/market/candles?symbol=&interval=&limit=&source=` | Required | Read-only OHLCV candles from a free source; Binance is selected for mapped crypto symbols, Yahoo for equities; `limit` is capped at 500 |
+
+The endpoint returns ascending, deduplicated UTC epoch timestamps and never
+persists candles or makes a trading decision. Invalid intervals/sources return
+`422`; an empty result is `404`; an upstream failure is `502`; a fetch timeout is
+`504`.
+
+### Settings
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/v1/settings` | Required | Effective safety limits (read-only) plus persisted dashboard preferences |
+| PUT | `/api/v1/settings/preferences` | Required | Persist `default_symbol` and `live_refresh_seconds` |
+
+The `safety` block is derived from the enforcing code and configuration
+(`agents.risk`, `agents.consensus`, `configs.settings`); it is never read from
+the settings table. The request body accepts only `DashboardPreferences`
+(`default_symbol`, 1–20 characters, normalized uppercase; `live_refresh_seconds`,
+5–30). Unknown fields, including a `safety` object, return **422**. A missing
+settings row returns defaults; an unavailable store returns **503**. Preferences
+are global to this single-user deployment.
+
+### Strategy drafts
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/v1/strategies?limit=` | Required | List saved strategy drafts, newest first; `limit` is 1-100 (default 50) |
+| GET | `/api/v1/strategies/{id}` | Required | Read one saved draft |
+| POST | `/api/v1/strategies` | Required | Create a draft; returns **201** |
+| PUT | `/api/v1/strategies/{id}` | Required | Update a draft or paused strategy; bumps `version` |
+
+The create/update body accepts `name`, `description`, `strategy_type`, `config`,
+and `parameters` only. `status`, `live_trading_enabled`, and promotion counters
+are server-owned; sending any of them returns **422**. Only `draft` and `paused`
+strategies are editable, otherwise **409**. Strategy parameters are draft inputs,
+not safety limits: the Risk gate and execution path still enforce the 2% position
+cap, risk ceiling, drawdown, exposure, promotion gate, and kill switch. A missing
+store returns **503**; a missing strategy returns **404**. The `strategies` table
+already exists in the initial schema, so this slice adds no migration.
+
 ### Paper trading, portfolio, orders
 
 | Method | Path | Auth | Purpose |

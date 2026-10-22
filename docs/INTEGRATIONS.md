@@ -77,7 +77,7 @@ audited. The only production `exchange.create_order` call site is
 |---|---|
 | Next.js 16 dashboard | Operator UI at `http://localhost:3000`; calls `NEXT_PUBLIC_API_URL` |
 | Astro landing page | Marketing page at `http://localhost:4321` |
-| TradingView Lightweight Charts | Market chart rendering (markets page is still mock data in Phase 2) |
+| TradingView Lightweight Charts | Market chart rendering; `/markets` loads real candles from `GET /api/v1/market/candles` |
 
 ## Web research and MCP
 

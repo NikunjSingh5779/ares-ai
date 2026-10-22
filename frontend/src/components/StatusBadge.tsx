@@ -14,7 +14,7 @@ const variantStyles: Record<string, string> = {
   failed:
     "bg-[rgba(239,68,68,0.12)] text-[#ef4444] border-[rgba(239,68,68,0.2)]",
   skipped:
-    "bg-[rgba(255,255,255,0.04)] text-[#52525b] border-[rgba(255,255,255,0.08)]",
+    "bg-[rgba(255,255,255,0.04)] text-[#8b8b93] border-[rgba(255,255,255,0.08)]",
   running:
     "bg-[rgba(99,102,241,0.12)] text-[#6366f1] border-[rgba(99,102,241,0.2)]",
   approved:
@@ -24,7 +24,7 @@ const variantStyles: Record<string, string> = {
   pending:
     "bg-[rgba(245,158,11,0.12)] text-[#f59e0b] border-[rgba(245,158,11,0.2)]",
   default:
-    "bg-[rgba(255,255,255,0.04)] text-[#52525b] border-[rgba(255,255,255,0.08)]",
+    "bg-[rgba(255,255,255,0.04)] text-[#8b8b93] border-[rgba(255,255,255,0.08)]",
 };
 
 export function StatusBadge({ status, label }: StatusBadgeProps) {

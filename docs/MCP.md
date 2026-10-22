@@ -48,7 +48,7 @@ secret/env expansion mechanism or a local, uncommitted override.
 
 1. Start PostgreSQL and confirm `psql` can connect.
 2. Reload the MCP client and inspect its server status.
-3. Ask the client to list the public tables. It should see the 18 tables
+3. Ask the client to list the public tables. It should see the 19 tables
    documented in `docs/DATABASE.md`.
 4. Run a read-only query such as `SELECT count(*) FROM orders;`.
 

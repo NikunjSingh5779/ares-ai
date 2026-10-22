@@ -8,25 +8,37 @@
 
 ## Now — Phase 2 (product realism and UI)
 
-- [ ] `markets/page.tsx`: replace `Math.random()` candles with real candle data.
-- [ ] `markets/page.tsx`: remove auto-analysis on mount/symbol change; make it an
-      explicit action.
-- [ ] `markets/page.tsx`: dispose the chart on unmount (`chart.remove()`).
-- [ ] `markets/page.tsx`: guard concurrent analysis runs.
-- [ ] `settings/page.tsx`: persist settings through the API; remove the
-      `setTimeout` save.
-- [ ] `settings/page.tsx`: fix `localhost:8080` vs the client `8000`.
-- [ ] `settings/page.tsx`: align `max_position_size` 10% with backend 2%.
-- [ ] `settings/page.tsx`: remove the fake secret preview.
-- [ ] `live/page.tsx`: fetch status and audit with `Promise.all`.
-- [ ] `live/page.tsx`: pause polling when the tab is hidden; add an in-flight guard.
-- [ ] `usePipelinePolling.ts`: one poll at a time, abort on unmount, backoff on
-      errors.
-- [ ] `api.ts`: request timeout/abort and typed errors.
-- [ ] Accessibility: label the symbol select, connect settings labels with
-      `htmlFor`, `role="switch"`/`aria-checked`, `aria-live` for run/error state,
-      skip link, stronger small-text contrast.
-- [ ] Functional strategy builder and real chat interface.
+- [x] `markets/page.tsx`: replace `Math.random()` candles with real candle data.
+      (2026-10-22: `GET /api/v1/market/candles`, Binance for crypto, Yahoo for equities.)
+- [x] `markets/page.tsx`: remove auto-analysis on mount/symbol change; make it an
+      explicit action. (2026-10-22)
+- [x] `markets/page.tsx`: dispose the chart on unmount (`chart.remove()`). (2026-10-22)
+- [x] `markets/page.tsx`: guard concurrent analysis runs. (2026-10-22)
+- [x] Label the markets symbol select and announce analysis state with `aria-live`.
+      (2026-10-22)
+- [x] Settings backend: authenticated `GET /api/v1/settings` and
+      `PUT /api/v1/settings/preferences`; singleton `app_settings` table and
+      migration `0005`; safety limits read-only. (2026-10-22)
+- [x] `settings/page.tsx`: persist settings through the API; remove the
+      `setTimeout` save. (2026-10-22)
+- [x] `settings/page.tsx`: fix `localhost:8080` vs the client `8000`.
+      (2026-10-22: API URL comes from `NEXT_PUBLIC_API_URL`.)
+- [x] `settings/page.tsx`: align `max_position_size` 10% with backend 2%.
+      (2026-10-22: read-only `MAX_POSITION_SIZE_PCT`.)
+- [x] `settings/page.tsx`: remove the fake secret preview. (2026-10-22)
+- [x] `live/page.tsx`: fetch status and audit with `Promise.all`. (2026-10-22)
+- [x] `live/page.tsx`: pause polling when the tab is hidden; add an in-flight guard.
+      (2026-10-22: interval comes from `live_refresh_seconds`; controls force refresh.)
+- [x] `usePipelinePolling.ts`: one poll at a time, abort on unmount, backoff on
+      errors. (2026-10-22)
+- [x] `api.ts`: request timeout/abort and typed errors. (2026-10-22)
+- [x] Accessibility: skip link, `aria-current`, labelled live controls, dialog ARIA,
+      strategy-builder labels/`aria-pressed`, and stronger small-text contrast.
+      (2026-10-22; manual axe/Lighthouse still pending)
+- [x] Strategy builder: persist drafts through `/api/v1/strategies`; keep status,
+      live enablement, and promotion fields server-owned. (2026-10-22)
+- [ ] Chat: make it a real multi-turn workflow; the page currently triggers
+      `/api/v1/analyze` and displays the accepted status.
 - [ ] Frontend lint/typecheck/test job in CI.
 
 **Phase 2 exit:** no page renders invented data; settings round-trip through the
@@ -45,7 +57,9 @@ API; axe/Lighthouse pass.
 
 - [ ] Bind `/execute` to a signed/expiring approval or a stored `signals` row;
       do not rely only on caller-supplied agent payloads.
-- [ ] Remove remaining frontend mock data; fix frontend lint under Next 16.
+- [x] Remove remaining frontend mock data from markets, settings, and the strategy
+      builder. (2026-10-22)
+- [ ] Fix frontend lint under Next 16 and add the frontend lint/typecheck/test CI job.
 - [ ] Add scheduled/CI validation of the model catalog.
 - [ ] Paper realism: gap-through stop fills, partial fills/liquidity,
       borrow/funding costs, per-symbol slippage.

@@ -15,7 +15,7 @@
 | `live_trading/` | Live engine, safety gates, audit trail, exchange connectors |
 | `backtesting/` | Pure-Python backtest engine |
 | `database/` | Canonical DDL (`schema.sql`), Compose bootstrap copy (`init.sql`), async connection factory |
-| `migrations/` | Alembic environment and `0001`–`0004` revisions |
+| `migrations/` | Alembic environment and `0001`–`0005` revisions |
 | `configs/` | Settings loader and `models.yaml` roster/fallback chains |
 | `frontend/` | Next.js dashboard (App Router) |
 | `landing/` | Astro marketing page |
@@ -46,6 +46,12 @@ Browser / API client
   -> fail-closed safety gates -> exchange connector -> `OrderAuditor`. There is
   exactly one production `create_order` call site.
 - **Backtest:** `backend/routers/backtest.py` -> `backtesting/engine.py`.
+- **Settings:** `backend/routers/settings.py` -> `settings_service` -> singleton
+  `app_settings` JSONB row. The safety block is computed from `agents.risk`,
+  `agents.consensus`, and `configs.settings`; it never comes from the table.
+- **Strategy drafts:** `backend/routers/strategies.py` -> `strategy_service` ->
+  the existing `strategies` table. Create lands as `draft`; only draft/paused rows
+  are editable, and status/live/promotion fields stay server-owned.
 
 ## Where to make a change
 

@@ -6,7 +6,7 @@ import { MetricCard } from "@/components/MetricCard";
 import { DataTable, type Column } from "@/components/DataTable";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PipelineFlow } from "@/components/PipelineFlow";
-import { getPortfolio, getOrders } from "@/lib/api";
+import { getPortfolio, getOrders, getSettings } from "@/lib/api";
 import { usePipelinePolling } from "@/lib/usePipelinePolling";
 import type {
   PortfolioSummary,
@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<ClosedTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [defaultSymbol, setDefaultSymbol] = useState("BTC-USD");
 
   // Pipeline hook owns the full lifecycle internally.
   const { status: agentStatus, running, error: runError, timedOut, runAnalysis } = usePipelinePolling();
@@ -60,9 +61,19 @@ export default function DashboardPage() {
     loadData();
   }, []);
 
+  // Apply the saved default symbol to the quick-analysis action. A missing
+  // settings row or an unavailable store must not block the dashboard.
+  useEffect(() => {
+    const controller = new AbortController();
+    getSettings(controller.signal)
+      .then((settings) => setDefaultSymbol(settings.preferences.default_symbol))
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
   async function handleRunAnalysis() {
     if (running) return;
-    await runAnalysis("BTC-USD", "Quick dashboard analysis");
+    await runAnalysis(defaultSymbol, "Quick dashboard analysis");
   }
 
   const error = loadError || runError;
@@ -189,7 +200,7 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="flex items-center justify-center rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] p-8 bg-[rgba(255,255,255,0.02)]">
-          <p className="font-mono text-sm text-[#52525b]">
+          <p className="font-mono text-sm text-[#8b8b93]">
             No portfolio data yet. Run an analysis to get started.
           </p>
         </div>
@@ -231,7 +242,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex justify-between pt-1 font-mono text-xs">
                 <span className="text-[#a1a1aa]">Rationale</span>
-                <span className="text-[#52525b] text-right max-w-[200px] truncate" title={agentStatus?.execution?.rationale ?? "No trade"}>
+                <span className="text-[#8b8b93] text-right max-w-[200px] truncate" title={agentStatus?.execution?.rationale ?? "No trade"}>
                   {agentStatus?.execution?.rationale ?? "No trade"}
                 </span>
               </div>

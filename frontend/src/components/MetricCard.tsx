@@ -44,8 +44,8 @@ export function MetricCard({ label, value, change, unit }: MetricCardProps) {
           )}
           {!isPositive && !isNegative && (
             <span className="flex items-center gap-0.5 rounded-full bg-[rgba(255,255,255,0.05)] px-2 py-0.5">
-              <Minus size={12} className="text-[#52525b]" />
-              <span className="font-mono text-xs text-[#52525b]">
+              <Minus size={12} className="text-[#8b8b93]" />
+              <span className="font-mono text-xs text-[#8b8b93]">
                 {change.toFixed(2)}%
               </span>
             </span>

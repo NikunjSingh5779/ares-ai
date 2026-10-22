@@ -15,16 +15,17 @@
 | Connection setting | `DATABASE_URL` from `configs/settings.py` / environment |
 | Migrations | Alembic in `migrations/versions/` |
 | Bootstrap | `database/init.sql` on first postgres volume, then Alembic |
-| ORM | `backend/db/models.py` (partial mapping; most access is raw SQL) |
+| ORM | `backend/db/models.py` (partial mapping; `app_settings` and most domain access use raw SQL) |
 | Integration test | `tests/test_postgres_integration.py` |
 
-## Tables (18)
+## Tables (19)
 
 | Group | Tables | Purpose |
 |---|---|---|
 | Identity & access | `users`, `accounts` | Operator account, roles, account metadata |
+| Application | `app_settings` | Singleton dashboard preferences (`default_symbol`, `live_refresh_seconds`); never safety limits |
 | Portfolio & execution | `portfolio`, `positions`, `orders`, `paper_trades`, `live_trades` | Balances, open/closed positions, orders, per-mode trade records |
-| Signals & strategy | `signals`, `strategies`, `trade_history` | Approved/rejected decisions, strategy definitions, closed paper trades |
+| Signals & strategy | `signals`, `strategies`, `trade_history` | Approved/rejected decisions, strategy drafts, closed paper trades. `GET/POST/PUT /api/v1/strategies` reads/writes drafts; status and promotion fields stay server-owned. |
 | Learning | `journal`, `memories`, `agent_logs` | Decision journal, ChromaDB-linked memories, per-agent model/fallback logs |
 | Market & analytics | `market_data`, `metrics`, `risk_metrics`, `backtests`, `alerts` | OHLCV bars, app metrics, risk snapshots, backtest runs, alert records |
 
@@ -40,22 +41,26 @@
   curve are persisted with the P1-A ledger.
 - **Schema changes are atomic.** One change updates the DDL, the ORM mapping
   where applicable, a migration, and tests.
+- **`app_settings` is one non-safety row.** `id` is constrained to `1`; preferences
+  are JSONB. Trading caps, confidence thresholds, drawdown limits, and promotion
+  gates stay in code/configuration and are exposed read-only by the settings API.
 - **`init.sql` is a bootstrap copy, not a second schema.** After `init.sql`
   creates the schema, the entrypoint stamps Alembic `0001` and applies the
-  idempotent `0002`–`0004` revisions (ADR-017).
+  idempotent `0002`–`0005` revisions (ADR-017).
 - **Migrations must have one head.** A split head is a bug, not a merge state.
 
 ## Migration chain
 
 | Revision | Purpose |
 |---|---|
-| `0001_initial_schema.py` | Baseline for the 18-table schema |
+| `0001_initial_schema.py` | Baseline for the current 19-table schema |
 | `0002_paper_ledger.py` | Durable paper ledger columns, sides, cost/margin, equity curve |
 | `0003_order_idempotency.py` | `client_order_id` and unique guard |
 | `0004_role_hierarchy.py` | Role column and legacy-user handling |
+| `0005_app_settings.py` | Singleton `app_settings` row and `updated_at` trigger |
 
-`0004` is the current head. A fresh Compose volume lands on `0001` after
-`init.sql`, then applies `0002`–`0004`.
+`0005` is the current head. A fresh Compose volume lands on `0001` after
+`init.sql`, then applies `0002`–`0005`.
 
 ## Common commands
 

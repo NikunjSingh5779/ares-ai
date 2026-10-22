@@ -7,12 +7,12 @@ Controllers translate; they must not own domain state.
 ## Layout (MVC)
 | Role | Path |
 |---|---|
-| Controllers | `routers/` — `analysis`, `trading`, `live`, `agents`, `journal`, `monitoring`, `backtest`, `predictions`, `auth`, `users` |
+| Controllers | `routers/` — `analysis`, `trading`, `live`, `agents`, `journal`, `monitoring`, `backtest`, `predictions`, `market`, `settings`, `strategies`, `auth`, `users` |
 | Models | `schemas/` (API), `db/models.py` (ORM) |
 | Views | JSON responses + OpenAPI `/docs`; SSE in `analysis.stream_analysis` |
 | Core | `core/` — `dependencies` (auth/roles), `roles`, `rate_limit`, `security` (headers/JWT), `metrics`, `logging`, `error_handlers`, `login_rate_limit` |
 | Data | `data/` — `ingestor`, `models`, `sources/` (yahoo, binance, coingecko, web_search) |
-| Services | `services/` — `user_service` |
+| Services | `services/` — `user_service`, `settings_service`, `strategy_service` |
 | App | `main.py` — lifespan, middleware, router registration, `/health` |
 
 ## Inputs
@@ -63,6 +63,38 @@ price/quantity fields and no manual bypass. A duplicate `client_order_id` return
 a writer-lock timeout returns 503 with `Retry-After: 1`; other
 ledger failures return 503. The normal generated-trade path remains `/signal`.
 
+## Market data boundary
+`GET /api/v1/market/candles` is a read-only view over the free source registry in
+`backend/data/sources/`. It selects Binance for symbols in `SYMBOL_TO_BINANCE` and
+Yahoo otherwise, accepts an explicit `source`, validates the interval/limit, closes
+the upstream client in `finally`, and returns ascending deduplicated UTC epoch
+candles. It never persists candles and never makes a trading decision. Upstream
+failures are `502`, timeouts are `504`, and an empty result is `404`.
+
+## Settings boundary
+`GET /api/v1/settings` returns a **read-only** `SafetyLimits` block derived from
+`agents.risk`, `agents.consensus`, and `configs.settings`, plus the persisted
+`DashboardPreferences`. `PUT /api/v1/settings/preferences` accepts only
+`default_symbol` and `live_refresh_seconds`; `DashboardPreferences` uses
+`extra="forbid"`, so a `safety` object or any limit override is **422** before the
+service runs. `settings_service` reads/upserts the singleton `app_settings` row
+(JSONB) and merges defaults for forward compatibility. Preferences are global to
+the single-user deployment and are never read by the risk, consensus, execution,
+or live safety paths. An unavailable store returns **503**; a missing row returns
+defaults.
+
+## Strategy draft boundary
+`GET/POST /api/v1/strategies` and `GET/PUT /api/v1/strategies/{id}` expose the
+existing `strategies` table as a draft configuration surface. `StrategyCreate` and
+`StrategyUpdate` use `extra="forbid"`, so `status`, `live_trading_enabled`, and the
+promotion counters are **422** and never written; create lands as the table default
+`draft`. Only `draft` and `paused` rows are editable (**409** otherwise), and an
+update bumps `version` without touching lifecycle fields. The draft `parameters`
+are not a safety override: the Risk, consensus, promotion, execution, and kill-switch
+paths remain authoritative. No schema or migration change was needed because the
+table exists in the initial schema. Missing rows are **404**; store failures are
+**503**.
+
 ## Known gaps
 - `/execute` trusts the authenticated caller's agent payload; there is no signed or
   expiring signal token. The API key remains the trust boundary.
@@ -74,3 +106,6 @@ ledger failures return 503. The normal generated-trade path remains `/signal`.
   registry aggregation. Compose runs one uvicorn worker.
 - Role changes take effect on the next login because the role is a JWT claim; there is no
   revocation list. API-key holders always map to `admin`.
+- Dashboard preferences are one global `app_settings` row, not per user. The shared API
+  key has no user row, and the deployment is single-user; multi-user needs an explicit
+  user-scoped store.

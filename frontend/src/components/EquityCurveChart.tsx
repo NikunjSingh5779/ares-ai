@@ -32,7 +32,7 @@ export function EquityCurveChart({ equityCurve }: EquityCurveChartProps) {
   if (!equityCurve || equityCurve.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)]">
-        <p className="text-sm text-[#52525b]">No equity curve data available</p>
+        <p className="text-sm text-[#8b8b93]">No equity curve data available</p>
       </div>
     );
   }
@@ -49,7 +49,7 @@ export function EquityCurveChart({ equityCurve }: EquityCurveChartProps) {
               <XAxis dataKey="index" hide />
               <YAxis 
                 domain={['auto', 'auto']} 
-                tick={{ fontSize: 11, fill: '#52525b' }} 
+                tick={{ fontSize: 11, fill: '#8b8b93' }}
                 stroke="rgba(255,255,255,0.05)"
                 tickFormatter={(val: number) => `$${(val / 1000).toFixed(0)}k`}
                 width={60}
@@ -88,7 +88,7 @@ export function EquityCurveChart({ equityCurve }: EquityCurveChartProps) {
               <XAxis dataKey="index" hide />
               <YAxis 
                 domain={['auto', 0]} 
-                tick={{ fontSize: 11, fill: '#52525b' }} 
+                tick={{ fontSize: 11, fill: '#8b8b93' }}
                 stroke="rgba(255,255,255,0.05)"
                 tickFormatter={(val: number) => `${val.toFixed(0)}%`}
                 width={60}

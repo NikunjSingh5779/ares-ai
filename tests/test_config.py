@@ -8,6 +8,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from agents.risk import MAX_POSITION_SIZE_PCT
 from configs.settings import Settings, settings
 
 MODELS_YAML_PATH = Path(__file__).resolve().parent.parent / "configs" / "models.yaml"
@@ -27,6 +28,12 @@ def test_settings_defaults() -> None:
     assert settings.paper_trading_initial_capital == 100000.0
     assert settings.default_trading_mode == "human_approval"
     assert settings.max_drawdown_pct == 20.0
+
+
+def test_position_cap_is_code_enforced_not_environment_configurable() -> None:
+    """The 2% exposure cap must not be weakened by an environment override."""
+    assert "max_position_size_pct" not in Settings.model_fields
+    assert MAX_POSITION_SIZE_PCT == 2.0
 
 
 def test_paper_accounting_defaults_are_realistic() -> None:

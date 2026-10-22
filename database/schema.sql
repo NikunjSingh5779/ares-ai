@@ -1,7 +1,7 @@
 -- =============================================================================
 -- ARES AI — Database Schema (PostgreSQL 16+)
 -- =============================================================================
--- All 18 tables for the ARES AI trading platform.
+-- All 19 tables for the ARES AI trading platform.
 -- Run this against a fresh PostgreSQL 16+ database to initialize.
 -- =============================================================================
 
@@ -39,6 +39,20 @@ CREATE TABLE accounts (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, exchange, account_name)
 );
+
+-- ===========================================================================
+-- APPLICATION SETTINGS
+-- ===========================================================================
+-- One row of non-safety dashboard preferences. Trading limits stay in code
+-- and configuration; they are never stored or raised through this table.
+
+CREATE TABLE app_settings (
+    id SMALLINT PRIMARY KEY CHECK (id = 1),
+    preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO app_settings (id) VALUES (1);
 
 -- ===========================================================================
 -- PORTFOLIO & POSITIONS
@@ -511,6 +525,10 @@ CREATE TRIGGER trg_users_updated_at
 
 CREATE TRIGGER trg_accounts_updated_at
     BEFORE UPDATE ON accounts
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_app_settings_updated_at
+    BEFORE UPDATE ON app_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER trg_portfolio_updated_at

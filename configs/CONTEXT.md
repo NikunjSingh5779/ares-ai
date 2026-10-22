@@ -15,6 +15,9 @@
 - Add a setting → `Settings` field + `.env.example` + compose env + a config test.
 - Paper fills use `paper_trading_commission_pct` and `paper_trading_slippage_pct`
   (decimal fractions, default 0.001 = 10 bps per side).
+- Position sizing is **not** an environment setting. `agents.risk.MAX_POSITION_SIZE_PCT`
+  (2% of paper equity) is the single source of truth; `app_settings` preferences cannot
+  change it.
 - Paper writes wait at most `paper_trading_writer_lock_timeout_seconds` (default 10 s) for
   the cross-process advisory lock; on timeout the API returns 503.
 - Production (`ENVIRONMENT=production`) must reject default secrets and default DB

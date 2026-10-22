@@ -22,18 +22,39 @@ Static/SSR pages served by Next; no secrets in the bundle.
 
 ## Invariants
 - Pages call `lib/api.ts`; no direct `fetch` and **no mock/generated data** in a page.
-- Loading, empty, error, and timeout states are explicit.
-- Interactive controls have labels/`aria-label`; async updates use `aria-live`.
+- Loading, empty, error, and timeout states are explicit. `api.ts` gives every request
+  a bounded timeout and exposes typed `ApiError`/`ApiTimeoutError`; unmounting callers
+  pass an `AbortSignal`.
+- Polling is single-flight. `/live` pauses while the document is hidden, resumes on
+  visibility, and force-refreshes after control actions; `usePipelinePolling` starts
+  after the POST is accepted, aborts on unmount, and backs off under its 60 s timeout.
+- Interactive controls have labels/`aria-label`; async updates use `aria-live`; dialogs
+  use `role="dialog"` with an accessible title and initial focus.
 - Types mirror `backend/schemas`; a new endpoint lands here in the same change.
 - No auth secret is bundled. A 401 clears the stored key and redirects to `/login`;
   `AuthGate` blocks protected pages when no key is present.
 
 ## Human check
 `pnpm build` (in `frontend/`), then click through the changed page. Confirm `/login`
-rejects a wrong key and that a protected page redirects without one.
+rejects a wrong key and that a protected page redirects without one. On `/markets`,
+confirm the chart loads real candles from `/api/v1/market/candles`, the symbol change
+does not start an analysis, and the **Analyze** button is the only trigger. On
+`/settings`, confirm the page loads the 2% safety cap, save a different default symbol
+and refresh interval, reload, and see the saved values; confirm no secret or fake
+WebSocket preview is rendered. On `/live`, confirm status and audit update together,
+hiding the tab pauses refresh, Escape closes the kill/arm dialogs, and keyboard focus
+starts on Cancel. Use the skip link with the keyboard and verify it focuses the main
+content. On `/strategy-builder`, save a draft, reload the page, confirm it appears in
+Saved Drafts, edit it, and confirm the version increases. Confirm an unsupported
+backtest type shows a disabled explanation instead of navigating to an invalid run.
 
 ## Known gaps
-- `markets/page.tsx` generates candles with `Math.random()` (no market-data API).
-- `settings/page.tsx` never persists and shows 10% position size vs backend 2%.
-- `strategy-builder/page.tsx` is local-only.
-- Zero `aria-label` across pages; no skip link; no frontend tests/lint/typecheck in CI.
+- `/strategy-builder` persists drafts, but its parameters are not yet consumed by the
+  backtest engine; the handoff passes only the supported strategy type.
+- The chat page triggers `POST /api/v1/analyze` and shows the accepted status; it is
+  not yet a multi-turn conversational agent.
+- Frontend lint/typecheck/test is not yet a CI job: `pnpm build` type-checks, but the
+  `pnpm lint` script still calls the removed `next lint`. A manual axe/Lighthouse pass
+  has not been run.
+- The style guide still uses a small number of direct hex colors; the muted-text values
+  were raised for contrast, but a full design-token sweep remains optional polish.

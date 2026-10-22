@@ -79,7 +79,7 @@ export default function AnalyticsPage() {
       render: (s) => (
         <span
           className={`font-mono text-xs ${
-            s.is_executed ? "text-[#22c55e]" : "text-[#52525b]"
+            s.is_executed ? "text-[#22c55e]" : "text-[#8b8b93]"
           }`}
         >
           {s.is_executed ? "YES" : "NO"}
@@ -142,7 +142,7 @@ export default function AnalyticsPage() {
         <div className="border-b border-[rgba(255,255,255,0.06)] px-5 py-4">
           <div className="flex items-center justify-between">
             <p className="text-label">Signal History</p>
-            <span className="font-mono text-xs text-[#52525b]">
+            <span className="font-mono text-xs text-[#8b8b93]">
               {signals.length} signals
             </span>
           </div>
@@ -151,9 +151,9 @@ export default function AnalyticsPage() {
           <DataTable columns={columns} data={signals} />
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <BarChart3 size={24} className="text-[#52525b] mb-3" />
-            <p className="font-mono text-xs text-[#52525b]">No signal data yet</p>
-            <p className="font-mono text-[10px] text-[#3f3f46] mt-1">
+            <BarChart3 size={24} className="text-[#8b8b93] mb-3" />
+            <p className="font-mono text-xs text-[#8b8b93]">No signal data yet</p>
+            <p className="font-mono text-[10px] text-[#8b8b93] mt-1">
               Signals appear after running analysis
             </p>
           </div>

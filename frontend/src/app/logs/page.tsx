@@ -134,13 +134,13 @@ export default function LogsPage() {
           ))}
         </div>
         <div className="relative flex-1 max-w-xs">
-          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#52525b]" />
+          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8b8b93]" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search logs..."
-            className="w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] py-1.5 pl-8 pr-3 font-mono text-xs text-white placeholder-[#52525b] outline-none transition-colors focus:border-[#6366f1]"
+            className="w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] py-1.5 pl-8 pr-3 font-mono text-xs text-white placeholder-[#8b8b93] outline-none transition-colors focus:border-[#6366f1]"
           />
         </div>
       </div>
@@ -150,7 +150,7 @@ export default function LogsPage() {
         <div className="border-b border-[rgba(255,255,255,0.06)] px-5 py-3">
           <div className="flex items-center justify-between">
             <p className="text-label">Event Log</p>
-            <span className="font-mono text-xs text-[#52525b]">
+            <span className="font-mono text-xs text-[#8b8b93]">
               {filteredLogs.length} entries
             </span>
           </div>
@@ -165,9 +165,9 @@ export default function LogsPage() {
 
           {!loading && filteredLogs.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <FileText size={24} className="text-[#52525b] mb-3" />
-              <p className="font-mono text-xs text-[#52525b]">No log entries</p>
-              <p className="font-mono text-[10px] text-[#3f3f46] mt-1">
+              <FileText size={24} className="text-[#8b8b93] mb-3" />
+              <p className="font-mono text-xs text-[#8b8b93]">No log entries</p>
+              <p className="font-mono text-[10px] text-[#8b8b93] mt-1">
                 {search ? "Try a different search term" : "Run an analysis to generate log entries"}
               </p>
             </div>
@@ -199,10 +199,10 @@ export default function LogsPage() {
                       }`}>
                         {log.level}
                       </span>
-                      <span className="font-mono text-[10px] text-[#52525b]">
+                      <span className="font-mono text-[10px] text-[#8b8b93]">
                         [{log.source}]
                       </span>
-                      <span className="font-mono text-[10px] text-[#3f3f46] ml-auto">
+                      <span className="font-mono text-[10px] text-[#8b8b93] ml-auto">
                         {new Date(log.timestamp).toLocaleTimeString()}
                       </span>
                     </div>

@@ -54,7 +54,7 @@ export default function PortfolioPage() {
         const chart = createChart(chartRef.current, {
           layout: {
             background: { type: ColorType.Solid, color: "transparent" },
-            textColor: "#52525b",
+            textColor: "#8b8b93",
             fontFamily: "JetBrains Mono, monospace",
           },
           grid: {
@@ -315,7 +315,7 @@ export default function PortfolioPage() {
             <div ref={chartRef} className="w-full px-2 pb-2" />
             {orders.length === 0 && (
               <div className="flex items-center justify-center py-10">
-                <p className="font-mono text-sm text-[#52525b]">
+                <p className="font-mono text-sm text-[#8b8b93]">
                   No trades yet — equity curve will appear here
                 </p>
               </div>
@@ -348,7 +348,7 @@ export default function PortfolioPage() {
         </>
       ) : (
         <div className="flex items-center justify-center rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] p-12 bg-[rgba(255,255,255,0.02)]">
-          <p className="font-mono text-sm text-[#52525b]">
+          <p className="font-mono text-sm text-[#8b8b93]">
             No portfolio data — run an analysis from the Dashboard
           </p>
         </div>

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -148,7 +148,7 @@ class YahooFinanceSource(BaseDataSource):
                     symbol=symbol,
                     source=self.source_name,
                     interval=interval,
-                    timestamp=datetime.fromtimestamp(ts),
+                    timestamp=datetime.fromtimestamp(ts, tz=UTC),
                     open=float(o),
                     high=float(h),
                     low=float(lo),

@@ -118,12 +118,15 @@ A router may validate and delegate; it must not own portfolio state or exchange 
 | Pipeline result | module-global `_last_state` | every `/analyze` call | last writer wins; no per-user isolation |
 | Live orders | exchange + `OrderAuditor` | `LiveTradingEngine.execute_signal` only | single path; kill switch is shared Redis state |
 | Model roster | `configs/models.yaml` | — | validated free IDs + universal fallback appended by `AgentModelConfig` |
-| Schema | `database/schema.sql`, `database/init.sql`, tracked `migrations/versions/` | Alembic / Compose bootstrap | `init.sql` is a byte-identical bootstrap copy; `0001`–`0004` are the migration chain; a fresh volume stamps `0001` after `init.sql`, then applies the idempotent later revisions (ADR-017) |
+| Dashboard preferences | singleton `app_settings` JSONB row | `settings_service` through `PUT /api/v1/settings/preferences` | non-safety only; safety limits are computed from `agents.risk`/`agents.consensus`/`configs.settings` (ADR-018) |
+| Strategy drafts | PostgreSQL `strategies` | `strategy_service` through `/api/v1/strategies` | draft/paused edits only; status, live enablement, and promotion counters are server-owned and never written by this surface |
+| Schema | `database/schema.sql`, `database/init.sql`, tracked `migrations/versions/` | Alembic / Compose bootstrap | `init.sql` is a byte-identical bootstrap copy; `0001`–`0005` are the migration chain; a fresh volume stamps `0001` after `init.sql`, then applies the idempotent later revisions (ADR-017) |
 
 ADR-005 is implemented for paper state; ADR-014 adds the approved `/execute` contract and
 client-order idempotency; ADR-015 serializes paper writers across processes; ADR-017 fixes
-the Compose bootstrap and Chroma version handshake. The remaining ownership/isolation issue
-is the pipeline result (ADR-006 / Phase 2), not the paper portfolio.
+the Compose bootstrap and Chroma version handshake; ADR-018 keeps dashboard preferences
+durable while safety limits remain read-only. The remaining ownership/isolation issue is
+the pipeline result (ADR-006 / Phase 2), not the paper portfolio.
 
 ## 5. Dependency rules (target, enforced by review)
 
