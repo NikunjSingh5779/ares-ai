@@ -89,7 +89,7 @@ P1.6 is committed locally (not pushed):
   `operator`, and defaults new rows to `viewer`. Verified on PostgreSQL 16, including a
   legacy `user` row.
 - The 22 mypy errors are fixed; `mypy .` is clean on 184 files. Full suite is **1129
-  passed + 1 skipped / 80.30%**.
+  passed + 1 skipped / 80.29%**.
 
 P1.5 is implemented and verified locally, **not committed**:
 
@@ -175,7 +175,7 @@ mypy .
 
 Expected today:
 
-- `pytest`: **1129 passed**, 1 skipped, 2 warnings, **80.30%** coverage, exit 0.
+- `pytest`: **1129 passed**, 1 skipped, **80.29%** coverage, exit 0.
 - `ruff check .`: clean.
 - `ruff format --check .`: clean.
 - `mypy .`: **clean on 184 source files**. The 22 pre-existing errors are fixed.
@@ -264,8 +264,8 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 
 | Check | Result |
 |---|---|
-| `python -m pytest tests/ -q` | **1129 passed, 1 skipped**, 2 warnings, exit 0 |
-| Coverage | **80.30%** default, gate is 78% (the 5 integration tests are opt-in) |
+| `python -m pytest tests/ -q` | **1129 passed, 1 skipped**, exit 0 |
+| Coverage | **80.29%** default, gate is 78% (the 5 integration tests are opt-in) |
 | `tests/test_security/test_role_auth.py` | **18 passed** — role matrix + real-route viewer denial |
 | `tests/test_security/test_route_auth.py` | **5 passed** — now genuinely traverses FastAPI 0.139 included routers |
 | `tests/test_paper_trading_ledger.py` | **34 passed** |
@@ -640,7 +640,7 @@ The one-shot `--rm` container was stopped.
 
 **Mypy:** all 22 errors fixed (typed fixtures, unused ignores, exception-handler signature
 widened with an `isinstance` guard, `AgentState` imported from `agents.state`). `mypy .` is
-clean on 184 files. Full suite **1129 passed + 1 skipped / 80.30%**; ruff clean.
+clean on 184 files. Full suite **1129 passed + 1 skipped / 80.29%**; ruff clean.
 
 ---
 
@@ -1010,7 +1010,7 @@ A change is not finished until:
 
 - the focused tests pass first,
 - `pytest tests/ -q` passes (current baseline 1129),
-- coverage stays at or above 78% (currently 80.30%),
+- coverage stays at or above 78% (currently 80.29%),
 - `ruff check .` and `ruff format --check .` are clean,
 - `mypy .` is clean (184 files today),
 - a real PostgreSQL migration/round-trip is run for schema/ledger changes,
@@ -1053,7 +1053,7 @@ are degraded, `/api/v1/metrics` reads real Prometheus counters instead of `_last
 and the frontend analytics contract follows the new fields. The Compose bootstrap fixes
 (LF entrypoint, internal service hosts, init.sql stamp, Chroma 1.5.9 at `/data`) are uncommitted with
 P1.5.
-Verification today is **1129 passed + 1 skipped / 80.30% coverage** without a database,
+Verification today is **1129 passed + 1 skipped / 80.29% coverage** without a database,
 clean ruff, `mypy .` clean on 184 files, a passing frontend build, real PostgreSQL 16
 checks for fresh migration, P1-A → `0002` → head, duplicate rejection before/after restart,
 concurrent fills, a held lock, lock release, a cancelled writer, and the P1.6 role

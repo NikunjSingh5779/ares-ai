@@ -4,7 +4,7 @@ ARES AI — Load test script (locust-based).
 
 Usage:
     pip install locust
-    locust -f scripts/load-test.py --host=http://localhost:8000
+    locust -f scripts/load_test.py --host=http://localhost:8000
 
 Test scenarios:
     - /health (unauthenticated)
@@ -12,7 +12,7 @@ Test scenarios:
     - /api/v1/signal (trading signal)
 
 Designed for CI/CD pipeline integration:
-    locust -f scripts/load-test.py --host=http://localhost:8000 \\
+    locust -f scripts/load_test.py --host=http://localhost:8000 \\
         --headless -u 10 -r 2 --run-time 30s \\
         --csv=results/load-test
 """

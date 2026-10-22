@@ -21,8 +21,8 @@ not committed.
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1129 passed, 1 skipped**, 2 warnings (integration module skips without `ARES_TEST_POSTGRES_URL`) |
-| Coverage | `pytest tests/ -q` | **80.30%** default (gate 78%); the P1.4 integration module adds 5 tests when its URL is set |
+| Test suite | `pytest tests/ -q` | **1129 passed, 1 skipped** (integration module skips without `ARES_TEST_POSTGRES_URL`) |
+| Coverage | `pytest tests/ -q` | **80.29%** default (gate 78%); the P1.4 integration module adds 5 tests when its URL is set |
 | Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
 | Health and metrics | `pytest tests/test_monitoring -q` | **34 passed** — 503 on each degraded dependency, 200 only when all answer, Prometheus-backed JSON snapshot, `/metrics` exposition mount |
 | Type check | `mypy .` | **clean, 184 source files** (the 22 test/script errors are fixed) |
@@ -134,7 +134,7 @@ signal token (P2) remains open.
 | Migration | `migrations/versions/0004_role_hierarchy.py` finds the existing role check dynamically, rewrites `user` → `operator`, allows `viewer`/`operator`, and changes the default to `viewer`. `database/schema.sql` and `init.sql` match; `User.role` and `UserBase.role` default to `viewer`. |
 | Real PostgreSQL 16 | Fresh `alembic upgrade head` produced the new constraint and `viewer` default. After `downgrade 0003`, a legacy `role='user'` row upgraded to `operator`; a later `role='user'` insert was rejected by `users_role_check`. The one-shot `--rm` container was stopped. |
 | Mypy cleanup | The 22 pre-existing errors in 8 test/script files are fixed (annotations, unused ignores, exception-handler signature, `AgentState` import). `mypy .` is clean on **184 source files**; no safety gate or test assertion was weakened. |
-| Counts | Full suite **1129 passed, 1 skipped / 80.30%**; `ruff check .` and `ruff format --check .` clean. |
+| Counts | Full suite **1129 passed, 1 skipped / 80.29%**; `ruff check .` and `ruff format --check .` clean. |
 
 ## P1.5 — degraded health and Prometheus-backed metrics (local, uncommitted, verified 2026-10-21)
 
@@ -145,7 +145,7 @@ signal token (P2) remains open.
 | No metrics dependency on `_last_state` | `GET /api/v1/metrics` now calls `backend.core.metrics.get_metrics_snapshot()`; it returns HTTP requests, agent runs, agent errors, model fallbacks, live orders, and kill-switch state. `tests/test_monitoring/test_metrics_endpoint.py` patches `get_last_state` to raise and the endpoint still returns 200. |
 | Real Prometheus registry | The snapshot sums the same labeled counters that the public `/metrics` mount serves; a test asserts `/metrics` contains `ares_agents_runs_total` and `ares_requests_total`. |
 | Frontend contract | `MetricsResponse` and the analytics cards now use the new counter fields; `pnpm build` passes (TypeScript clean). |
-| Counts | Full suite **1129 passed, 1 skipped / 80.30%**; `mypy .` clean on **184 source files**; `ruff check .` and `ruff format --check .` clean. |
+| Counts | Full suite **1129 passed, 1 skipped / 80.29%**; `mypy .` clean on **184 source files**; `ruff check .` and `ruff format --check .` clean. |
 
 The public `/metrics` mount remains the Prometheus scrape target. `/api/v1/metrics` is the
 authenticated JSON convenience view over the same process-local counters.

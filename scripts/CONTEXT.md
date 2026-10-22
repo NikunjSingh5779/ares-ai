@@ -11,7 +11,7 @@ business logic, no secrets.
 - `test_free_models.py` — validate the roster against the live catalog.
 - `seed.py` — seed demo data.
 - `daily_report.py`, `daily_report_loop.py` — reporting.
-- `load-test.py` — API load test.
+- `load_test.py` — API load test.
 - `fix_e402.py`, `test_start.py` — one-off diagnostics.
 
 ## Invariants

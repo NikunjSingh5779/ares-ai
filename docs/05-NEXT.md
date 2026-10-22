@@ -100,7 +100,7 @@ Python client.
 ## Phase 3 — hygiene
 
 - Keep `mypy .` green (clean on 184 files as of 2026-10-21; the 22 errors are fixed).
-- Re-verify README numbers (1129 / 80.30%) and roadmap status.
+- Re-verify README numbers (1129 / 80.29%) and roadmap status.
 - Improvement engine: persist history, rename “win rate”, remove the 75% consensus suggestion.
 - Add Prometheus alert rules; remove duplicate monitoring configs.
 - Prune stale branches and land Dependabot PRs.
