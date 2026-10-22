@@ -4,20 +4,68 @@
 **Repository:** `C:\Users\ASUS\ares-ai`
 **Branch:** `fix/orchestration-reliability-frontend`
 **Head commit:** code head `34ff7b8 chore(lint): rename load test script to a valid module name`;
-this docs reconciliation is the latest commit (read the hash with `git log -1 --format=%h`).
-**Branch position:** **13 commits ahead / 4 behind `master`** (per
-`git rev-list --left-right --count master...HEAD`).
+docs reconciliation `0d55263`; this handoff refresh is the latest commit (read the hash with
+`git log -1 --format=%h`).
+**Branch position:** **14 commits ahead / 4 behind `master`** including this handoff
+refresh (per `git rev-list --left-right --count master...HEAD`).
 **Working tree:** **clean**. P1-A (`9c16122`), P1-B, P1-C, P1.4, the mypy cleanup, P1.6,
 P1.5, and the Compose bootstrap fixes are committed and pushed to
-`origin/fix/orchestration-reliability-frontend` through `34ff7b8`; this docs reconciliation
-is on top. GitHub Actions run **39742069953** passed all five jobs: `lint`, `test`,
-`postgres-integration`, `frontend`, and `docker`. A unique local `API_SECRET_KEY` is set in
-`.env` (never committed), and authenticated `/api/v1/*` returns 200. Do not reset, clean, or
-rewrite history unless the user explicitly asks.
+`origin/fix/orchestration-reliability-frontend` through `0d55263`; this handoff refresh is
+on top. GitHub Actions runs **39742069953** (code) and **39745749404** (docs) passed all
+five jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`. A unique local
+`API_SECRET_KEY` is set in `.env` (never committed), and authenticated `/api/v1/*` returns
+200. Do not reset, clean, or rewrite history unless the user explicitly asks.
 
 This is the fresh-session handoff. Read it fully before editing. It records what is done,
 what was verified, the behavior contracts that must not regress, the remaining defects, and
 the recommended order of work.
+
+---
+
+## 0a. New-session snapshot (read this first)
+
+**Current position:** Phase 0 and Phase 1 are closed. Code head is `34ff7b8`; docs
+reconciliation is `0d55263`; this handoff refresh is the latest commit. The branch is
+**14 commits ahead / 4 behind `master`** including this refresh. The working tree is clean,
+`origin` matches, and CI runs **39742069953** (code) and **39745749404** (docs) passed all
+five jobs. The local stack is healthy, `/health` is 200, and authenticated `/api/v1/*`
+returns 200 with a unique local `.env` key (never commit or print it).
+
+**Done — do not rebuild:**
+- P0: auth on every non-public route, one live-order path, fail-closed kill switch, free
+  model roster + universal fallback, realistic paper accounting, production config gate,
+  strict >80% consensus.
+- P1-A: durable PostgreSQL paper ledger with hydration and transaction rollback.
+- P1-B: approved-only `/execute`, server-side consensus/size checks, client-order idempotency.
+- P1-C: advisory-lock writer serialization; busy writers fail closed with 503.
+- P1.4: real-PostgreSQL integration job in CI.
+- P1.5: `/health` returns 503 when DB/Redis/Chroma is degraded; Prometheus-backed
+  `/api/v1/metrics`; frontend analytics contract updated.
+- P1.6: `viewer`/`operator`/`admin`/`super_admin` roles, JWT claim, API-key mapping, live
+  control/trading gates, migration `0004`.
+- Phase 1 Compose exit: two concurrent fills survived a full-stack restart; portfolio,
+  positions, orders, and promotion record matched exactly; duplicate ID returned 409.
+- Compose bootstrap: LF entrypoint, internal service hosts, `init.sql` → Alembic `0001`
+  stamp, Chroma 1.5.9 mounted at `/data` (restart preserved `chroma.sqlite3`).
+- Quality gates: 1129 passed / 1 skipped / 80.29% coverage; Ruff, format, mypy (184 files),
+  frontend build, and Compose validation all clean.
+
+**Remaining, in order:**
+1. **Phase 2 — product realism and UI** (`docs/05-NEXT.md`): replace `Math.random()` market
+   candles and auto-analysis; make settings persist through the API and fix the API URL,
+   position-size mismatch, and fake secret preview; fix live-page polling; harden
+   `usePipelinePolling`; add API timeout/typed errors; accessibility; strategy builder and
+   chat; frontend lint/typecheck/test CI.
+2. **P1 gaps:** `/analyze` concurrency/cost control (Gap 5), shared Redis kill-switch arm
+   epoch (Gap 6), manual reconciliation of pre-P1-A short positions (Gap 8).
+3. **P2 gaps:** signed/stored signal approval for `/execute` (Gap 2), frontend mock data and
+   lint (Gap 9), model-catalog CI (Gap 10), paper realism/partial fills/funding (Gap 11).
+4. **Phase 3 — hygiene:** keep `mypy` green, re-verify README numbers, improvement engine,
+   Prometheus alerts, and branch/Dependabot cleanup.
+
+**First actions:** read `AGENTS.md` → `docs/02-STATUS.md` → `docs/05-NEXT.md` → this file
+→ the routed `CONTEXT.md`. Confirm the tree is clean and the stack is healthy. Start with
+Phase 2; **never** weaken a safety gate, enable real-capital trading, or commit `.env`.
 
 ---
 
@@ -233,7 +281,7 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 ### 3.1 Branch / worktree
 
 - Branch: `fix/orchestration-reliability-frontend`
-- 13 ahead / 4 behind `master` (including this docs reconciliation).
+- 14 ahead / 4 behind `master` (including this handoff refresh).
 - Code head: `34ff7b8 chore(lint): rename load test script to a valid module name`
   (prefer `git log -1 --oneline` if the branch moves).
 - P1-A is committed as `9c16122`, P1-B as `feat(paper): require approved execution and
@@ -256,8 +304,8 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
   `0001_initial_schema.py`, `0002_paper_ledger.py`, `0003_order_idempotency.py`, and
   `0004_role_hierarchy.py` (new head).
 - `origin/fix/orchestration-reliability-frontend` contains the code through `34ff7b8`
-  (P1.4, P1.6, the mypy cleanup, P1.5, and the Compose fixes); this docs reconciliation is
-  on top. No PR or merge has been performed.
+  (P1.4, P1.6, the mypy cleanup, P1.5, and the Compose fixes), the docs reconciliation
+  `0d55263`, and this handoff refresh on top. No PR or merge has been performed.
 
 ### 3.2 Verified commands and results
 
@@ -876,8 +924,9 @@ high-fidelity paper results.
   `_last_state`. The public `/metrics` mount remains the scrape target.
 - Frontend analytics consumes the new counter fields; `pnpm build` passes.
 - The Phase 1 Compose mid-trade restart exit passed on 2026-10-21 (section 5d). All code
-  work is pushed at `34ff7b8`; this docs reconciliation is on top. CI run 39742069953 is
-  green. The local `.env` key is unique, so `/api/v1/*` returns 200. The next work is Phase 2.
+  work is pushed at `34ff7b8`; docs reconciliation `0d55263` and this handoff refresh are
+  on top. CI runs 39742069953 (code) and 39745749404 (docs) are green. The local `.env` key
+  is unique, so `/api/v1/*` returns 200. The next work is Phase 2.
 
 ### P2 — Paper realism, frontend, observability
 
@@ -1060,8 +1109,8 @@ migration (including a legacy `user` row). The **Phase 1 Compose mid-trade resta
 passed on 2026-10-21** (section 5d): two concurrent fills, full-stack restart, exact
 portfolio/positions/orders/promotion match, duplicate 409 after restart.
 All code work is pushed at `34ff7b8`: P1-A through P1.5, P1.6, the mypy cleanup, and the
-Compose fixes; this docs reconciliation is on top. GitHub Actions run **39742069953**
-passed all five jobs (`lint`, `test`, `postgres-integration`, `frontend`, `docker`). The
-local `.env` has a unique `API_SECRET_KEY` (never committed), and authenticated
-`/api/v1/*` returns 200. The next work is Phase 2. Do not push, reset, or rewrite history
-without explicit user approval.
+Compose fixes; docs reconciliation `0d55263` and this handoff refresh are on top. GitHub
+Actions runs **39742069953** (code) and **39745749404** (docs) passed all five jobs (`lint`,
+`test`, `postgres-integration`, `frontend`, `docker`). The local `.env` has a unique
+`API_SECRET_KEY` (never committed), and authenticated `/api/v1/*` returns 200. The next
+work is Phase 2. Do not push, reset, or rewrite history without explicit user approval.

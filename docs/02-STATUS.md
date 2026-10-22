@@ -2,16 +2,16 @@
 # Status — verified state
 
 **Last verified:** 2026-10-22
-**Branch:** `fix/orchestration-reliability-frontend` — 13 commits ahead / 4 behind `master`.
+**Branch:** `fix/orchestration-reliability-frontend` — 14 commits ahead / 4 behind `master`.
 P1-A is committed as `9c16122`; P1-B (approved-only `/execute` plus client-order
 idempotency) is committed as `feat(paper): require approved execution and client order
 ids`; P1-C (paper writer lock) is committed as `fix(paper): serialize ledger writers with
 an advisory lock`; P1.4 (real-PostgreSQL integration job) is committed as
 `test(paper): run the ledger suite against real PostgreSQL in CI`.
-`origin/fix/orchestration-reliability-frontend` contains the work through `34ff7b8`
-(P1.4, P1.5, P1.6, the mypy cleanup, and the Compose bootstrap fixes); this docs
-reconciliation is the latest commit. GitHub Actions run **39742069953** passed all five
-jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`.
+`origin/fix/orchestration-reliability-frontend` contains the code through `34ff7b8`, the
+docs reconciliation `0d55263`, and this new-session handoff refresh on top. GitHub Actions
+runs **39742069953** (code) and **39745749404** (docs) passed all five jobs: `lint`, `test`,
+`postgres-integration`, `frontend`, and `docker`.
 The working tree is clean. The local `.env` key is unique (never committed), so
 authenticated `/api/v1/*` calls work locally.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
