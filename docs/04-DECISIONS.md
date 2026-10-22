@@ -344,3 +344,48 @@ until re-login. The API key remains a high-trust secret and always maps to `admi
 role checks are centralized in `backend/core/dependencies.py`, and the kill switch still
 works while PostgreSQL is down. Tests cover the role matrix and viewer denial against the
 real routes; migration `0004` was verified on PostgreSQL 16, including a legacy `user` row.
+
+---
+
+## ADR-017 — Compose bootstrap is shared by init.sql and Alembic
+**Date:** 2026-10-21 · **Status:** accepted
+
+**Context:** A fresh Compose volume runs `database/init.sql` before the backend starts.
+That script creates the current schema, including columns from later revisions. The backend
+entrypoint then ran `alembic upgrade head`, whose `0001` re-executed `schema.sql` and failed
+on existing tables. Windows checkouts also produced CRLF `backend-entrypoint.sh`, which
+Linux rejected with `exec /entrypoint.sh: no such file or directory`. Separately, the
+full-stack Compose file interpolated `DATABASE_URL`, `REDIS_HOST`, and `CHROMA_HOST` from
+the host-oriented `.env`, so the container tried `localhost`; and the pinned Chroma 0.5.0
+server only spoke v1 while the Python client was 1.5.9, with the volume mounted at the
+0.5.0 path even though 1.x writes to `/data`.
+
+**Decision:**
+- Keep `init.sql` as the fresh-volume schema bootstrap.
+- Before `alembic upgrade head`, the entrypoint checks whether `users` exists without an
+  `alembic_version` row; if so, it runs `alembic stamp 0001`. Revisions `0002`–`0004` are
+  idempotent and then bring the database to head.
+- Force LF for `*.sh` in `.gitattributes`, and keep `backend-entrypoint.sh` LF in the tree.
+- Force container-internal service hostnames in the backend environment. The root `.env`
+  remains host-oriented; it is not the container network contract.
+- Pin the Chroma server to the client-compatible 1.5.9 image and mount the persistent
+  volume at **`/data`**, the 1.x persistence path. The old `/chroma/chroma-data` mount was
+  a 0.5.0 convention and would silently discard memory data. The 1.x image has no
+  curl/python, so disable its container healthcheck; the backend starts on
+  `service_started` and `/health` remains **503** until Chroma answers.
+
+**Alternatives considered:**
+- *Delete the `init.sql` mount and let Alembic create everything.* Rejected: it changes the
+  first-boot contract and loses the plain-SQL bootstrap used by operators.
+- *Make every statement in `schema.sql` idempotent.* Rejected: broad, error-prone, and
+  duplicates the migration history.
+- *Keep Chroma 0.5.0 and downgrade the Python client.* Rejected: the app already depends on
+  the 1.x client and memory tests; the server was the stale side.
+- *Add a curl/python healthcheck to the Chroma image.* Rejected: the image does not include
+  either tool, and a shell `/dev/tcp` probe is brittle.
+
+**Consequences:** Fresh Compose volumes start cleanly; existing volumes with a version row
+are untouched. A database initialized by `init.sql` is stamped at `0001` and upgraded
+through the idempotent later revisions. The backend is the readiness authority for Chroma
+while the Chroma container is starting. The Phase 1 Compose restart exit passed with this
+bootstrap and left the local `.env` key unchanged.

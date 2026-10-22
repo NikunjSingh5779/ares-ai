@@ -71,6 +71,49 @@ def test_fullstack_compose_has_api_url_build_arg() -> None:
     )
 
 
+def test_fullstack_backend_forces_container_service_hosts() -> None:
+    """The backend must not inherit the host-oriented .env database hosts."""
+    path = PROJECT_ROOT / "docker" / "docker-compose.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    environment = data["services"]["backend"]["environment"]
+
+    assert "@postgres:5432/" in environment["DATABASE_URL"]
+    assert environment["REDIS_HOST"] == "redis"
+    assert environment["CHROMA_HOST"] == "chromadb"
+
+
+def test_chroma_is_pinned_to_client_version_and_data_path() -> None:
+    """Pin both compose files to Chroma 1.5.9 and its /data persistence path."""
+    fullstack = yaml.safe_load((PROJECT_ROOT / "docker" / "docker-compose.yml").read_text(encoding="utf-8"))
+    chroma = fullstack["services"]["chromadb"]
+    assert chroma["image"] == "chromadb/chroma:1.5.9"
+    assert chroma["healthcheck"]["disable"] is True
+    # Chroma 1.x persists at /data; the legacy 0.5.0 path would lose all memory.
+    assert chroma["volumes"] == ["chromadb-data:/data"]
+
+    dev = yaml.safe_load((PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    dev_chroma = dev["services"]["chromadb"]
+    assert dev_chroma["image"] == "chromadb/chroma:1.5.9"
+    assert dev_chroma["volumes"] == ["chromadb_data:/data"]
+
+
+def test_shell_scripts_are_forced_to_lf() -> None:
+    """A CRLF entrypoint makes Docker fail before the container starts."""
+    path = PROJECT_ROOT / ".gitattributes"
+    text = path.read_text(encoding="utf-8")
+
+    assert "*.sh text eol=lf" in text
+
+
+def test_entrypoint_stamps_init_sql_bootstrap() -> None:
+    """init.sql creates the schema, so Alembic must be stamped before upgrading."""
+    path = PROJECT_ROOT / "docker" / "backend-entrypoint.sh"
+    text = path.read_text(encoding="utf-8")
+
+    assert "alembic stamp 0001" in text
+    assert "alembic upgrade head" in text
+
+
 # ── Default fallback consistency ────────────────────────────────────────
 
 

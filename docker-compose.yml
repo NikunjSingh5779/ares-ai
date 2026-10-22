@@ -54,17 +54,15 @@ services:
 
   # ---- Vector Database ----
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.5.9
     container_name: ares-chromadb
     restart: unless-stopped
     ports:
       - "${CHROMA_PORT:-8001}:8000"
     environment:
-      - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma-data
       - ANONYMIZED_TELEMETRY=FALSE
     volumes:
-      - chromadb_data:/chroma/chroma-data
+      - chromadb_data:/data
     healthcheck:
       disable: true
     logging: *default-logging

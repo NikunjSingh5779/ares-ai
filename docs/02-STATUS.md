@@ -12,17 +12,20 @@ an advisory lock`; P1.4 (real-PostgreSQL integration job) is committed as
 39601089127 passed `test`, `postgres-integration`, `frontend`, and `docker`; only `lint`
 failed, on the 22 pre-existing mypy errors (gap 4, now fixed locally).
 **Committed locally, not pushed:** the mypy cleanup and P1.6 role-based authorization are
-two local commits. The working tree is clean.
+two local commits. **Uncommitted:** the P1.5 health/metrics change and the Compose bootstrap
+fixes (LF entrypoint, internal service hosts, init.sql stamp, Chroma pin) are verified but
+not committed.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
 ## Green
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1121 passed, 1 skipped**, 2 warnings (integration module skips without `ARES_TEST_POSTGRES_URL`) |
-| Coverage | `pytest tests/ -q` | **80.19%** default (gate 78%); the P1.4 integration module adds 5 tests when its URL is set |
+| Test suite | `pytest tests/ -q` | **1129 passed, 1 skipped**, 2 warnings (integration module skips without `ARES_TEST_POSTGRES_URL`) |
+| Coverage | `pytest tests/ -q` | **80.30%** default (gate 78%); the P1.4 integration module adds 5 tests when its URL is set |
 | Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
-| Type check | `mypy .` | **clean, 183 source files** (the 22 test/script errors are fixed) |
+| Health and metrics | `pytest tests/test_monitoring -q` | **34 passed** — 503 on each degraded dependency, 200 only when all answer, Prometheus-backed JSON snapshot, `/metrics` exposition mount |
+| Type check | `mypy .` | **clean, 184 source files** (the 22 test/script errors are fixed) |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
 | Lint | `ruff check .` | clean |
 | Format | `ruff format --check .` | clean |
@@ -130,8 +133,40 @@ signal token (P2) remains open.
 | Viewer denial | `tests/test_security/test_role_auth.py` sends a viewer JWT to all six protected routes on the real app and gets **403**; an operator JWT reaches body validation on `/execute` (**422**, not forbidden). The unit matrix covers viewer/operator/admin/super_admin, legacy `user`, unknown role, missing role, API key, and invalid token. |
 | Migration | `migrations/versions/0004_role_hierarchy.py` finds the existing role check dynamically, rewrites `user` → `operator`, allows `viewer`/`operator`, and changes the default to `viewer`. `database/schema.sql` and `init.sql` match; `User.role` and `UserBase.role` default to `viewer`. |
 | Real PostgreSQL 16 | Fresh `alembic upgrade head` produced the new constraint and `viewer` default. After `downgrade 0003`, a legacy `role='user'` row upgraded to `operator`; a later `role='user'` insert was rejected by `users_role_check`. The one-shot `--rm` container was stopped. |
-| Mypy cleanup | The 22 pre-existing errors in 8 test/script files are fixed (annotations, unused ignores, exception-handler signature, `AgentState` import). `mypy .` is clean on **183 source files**; no safety gate or test assertion was weakened. |
-| Counts | Full suite **1121 passed, 1 skipped / 80.19%**; `ruff check .` and `ruff format --check .` clean. |
+| Mypy cleanup | The 22 pre-existing errors in 8 test/script files are fixed (annotations, unused ignores, exception-handler signature, `AgentState` import). `mypy .` is clean on **184 source files**; no safety gate or test assertion was weakened. |
+| Counts | Full suite **1129 passed, 1 skipped / 80.30%**; `ruff check .` and `ruff format --check .` clean. |
+
+## P1.5 — degraded health and Prometheus-backed metrics (local, uncommitted, verified 2026-10-21)
+
+| Piece | Evidence |
+|---|---|
+| Degraded health status | `/health` now returns **200** only when PostgreSQL, Redis, and ChromaDB all answer. Any unreachable dependency returns **503** with the same per-check JSON (`status: degraded`). Tests cover DB, Redis, ChromaDB, and all-down cases. |
+| Compose consumes the signal | The backend healthchecks in `docker-compose.yml` and `docker/docker-compose.yml` already exit nonzero for any status other than 200, so the 503 makes the existing enriched check effective without command changes. |
+| No metrics dependency on `_last_state` | `GET /api/v1/metrics` now calls `backend.core.metrics.get_metrics_snapshot()`; it returns HTTP requests, agent runs, agent errors, model fallbacks, live orders, and kill-switch state. `tests/test_monitoring/test_metrics_endpoint.py` patches `get_last_state` to raise and the endpoint still returns 200. |
+| Real Prometheus registry | The snapshot sums the same labeled counters that the public `/metrics` mount serves; a test asserts `/metrics` contains `ares_agents_runs_total` and `ares_requests_total`. |
+| Frontend contract | `MetricsResponse` and the analytics cards now use the new counter fields; `pnpm build` passes (TypeScript clean). |
+| Counts | Full suite **1129 passed, 1 skipped / 80.30%**; `mypy .` clean on **184 source files**; `ruff check .` and `ruff format --check .` clean. |
+
+The public `/metrics` mount remains the Prometheus scrape target. `/api/v1/metrics` is the
+authenticated JSON convenience view over the same process-local counters.
+
+## Phase 1 exit — Compose mid-trade restart (verified 2026-10-21)
+
+| Piece | Evidence |
+|---|---|
+| Stack | `docker/docker-compose.yml` full stack: PostgreSQL 16, Redis, ChromaDB 1.5.9, backend, frontend, Prometheus, Grafana. `/health` returned 200 with `database/redis/chromadb = ok`; all services reported healthy after startup. |
+| Startup fixes required | `.gitattributes` forces LF for shell scripts (the Windows checkout had CRLF, causing `exec /entrypoint.sh: no such file or directory`). The backend environment now forces container-internal `postgres`/`redis`/`chromadb` hosts instead of the host-oriented `.env` values. When `init.sql` has already created the schema, the entrypoint detects the missing Alembic version row and stamps `0001` before applying `0002`–`0004`. The Chroma image is pinned to **1.5.9** to match the Python client (0.5.0 only speaks v1); the 1.x image persists at **`/data`**, so the volume is mounted there instead of the 0.5.0 path. The 1.x image has no curl/python, so the Chroma container healthcheck is disabled and the backend starts on `service_started` while `/health` reports Chroma unavailability. |
+| Concurrent fills | Two approved `/execute` calls ran concurrently through the HTTP API on distinct synthetic symbols. Both returned **200**, `ledger_persisted: true`, and distinct position IDs. Pre-restart portfolio: cash **96 493.0**, equity **99 996.5**, `open_positions=2`, `total_pnl=-3.5`; both positions present. |
+| Full-stack restart | `docker compose restart` restarted all seven services. `/health` returned 200 again. The post-restart JSON matched the pre-restart snapshot **exactly** for `portfolio`, `positions`, `orders`, and `paper_record`; no fill was lost. |
+| Idempotency after restart | Replaying `compose-exit-syn-btc` after the restart returned **409** (`client_order_id has already been used`) and the snapshot stayed identical. |
+| Cleanup | Synthetic test rows were truncated, the paper account was reseeded, `ares-run-live` and `ares-daily-reporter` were restarted, and the temporary test key was removed. The original `.env` key remains a default placeholder, so `/api/v1/*` returns **503** until a real `API_SECRET_KEY` is configured. |
+
+The test deliberately used synthetic symbols so the background paper worker could not mark
+or stop the positions during the restart window. The `/execute` approval checks, the
+advisory-lock ledger, PostgreSQL persistence, and the Compose restart were the production
+paths; the symbol name was the only test seam. The Chroma volume was migrated from the
+0.5.0 path to `/data`; a container restart preserved `chroma.sqlite3` and `/health` stayed
+200.
 
 ## Red / known gaps
 
@@ -140,13 +175,14 @@ signal token (P2) remains open.
 | 1 | ~~Concurrent paper-ledger writes are last-writer-wins~~ | Closed by P1-C: writers serialize on `pg_try_advisory_xact_lock` across API/worker/runner, with an in-process cache lock. Busy writers fail closed with 503. | ~~P1~~ fixed |
 | 2 | `/execute` trusts the authenticated caller's agent payload | The server recomputes consensus and caps size, but an API-key holder can supply synthetic Market Analyst/Quant/Risk outputs. There is no signed or expiring signal token. The API key remains the trust boundary. | P2 |
 | 3 | ~~No role-based authorization on trading/live routes~~ | Closed by P1.6: viewer JWTs get 403 on `/execute` and all live controls; operator+ required; JWT role claim and API-key mapping tested on the real routes. | ~~P1~~ fixed |
-| 4 | ~~`mypy` fails~~ | Closed: the 22 errors in 8 test/script files are fixed and `mypy .` is clean on 183 files. CI should turn green on the next push. | ~~P1~~ fixed |
-| 5 | `/analyze` concurrency/cost control absent | global `_last_state`, unbounded `BackgroundTasks`; auth is required, but runs are still not isolated | P1 |
+| 4 | ~~`mypy` fails~~ | Closed: the 22 errors in 8 test/script files are fixed and `mypy .` is clean on 184 files. CI should turn green on the next push. | ~~P1~~ fixed |
+| 5 | `/analyze` concurrency/cost control absent | global `_last_state`, unbounded `BackgroundTasks`; auth is required, but runs are still not isolated. `/api/v1/metrics` no longer reads `_last_state`; `/agents/status` and `/risk` still do. | P1 |
 | 6 | Kill-switch latch is process-local | a Redis outage latches each process; `/live/arm` clears the API process, but a runner that also latched stays blocked until restarted (fail-closed, never auto-trades) | P1 operational |
 | 7 | ~~No automated PostgreSQL integration test in CI~~ | Closed by P1.4: `postgres-integration` runs hydrate → fill → restart → close, duplicate IDs, concurrent fills, and the busy lock on `postgres:16-alpine`; the local default suite skips the module without `ARES_TEST_POSTGRES_URL`. | ~~P2~~ fixed |
 | 8 | UI has mock data and fake settings | `frontend/src/app/markets/page.tsx:81`, `settings/page.tsx` (no API call, 10% vs backend 2%) | P2 |
 | 9 | Model catalog removals are not checked in CI | manual check only; `scripts/test_free_models.py` exists but is not a CI job | P2 |
-| 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency` and `0004_role_hierarchy` (plus P1-A columns); `0004` rewrites legacy `user` → `operator` and makes `viewer` the default. `init.sql` only runs on first container start. Old short **positions** still cannot be inferred and default to long. | Operational |
+| 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency` and `0004_role_hierarchy` (plus P1-A columns); `0004` rewrites legacy `user` → `operator` and makes `viewer` the default. `init.sql` only runs on first container start; the backend entrypoint now stamps `0001` when `init.sql` initialized the schema, then applies the later idempotent revisions. Old short **positions** still cannot be inferred and default to long. | Operational |
+| 11 | Local `.env` API key is still the default placeholder | `/api/v1/*` returns **503** by design until a unique `API_SECRET_KEY` is set. The Compose exit used a temporary key and removed it; the repository must not contain the replacement secret. | Operational |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 

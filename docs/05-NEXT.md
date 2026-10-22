@@ -15,8 +15,11 @@ client order ids`. P1-C (paper writer serialization) is committed as `fix(paper)
 ledger writers with an advisory lock`. P1.4 (real-PostgreSQL integration job) is committed
 as `test(paper): run the ledger suite against real PostgreSQL in CI`; the job passed on its
 first GitHub run (39601089127). P1.6 (role-based authorization) is committed locally and
-verified, together with the mypy cleanup; neither is pushed yet. The remaining Phase 1
-release risk is P1.5 health/metrics and the Compose exit run.
+verified, together with the mypy cleanup; neither is pushed yet. P1.5 (degraded health plus
+Prometheus-backed metrics) is implemented and verified locally but remains uncommitted.
+The Phase 1 Compose exit was run successfully on 2026-10-21 (portfolio, positions, orders,
+and promotion record identical across a full-stack restart). The remaining release action
+is committing and pushing P1.5 plus the Compose bootstrap fixes.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
@@ -44,20 +47,31 @@ writes take an in-process cache lock and a transaction-scoped PostgreSQL advisor
 across hydrate → mutate → persist, so API, worker, and runner cannot lose each other's
 updates. A writer that cannot get the lock within 10 s fails closed with **503**.
 
+The Phase 1 exit was run on 2026-10-21 against the full `docker/docker-compose.yml` stack:
+two concurrent approved fills persisted, all seven services restarted, and portfolio,
+positions, orders, and the promotion record matched exactly before and after. A duplicate
+`client_order_id` still returned **409** after the restart. Details and the startup fixes
+are in `02-STATUS.md`.
+
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
 | 1.1 | Durable paper ledger, hydration, atomic persistence | `paper_trading/repository.py`, `paper_trading/ledger.py`, `paper_trading/engine.py`, `paper_trading/worker.py`, `backend/routers/trading.py`, `scripts/run_live.py`, schema/migrations | Restart preserves portfolio, positions, trades, and equity; failed writes restore the cache | **Done (P1-A)** |
 | 1.2 | Secure `/execute`: require an approved signal/risk payload or explicitly mark manual paper trades | `backend/routers/trading.py`, `agents/execution.py`, schemas | A request without approval cannot create a position; manual trades are labeled/excluded from promotion | **Done (P1-B, approved-only; no manual path)** |
 | 1.3 | Order idempotency + concurrent-writer safety | ledger/repository, order schema | Duplicate client order IDs are rejected; row locking or optimistic versions prevent lost updates across API/worker/runner | **Done (P1-B duplicates, P1-C writer lock)** |
 | 1.4 | PostgreSQL integration test in CI | `tests/`, CI workflow | Testcontainers/Compose runs hydrate → fill → restart → close on a real database | **Done (P1.4)**; `postgres-integration` job |
-| 1.5 | `/health` returns 503 when degraded; real Prometheus metrics | `backend/main.py`, `backend/core/metrics.py` | Compose healthchecks use the enriched health signal; `/api/v1/metrics` no longer reads `_last_state` | Pending |
+| 1.5 | `/health` returns 503 when degraded; real Prometheus metrics | `backend/main.py`, `backend/core/metrics.py` | Compose healthchecks use the enriched health signal; `/api/v1/metrics` no longer reads `_last_state` | **Done (P1.5, local, uncommitted)** |
 | 1.6 | Role-based authorization for trading/live controls | auth/JWT/API-key mapping, route tests | Viewer cannot trade; operator/admin required for live start/kill/arm/mode changes | **Done (P1.6, committed locally)** |
+| 1.E | Compose mid-trade restart exit | `docker/docker-compose.yml`, `docker/backend-entrypoint.sh`, `.gitattributes` | Portfolio, positions, orders, and promotion record identical after a full-stack restart; concurrent fills survive; duplicate IDs still 409 | **Done (2026-10-21)** |
 
-**Exit:** restart the stack mid-trade; portfolio, open positions, and promotion record are identical before and after, and no concurrent write can silently lose a fill.
-P1-B satisfies the restart and duplicate-order portions; P1-C satisfies the lost-update
-portion; P1.4 runs hydrate → fill → restart → close on real PostgreSQL in CI (green on run
-39601089127); P1.6 closes role authorization. The Phase 1 exit stays open only because the
-statement has not been re-run against a running Compose stack with the lock in place.
+**Exit: met on 2026-10-21.** The full Compose stack was restarted with two open paper
+positions. The post-restart JSON matched the pre-restart snapshot for portfolio, positions,
+orders, and promotion record; both concurrent fills were present; a duplicate
+`client_order_id` returned **409** without changing state. The test used synthetic symbols
+so the background paper worker could not mark or stop the positions during the restart;
+the `/execute` approval path and PostgreSQL ledger were the real ones. Startup also needed
+the LF entrypoint fix, container-internal service hosts, a `0001` stamp when `init.sql`
+pre-created the schema, and a Chroma server version/persistence path compatible with the
+Python client.
 
 ## Phase 2 — product realism and UI
 
@@ -85,8 +99,8 @@ statement has not been re-run against a running Compose stack with the lock in p
 
 ## Phase 3 — hygiene
 
-- Keep `mypy .` green (clean on 183 files as of 2026-10-21; the 22 errors are fixed).
-- Re-verify README numbers (1121 / 80.19%) and roadmap status.
+- Keep `mypy .` green (clean on 184 files as of 2026-10-21; the 22 errors are fixed).
+- Re-verify README numbers (1129 / 80.30%) and roadmap status.
 - Improvement engine: persist history, rename “win rate”, remove the 75% consensus suggestion.
 - Add Prometheus alert rules; remove duplicate monitoring configs.
 - Prune stale branches and land Dependabot PRs.

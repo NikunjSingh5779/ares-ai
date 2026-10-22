@@ -82,6 +82,14 @@ second gate: `require_trading_access` / `require_live_control` in
 unknown role fails closed to `viewer`. The gate verifies the credential only, so
 `/live/kill` still works when PostgreSQL is unreachable.
 
+**Health and metrics** (`GET /health`, `GET /metrics`, `GET /api/v1/metrics`)
+`/health` probes PostgreSQL, Redis, and ChromaDB and returns **200** only when all three
+answer; otherwise it returns **503** with per-check detail, which is the signal Compose
+healthchecks consume. `/metrics` is the public Prometheus exposition mount. The
+authenticated `/api/v1/metrics` is a JSON summary of the same counters (HTTP requests,
+agent runs/errors/fallbacks, live orders, kill-switch state); it does not read
+`_last_state`. Counters are process-local and cumulative since the API process started.
+
 **Backtest** (`POST /api/v1/backtest/run`)
 `backend/routers/backtest.py` → `backtesting/engine.py` (pure Python; commission and
 slippage modelled; entry at next candle open when no fixed price).
@@ -110,12 +118,12 @@ A router may validate and delegate; it must not own portfolio state or exchange 
 | Pipeline result | module-global `_last_state` | every `/analyze` call | last writer wins; no per-user isolation |
 | Live orders | exchange + `OrderAuditor` | `LiveTradingEngine.execute_signal` only | single path; kill switch is shared Redis state |
 | Model roster | `configs/models.yaml` | — | validated free IDs + universal fallback appended by `AgentModelConfig` |
-| Schema | `database/schema.sql`, `database/init.sql`, tracked `migrations/versions/` | Alembic / Compose bootstrap | `init.sql` is a byte-identical bootstrap copy; `0001` + `0002` + `0003` are the migration chain |
+| Schema | `database/schema.sql`, `database/init.sql`, tracked `migrations/versions/` | Alembic / Compose bootstrap | `init.sql` is a byte-identical bootstrap copy; `0001`–`0004` are the migration chain; a fresh volume stamps `0001` after `init.sql`, then applies the idempotent later revisions (ADR-017) |
 
 ADR-005 is implemented for paper state; ADR-014 adds the approved `/execute` contract and
-client-order idempotency; ADR-015 serializes paper writers across processes. The remaining
-ownership/isolation issue is the pipeline result (ADR-006 / Phase 2), not the paper
-portfolio.
+client-order idempotency; ADR-015 serializes paper writers across processes; ADR-017 fixes
+the Compose bootstrap and Chroma version handshake. The remaining ownership/isolation issue
+is the pipeline result (ADR-006 / Phase 2), not the paper portfolio.
 
 ## 5. Dependency rules (target, enforced by review)
 

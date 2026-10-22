@@ -230,12 +230,12 @@ export interface AgentStatusResponse extends AgentState {
 // ─── Metrics & Risk ─────────────────────────────────────────────
 
 export interface MetricsResponse {
-  total_runs: number;
-  total_agents_executed: number;
-  total_errors: number;
-  total_failures: number;
-  degraded: boolean;
-  total_latency_ms: number;
+  http_requests_total: number;
+  agent_runs_total: number;
+  agent_errors_total: number;
+  agent_fallbacks_total: number;
+  live_orders_total: number;
+  kill_switch_active: boolean;
 }
 
 // ─── Journal & History ──────────────────────────────────────────

@@ -84,8 +84,11 @@ def test_register_requires_api_key(unauthenticated_client: TestClient) -> None:
 
 def test_health_is_public(unauthenticated_client: TestClient) -> None:
     response = unauthenticated_client.get("/health")
-    assert response.status_code == 200
-    assert response.json()["status"] in {"ok", "degraded"}
+    # Public means no credential is required. The endpoint is 200 only when
+    # every dependency is reachable, so a dependency-down 503 is still public.
+    assert response.status_code in {200, 503}
+    body = response.json()
+    assert body["status"] == ("ok" if response.status_code == 200 else "degraded")
 
 
 def test_auth_verify_requires_a_key(unauthenticated_client: TestClient) -> None:

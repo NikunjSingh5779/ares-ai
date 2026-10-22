@@ -42,7 +42,9 @@ JSON/SSE responses, Prometheus metrics at `/metrics`, health at `/health`, DB wr
 imported by domain packages.
 
 ## Human check
-- `GET /health` reports DB/Redis/Chroma reachability (public).
+- `GET /health` returns 200 only when DB/Redis/Chroma answer; otherwise 503 with
+  per-check detail. `GET /metrics` is the public Prometheus exposition;
+  `/api/v1/metrics` is the authenticated JSON counter summary.
 - `GET /docs` shows the route and schema.
 - Any `/api/v1/*` call without a key returns 401; with the default key returns 503.
 - A viewer JWT gets 403 on `/execute` and every `/live` control.
@@ -66,8 +68,9 @@ ledger failures return 503. The normal generated-trade path remains `/signal`.
   expiring signal token. The API key remains the trust boundary.
 - The paper writer lock is database-wide rather than per account; writes serialize
   globally, which is fine for a single seeded paper account.
-- `analysis.py` still owns the module-global `_last_state`.
-- `/health` returns 200 even when degraded; `/metrics` product endpoint is derived from
-  the last run, not Prometheus counters.
+- `analysis.py` still owns the module-global `_last_state`; `/agents/status` and `/risk`
+  read it, while `/api/v1/metrics` is now registry-backed.
+- Prometheus counters are process-local; a multi-worker API would need multiprocess
+  registry aggregation. Compose runs one uvicorn worker.
 - Role changes take effect on the next login because the role is a JWT claim; there is no
   revocation list. API-key holders always map to `admin`.

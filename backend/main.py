@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 
 from backend.core.dependencies import verify_auth
@@ -147,8 +148,13 @@ app.mount("/metrics", metrics_app)
 
 
 @app.get("/health", tags=["system"])
-async def health_check():
-    """Enhanced health check. Reports reachability of DB, Redis, and ChromaDB."""
+async def health_check() -> JSONResponse:
+    """Enhanced health check. Reports reachability of DB, Redis, and ChromaDB.
+
+    Returns 200 only when every dependency answers. A degraded dependency
+    returns 503 so Compose healthchecks and load balancers stop routing to a
+    partially broken instance instead of treating it as ready.
+    """
     from database.connection import check_connection as check_db
 
     db_ok = await check_db()
@@ -157,16 +163,19 @@ async def health_check():
 
     all_ok = db_ok and redis_ok and chroma_ok
 
-    return {
-        "status": "ok" if all_ok else "degraded",
-        "version": "0.1.0",
-        "service": "ares-ai",
-        "checks": {
-            "database": "ok" if db_ok else "unreachable",
-            "redis": "ok" if redis_ok else "unreachable",
-            "chromadb": "ok" if chroma_ok else "unreachable",
+    return JSONResponse(
+        status_code=200 if all_ok else 503,
+        content={
+            "status": "ok" if all_ok else "degraded",
+            "version": "0.1.0",
+            "service": "ares-ai",
+            "checks": {
+                "database": "ok" if db_ok else "unreachable",
+                "redis": "ok" if redis_ok else "unreachable",
+                "chromadb": "ok" if chroma_ok else "unreachable",
+            },
         },
-    }
+    )
 
 
 @app.get("/", tags=["system"])

@@ -17,7 +17,8 @@ Each node reads its input slice and returns a validated output that is merged ba
 `pipeline_status` and list/dict reducers.
 
 **Readers:** downstream nodes, `backend/routers/analysis.py` (stores the last state),
-`backend/routers/agents.py` and `monitoring.py` (read it back).
+`backend/routers/agents.py` (status) and `monitoring.py` (`/risk`) read it back.
+`/api/v1/metrics` does not; it reads the Prometheus registry.
 
 **Invariants:**
 - Every output model requires `rationale` (except `KronosOutput`, which defaults it).

@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
+from backend.core.metrics import get_metrics_snapshot
 from backend.routers.analysis import get_last_state
 
 router = APIRouter(prefix="/api/v1", tags=["monitoring"])
@@ -18,21 +19,13 @@ router = APIRouter(prefix="/api/v1", tags=["monitoring"])
 
 @router.get("/metrics")
 async def metrics() -> dict[str, Any]:
-    """Get system-level metrics.
+    """Get system-wide metrics from the Prometheus registry.
 
-    Returns agent run counts, error counts, and system health.
+    Values are process-local counters since the API process started. They do
+    not depend on the last analysis run; use ``/agents/status`` or ``/risk``
+    for per-run state.
     """
-    state = get_last_state()
-    status = state.pipeline_status if state else None
-
-    return {
-        "total_runs": 1 if status else 0,
-        "total_agents_executed": len(status.completed_nodes) if status else 0,
-        "total_errors": len(state.errors) if state and state.errors else 0,
-        "total_failures": len(status.failed_nodes) if status else 0,
-        "degraded": state.degraded if state else False,
-        "total_latency_ms": state.total_latency_ms if state else 0,
-    }
+    return get_metrics_snapshot()
 
 
 @router.get("/risk")

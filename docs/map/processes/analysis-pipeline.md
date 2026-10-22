@@ -31,7 +31,8 @@ and the outcome is recorded as no-trade.
 ## Outputs
 - `AgentState` with every node’s typed output.
 - Paper/live trade row (via Execution + Journal) when approved.
-- `_last_state` in the API process, read by `/agents/status`, `/metrics`, `/risk`.
+- `_last_state` in the API process, read by `/agents/status` and `/risk` (not by
+  `/api/v1/metrics`, which reads the Prometheus registry).
 
 ## Human check
 - `GET /api/v1/agents/status` shows completed/failed/skipped nodes and model chains.
@@ -47,6 +48,7 @@ and the outcome is recorded as no-trade.
 `tests/test_analysis_router.py`, `tests/test_agents/*`.
 
 ## Known gaps
-- `_last_state` is a single module global: concurrent runs race (P1-7).
+- `_last_state` is a single module global: concurrent runs race (P1-7). `/agents/status`
+  and `/risk` still read it; `/api/v1/metrics` does not.
 - Unbounded background tasks; no per-user isolation or cost cap.
 - LLM degradation is not surfaced in `degraded`.
