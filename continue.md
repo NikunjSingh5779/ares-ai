@@ -1,21 +1,19 @@
 # CONTINUE.md — ARES AI handoff
 
-**Last updated:** 2026-10-21
+**Last updated:** 2026-10-22
 **Repository:** `C:\Users\ASUS\ares-ai`
 **Branch:** `fix/orchestration-reliability-frontend`
-**Head commit:** `e5d33ae feat(auth): require roles for trading and live controls` (read the
-hash with `git log -1 --format=%h`).
-**Branch position:** **10 commits ahead / 4 behind `master`** (per
+**Head commit:** code head `34ff7b8 chore(lint): rename load test script to a valid module name`;
+this docs reconciliation is the latest commit (read the hash with `git log -1 --format=%h`).
+**Branch position:** **13 commits ahead / 4 behind `master`** (per
 `git rev-list --left-right --count master...HEAD`).
-**Working tree:** **P1.5 and the Compose bootstrap fixes are uncommitted**. P1.6
-role-based authorization and the 22-error mypy cleanup are two local commits, **not
-pushed**. P1-A (`9c16122`), P1-B (`feat(paper): require approved execution and client order
-ids`), P1-C (`fix(paper): serialize ledger writers with an advisory lock`), and P1.4
-(`b6b5bea`) are committed and pushed to `origin`; the remote is still at P1.4. GitHub
-Actions run 39601089127 passed `test`, `postgres-integration`, `frontend`, and `docker`;
-only `lint` failed, on the 22 pre-existing mypy errors. Local `mypy .` is now clean, so the
-next push should turn `lint` green. Do not reset, clean, commit, or push unless the user
-explicitly asks.
+**Working tree:** **clean**. P1-A (`9c16122`), P1-B, P1-C, P1.4, the mypy cleanup, P1.6,
+P1.5, and the Compose bootstrap fixes are committed and pushed to
+`origin/fix/orchestration-reliability-frontend` through `34ff7b8`; this docs reconciliation
+is on top. GitHub Actions run **39742069953** passed all five jobs: `lint`, `test`,
+`postgres-integration`, `frontend`, and `docker`. A unique local `API_SECRET_KEY` is set in
+`.env` (never committed), and authenticated `/api/v1/*` returns 200. Do not reset, clean, or
+rewrite history unless the user explicitly asks.
 
 This is the fresh-session handoff. Read it fully before editing. It records what is done,
 what was verified, the behavior contracts that must not regress, the remaining defects, and
@@ -78,7 +76,7 @@ cases against a real database, and `.github/workflows/ci.yml::postgres-integrati
 on `postgres:16-alpine`. The module skips without `ARES_TEST_POSTGRES_URL`; CI sets
 `ARES_REQUIRE_POSTGRES_INTEGRATION=1` so it cannot skip silently.
 
-P1.6 is committed locally (not pushed):
+P1.6 is committed and pushed (`e5d33ae`):
 
 - Roles are `viewer`, `operator`, `admin`, `super_admin`; legacy `user` maps to `operator`,
   and unknown/missing roles fail closed to `viewer`.
@@ -91,7 +89,7 @@ P1.6 is committed locally (not pushed):
 - The 22 mypy errors are fixed; `mypy .` is clean on 184 files. Full suite is **1129
   passed + 1 skipped / 80.29%**.
 
-P1.5 is implemented and verified locally, **not committed**:
+P1.5 is committed and pushed (`f8b6d3c`):
 
 - `/health` returns **200** only when PostgreSQL, Redis, and ChromaDB all answer; a
   degraded dependency returns **503** with the same per-check JSON. The existing Compose
@@ -111,7 +109,7 @@ The Phase 1 Compose mid-trade restart exit **passed on 2026-10-21**:
 - The deterministic test used synthetic symbols so the background paper worker could not
   mark or stop the open positions during the restart. The approval, ledger, and PostgreSQL
   paths were real. Test rows were removed and the paper account reseeded afterward.
-- Compose bootstrap fixes are uncommitted with P1.5:
+- Compose bootstrap fixes are committed and pushed with P1.5:
   - `.gitattributes` forces LF for `*.sh`; the Windows checkout had a CRLF entrypoint.
   - `docker/docker-compose.yml` forces `postgres`/`redis`/`chromadb` hostnames instead of
     interpolating the host-oriented `.env`.
@@ -121,9 +119,10 @@ The Phase 1 Compose mid-trade restart exit **passed on 2026-10-21**:
     `/data` (the 1.x path); its container healthcheck is disabled because the image lacks
     curl/python, and `/health` remains the readiness signal.
 
-The next work is a decision on **committing and pushing P1.5, P1.6, and the Compose
-fixes**. The local `.env` `API_SECRET_KEY` is still a default placeholder, so `/api/v1/*`
-returns **503** until the operator sets a unique key locally (never commit it).
+All of the above is pushed at `34ff7b8`; GitHub Actions run **39742069953** passed all five
+jobs. A unique local `API_SECRET_KEY` is set in `.env` (never commit it), and authenticated
+`/api/v1/*` returns 200. The next work is **Phase 2** (product realism and UI), starting at
+`docs/05-NEXT.md`.
 
 **Do not start new feature work before reading sections 2, 3, 5, 5a, 6, and 8.**
 
@@ -221,9 +220,8 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 11. **Do not modify** `C:\Users\ASUS\.claude\plugins` or `C:\Users\ASUS\.claude\skills`;
     read-only use is allowed.
 12. **No real-capital live trading.** Live code stays gated; do not enable it.
-13. **Do not commit/push** unless the user explicitly asks. P1-A through P1.4 are
-    pushed to `origin`; P1.6 and the mypy cleanup are local commits only,
-    only.
+13. **Do not commit/push** unless the user explicitly asks. P1-A through P1.5, P1.6,
+    the mypy cleanup, and the Compose fixes are pushed to `origin` at `34ff7b8`.
 14. User preference: dashboard is single-user/local. Future market data direction is the
    existing ingestion + Binance WebSocket + Alpaca.
 15. Use ICM/MVC structure and React/frontend review skills for frontend work.
@@ -235,9 +233,9 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 ### 3.1 Branch / worktree
 
 - Branch: `fix/orchestration-reliability-frontend`
-- 10 ahead / 4 behind `master`.
-- Head: the P1.4 commit `test(paper): run the ledger suite against real PostgreSQL in CI`
-  (the hash changes if the commit is amended; prefer `git log -1 --oneline`)
+- 13 ahead / 4 behind `master` (including this docs reconciliation).
+- Code head: `34ff7b8 chore(lint): rename load test script to a valid module name`
+  (prefer `git log -1 --oneline` if the branch moves).
 - P1-A is committed as `9c16122`, P1-B as `feat(paper): require approved execution and
   client order ids`, and P1-C as `fix(paper): serialize ledger writers with an advisory
   lock`. P1-C touches
@@ -246,10 +244,10 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
   `.env.example`, `tests/test_paper_trading_ledger.py`,
   `tests/test_paper_trading_worker.py`, `tests/test_trading_router.py`,
   `tests/test_config.py`, and the docs/context updates.
-- P1.4 is committed as the head commit and touches `tests/test_postgres_integration.py`,
+- P1.4 is committed as `b6b5bea` and touches `tests/test_postgres_integration.py`,
   `.github/workflows/ci.yml`, `tests/CONTEXT.md`, `docker/CONTEXT.md`,
   `docs/02-STATUS.md`, `docs/05-NEXT.md`, and this file.
-- **P1.6 + mypy local commits:** `backend/core/roles.py`, `backend/core/dependencies.py`,
+- **P1.6 + mypy (committed and pushed):** `backend/core/roles.py`, `backend/core/dependencies.py`,
   `backend/core/error_handlers.py`, `backend/routers/{auth,live,trading,users}.py`,
   `backend/db/models.py`, `backend/schemas/user.py`, `backend/services/user_service.py`,
   `database/{schema,init}.sql`, `migrations/versions/0004_role_hierarchy.py`, the security/
@@ -257,8 +255,9 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 - `migrations/versions/` is no longer gitignored and contains `.gitkeep`,
   `0001_initial_schema.py`, `0002_paper_ledger.py`, `0003_order_idempotency.py`, and
   `0004_role_hierarchy.py` (new head).
-- `origin/fix/orchestration-reliability-frontend` contains P1.4 (`b6b5bea`); the P1.6 and
-  mypy changes exist only in local commits. No PR or merge has been performed.
+- `origin/fix/orchestration-reliability-frontend` contains the code through `34ff7b8`
+  (P1.4, P1.6, the mypy cleanup, P1.5, and the Compose fixes); this docs reconciliation is
+  on top. No PR or merge has been performed.
 
 ### 3.2 Verified commands and results
 
@@ -279,7 +278,7 @@ These come from `AGENTS.md`, `docs/01-SPEC.md`, and the user's instructions.
 | `mypy .` | **clean, 184 source files** |
 | `python -m alembic heads` | **`0004_role_hierarchy (head)`** |
 | Frontend `pnpm build` | passed (P1.5 analytics metrics contract) |
-| CI PostgreSQL job | **passed** on GitHub Actions run 39601089127 (46 s) |
+| CI run | **39742069953** — `lint`, `test`, `postgres-integration`, `frontend`, `docker` all passed |
 | Manual PostgreSQL 16 P1-B/P1-C checks | passed on temporary containers; containers removed |
 | Manual PostgreSQL 16 P1.6 migration | passed: fresh head, legacy `user` → `operator`, default `viewer`, `user` rejected |
 
@@ -313,7 +312,7 @@ The 22 pre-existing mypy errors in 8 test/script files are fixed. Do not reintro
 4. A duplicate request with the same client ID raised `PaperOrderConflictError`; a fresh
    process after restart also rejected it. One order and one open position remained.
 
-**P1.6 (committed locally):** A disposable PostgreSQL 16 container on port `55432` was used:
+**P1.6 (committed and pushed):** A disposable PostgreSQL 16 container on port `55432` was used:
 
 1. Fresh `alembic upgrade head` applied `0001` → `0004`; the role check allowed
    `viewer`/`operator`/`admin`/`super_admin` and the column default was `viewer`.
@@ -592,7 +591,7 @@ was **1108 passed / 80.10%** with the URL and **1103 passed + 1 skipped / 80.08%
 
 ---
 
-## 5c. P1.6 — role-based authorization (committed locally, not pushed)
+## 5c. P1.6 — role-based authorization (committed and pushed)
 
 **Roles:** `backend/core/roles.py` defines `viewer`, `operator`, `admin`, `super_admin`.
 `normalize_role` maps legacy `user` to `operator` and every unknown value to `viewer`
@@ -644,7 +643,7 @@ clean on 184 files. Full suite **1129 passed + 1 skipped / 80.29%**; ruff clean.
 
 ---
 
-## 5d. P1.5 + Phase 1 Compose exit (local, uncommitted, verified 2026-10-21)
+## 5d. P1.5 + Phase 1 Compose exit (committed and pushed, verified 2026-10-21)
 
 **Health:** `backend/main.py::health_check` returns `JSONResponse(status_code=200)` only
 when PostgreSQL, Redis, and ChromaDB all answer; any failure returns **503** with the same
@@ -686,9 +685,9 @@ approval, advisory lock, and PostgreSQL paths were the real ones.
    has no curl/python, so the Chroma container healthcheck is disabled and the backend
    starts on `service_started`. `/health` remains 503 until Chroma answers.
 
-**Local `.env` caveat:** the local `API_SECRET_KEY` is a default placeholder, so
-`/api/v1/*` correctly returns **503**. The exit used a temporary key through a Compose
-override and removed it; set a unique local key (never committed) to use the API again.
+**Local `.env`:** a unique `API_SECRET_KEY` is now set locally, so authenticated
+`/api/v1/*` returns 200. It is not committed. The exit itself used a temporary key through a
+Compose override and removed it before the local key was generated.
 
 ---
 
@@ -793,8 +792,8 @@ override and removed it; set a unique local key (never committed) to use the API
 ### Gap 4 — `mypy` — closed
 
 - All 22 errors in 8 test/script files are fixed; `mypy .` is clean on 184 files.
-- Keep it clean; CI `lint` should pass on the next push. No production type check was
-  weakened to get here.
+- Keep it clean; CI `lint` passes on run 39742069953. No production type check was weakened
+  to get here.
 
 ### Gap 5 — `/analyze` concurrency/cost control (P1)
 
@@ -857,28 +856,28 @@ high-fidelity paper results.
 
 ### P1-D — PostgreSQL CI and type/CI hygiene — done
 
-- P1.4 is committed as the head commit: see section 5b. The `postgres-integration` job
-  passed on GitHub Actions run 39601089127.
-- The 22 mypy errors are fixed; `mypy .` is clean on 184 files. CI `lint` was the only red
-  job and should pass on the next push.
+- P1.4 is committed as `b6b5bea`: see section 5b. The `postgres-integration` job passed on
+  GitHub Actions run 39742069953.
+- The 22 mypy errors are fixed; `mypy .` is clean on 184 files. CI `lint` now passes on the
+  pushed head `34ff7b8`.
 
 ### P1-E — Authorization and kill-switch operations — roles done
 
-- Roles, JWT claim, API-key mapping, and live-control gates are done and committed locally
+- Roles, JWT claim, API-key mapping, and live-control gates are done and pushed
   (P1.6, section 5c); migration `0004` is verified on PostgreSQL 16.
 - Remaining: a shared Redis arm epoch so one human re-arm clears the API and every runner.
   The latch is process-local today (fail-closed, but operationally awkward).
 
-### P1.5 — health and metrics — done locally
+### P1.5 — health and metrics — done and pushed
 
 - `/health` returns 200 only when DB/Redis/Chroma answer; degraded returns 503 with the
   same per-check JSON. Existing Compose healthchecks consume the status code.
 - `/api/v1/metrics` is a JSON summary of real Prometheus counters and no longer reads
   `_last_state`. The public `/metrics` mount remains the scrape target.
 - Frontend analytics consumes the new counter fields; `pnpm build` passes.
-- The Phase 1 Compose mid-trade restart exit passed on 2026-10-21 (section 5d). The next
-  action is deciding whether to commit/push P1.5, P1.6, and the Compose fixes; the local
-  `.env` key is still a default placeholder, so `/api/v1/*` is 503 until it is replaced.
+- The Phase 1 Compose mid-trade restart exit passed on 2026-10-21 (section 5d). All code
+  work is pushed at `34ff7b8`; this docs reconciliation is on top. CI run 39742069953 is
+  green. The local `.env` key is unique, so `/api/v1/*` returns 200. The next work is Phase 2.
 
 ### P2 — Paper realism, frontend, observability
 
@@ -1042,26 +1041,27 @@ with `Retry-After: 1`. P1.4 is committed as
 `tests/test_postgres_integration.py` proves hydrate → fill → restart → close, duplicate
 IDs, concurrent fills, the one-winner duplicate race, and the busy lock on real PostgreSQL
 16, and the `postgres-integration` CI job runs it on `postgres:16-alpine`.
-P1.6 is committed locally (not pushed): `viewer`/`operator`/`admin`/`super_admin` roles,
+P1.6 is committed and pushed (`e5d33ae`): `viewer`/`operator`/`admin`/`super_admin` roles,
 the role claim in login JWTs, API keys mapping to `admin`, viewer 403s on `/execute` and
 `/live/{mode,start,stop,kill,arm}`, and no database lookup in the role gate so the kill
 switch survives a DB outage. Migration `0004_role_hierarchy` rewrites legacy `user` to
 `operator`, allows `viewer`/`operator`, and defaults new rows to `viewer`. The 22
 pre-existing mypy errors are fixed.
-P1.5 is implemented locally but not committed: `/health` returns 503 when DB/Redis/Chroma
-are degraded, `/api/v1/metrics` reads real Prometheus counters instead of `_last_state`,
-and the frontend analytics contract follows the new fields. The Compose bootstrap fixes
-(LF entrypoint, internal service hosts, init.sql stamp, Chroma 1.5.9 at `/data`) are uncommitted with
-P1.5.
+P1.5 is committed and pushed (`f8b6d3c`): `/health` returns 503 when DB/Redis/Chroma are
+degraded, `/api/v1/metrics` reads real Prometheus counters instead of `_last_state`, and
+the frontend analytics contract follows the new fields. The same commit contains the
+Compose bootstrap fixes (LF entrypoint, internal service hosts, init.sql stamp, Chroma
+1.5.9 at `/data`).
 Verification today is **1129 passed + 1 skipped / 80.29% coverage** without a database,
 clean ruff, `mypy .` clean on 184 files, a passing frontend build, real PostgreSQL 16
 checks for fresh migration, P1-A → `0002` → head, duplicate rejection before/after restart,
 concurrent fills, a held lock, lock release, a cancelled writer, and the P1.6 role
 migration (including a legacy `user` row). The **Phase 1 Compose mid-trade restart exit
 passed on 2026-10-21** (section 5d): two concurrent fills, full-stack restart, exact
-portfolio/positions/orders/promotion match, duplicate 409 after restart. The next action is
-a decision on committing and pushing P1.5, P1.6, and the Compose fixes.
-P1-A through P1.4 are pushed to `origin`; P1.6, the mypy cleanup, and P1.5 are local.
-GitHub Actions run 39601089127 passed `test`, `postgres-integration`, `frontend`, and
-`docker`; only `lint` failed, on the then-open mypy errors. Do not push, reset, or rewrite
-history without explicit user approval.
+portfolio/positions/orders/promotion match, duplicate 409 after restart.
+All code work is pushed at `34ff7b8`: P1-A through P1.5, P1.6, the mypy cleanup, and the
+Compose fixes; this docs reconciliation is on top. GitHub Actions run **39742069953**
+passed all five jobs (`lint`, `test`, `postgres-integration`, `frontend`, `docker`). The
+local `.env` has a unique `API_SECRET_KEY` (never committed), and authenticated
+`/api/v1/*` returns 200. The next work is Phase 2. Do not push, reset, or rewrite history
+without explicit user approval.

@@ -1,20 +1,19 @@
 <!-- docs/02-STATUS.md -->
 # Status — verified state
 
-**Last verified:** 2026-10-21
-**Branch:** `fix/orchestration-reliability-frontend` — 10 commits ahead / 4 behind `master`.
+**Last verified:** 2026-10-22
+**Branch:** `fix/orchestration-reliability-frontend` — 13 commits ahead / 4 behind `master`.
 P1-A is committed as `9c16122`; P1-B (approved-only `/execute` plus client-order
 idempotency) is committed as `feat(paper): require approved execution and client order
 ids`; P1-C (paper writer lock) is committed as `fix(paper): serialize ledger writers with
 an advisory lock`; P1.4 (real-PostgreSQL integration job) is committed as
 `test(paper): run the ledger suite against real PostgreSQL in CI`.
-`origin/fix/orchestration-reliability-frontend` contains P1.4 (`b6b5bea`). GitHub Actions run
-39601089127 passed `test`, `postgres-integration`, `frontend`, and `docker`; only `lint`
-failed, on the 22 pre-existing mypy errors (gap 4, now fixed locally).
-**Committed locally, not pushed:** the mypy cleanup and P1.6 role-based authorization are
-two local commits. **Uncommitted:** the P1.5 health/metrics change and the Compose bootstrap
-fixes (LF entrypoint, internal service hosts, init.sql stamp, Chroma pin) are verified but
-not committed.
+`origin/fix/orchestration-reliability-frontend` contains the work through `34ff7b8`
+(P1.4, P1.5, P1.6, the mypy cleanup, and the Compose bootstrap fixes); this docs
+reconciliation is the latest commit. GitHub Actions run **39742069953** passed all five
+jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`.
+The working tree is clean. The local `.env` key is unique (never committed), so
+authenticated `/api/v1/*` calls work locally.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
 ## Green
@@ -30,7 +29,7 @@ not committed.
 | Lint | `ruff check .` | clean |
 | Format | `ruff format --check .` | clean |
 | PostgreSQL integration | `ARES_TEST_POSTGRES_URL=... pytest tests/test_postgres_integration.py -q` | **5 passed** — real hydrate → fill → restart → close, duplicate ID, concurrent fills, one-winner duplicate race, busy lock → retry |
-| CI PostgreSQL job | GitHub Actions `CI` run 39601089127 | **passed** on `postgres:16-alpine` in 46 s — all 5 tests, no skip |
+| CI PostgreSQL job | GitHub Actions `CI` run 39742069953 | **passed** on `postgres:16-alpine` — all 5 tests, no skip |
 | Paper-ledger tests | `pytest tests/test_paper_trading_ledger.py -q` | **34 passed** — hydration, atomic write, duplicate ID, writer lock, rejection/rollback, restart mid-trade |
 | Trading-route tests | `pytest tests/test_trading_router.py -q` | **17 passed** — approval, derivation, 409/422/503, busy-lock retry |
 | Schema tests | `pytest tests/test_schema.py -q` | **15 passed** — ledger/idempotency columns, init/schema parity, migration splitter |
@@ -38,7 +37,7 @@ not committed.
 | Alembic | `python -m alembic heads` | **`0004_role_hierarchy (head)`** |
 | PostgreSQL 16 P1-C check | temporary container: concurrent fills, duplicate client ID, held lock → 503-equivalent busy error, released lock retry, cancelled writer | passed; no leaked advisory locks; container and script removed |
 | PostgreSQL 16 P1-B check | temporary container: fresh `upgrade head`, P1-A schema → `stamp 0002` → `upgrade head`, duplicate execute before/after restart | passed; container and temporary scripts removed |
-| Frontend build | `pnpm build` (in `frontend/`) | passed (P1-B client wrapper update) |
+| Frontend build | `pnpm build` (in `frontend/`) | passed (P1.5 analytics metrics contract) |
 | API ↔ frontend paths | `app.openapi()` vs `src/lib/api.ts` | every path resolves |
 
 ## P0 fixes landed (2026-10-21)
@@ -119,10 +118,10 @@ signal token (P2) remains open.
 | Concurrent fills | Two processes fill BTC long and ETH short concurrently: both positions and orders persist, portfolio cash is 52 000 (no lost update). |
 | Concurrent duplicate race | Two processes submit the same `client_order_id` concurrently: exactly one accepted, one conflict, one order/one position — the partial unique index plus the writer lock hold. |
 | Busy writer | While one connection holds the advisory lock, a writer with a 0.2 s timeout raises `PaperLedgerBusyError` and writes nothing; after release the same request succeeds. |
-| CI job | `.github/workflows/ci.yml::postgres-integration` starts `postgres:16-alpine`, loads `database/schema.sql`, installs with `uv --locked`, and runs the module with `--no-cov`. `ARES_REQUIRE_POSTGRES_INTEGRATION=1` makes a missing URL a hard failure, never a silent skip. Verified on GitHub Actions run 39601089127 (46 s, all 5 tests passed). |
+| CI job | `.github/workflows/ci.yml::postgres-integration` starts `postgres:16-alpine`, loads `database/schema.sql`, installs with `uv --locked`, and runs the module with `--no-cov`. `ARES_REQUIRE_POSTGRES_INTEGRATION=1` makes a missing URL a hard failure, never a silent skip. Verified on GitHub Actions run 39742069953 (all 5 tests passed). |
 | Verified locally (at the P1.4 commit) | Temporary PostgreSQL 16 container (schema from `database/schema.sql`): **5 passed in 5.2 s**; full suite **1108 passed / 80.10%** with the URL and **1103 passed + 1 skipped / 80.08%** without. Container removed. |
 
-## P1.6 — role-based authorization (committed locally, verified 2026-10-21)
+## P1.6 — role-based authorization (committed and pushed, verified 2026-10-21)
 
 | Piece | Evidence |
 |---|---|
@@ -136,7 +135,7 @@ signal token (P2) remains open.
 | Mypy cleanup | The 22 pre-existing errors in 8 test/script files are fixed (annotations, unused ignores, exception-handler signature, `AgentState` import). `mypy .` is clean on **184 source files**; no safety gate or test assertion was weakened. |
 | Counts | Full suite **1129 passed, 1 skipped / 80.29%**; `ruff check .` and `ruff format --check .` clean. |
 
-## P1.5 — degraded health and Prometheus-backed metrics (local, uncommitted, verified 2026-10-21)
+## P1.5 — degraded health and Prometheus-backed metrics (committed and pushed, verified 2026-10-21)
 
 | Piece | Evidence |
 |---|---|
@@ -159,7 +158,7 @@ authenticated JSON convenience view over the same process-local counters.
 | Concurrent fills | Two approved `/execute` calls ran concurrently through the HTTP API on distinct synthetic symbols. Both returned **200**, `ledger_persisted: true`, and distinct position IDs. Pre-restart portfolio: cash **96 493.0**, equity **99 996.5**, `open_positions=2`, `total_pnl=-3.5`; both positions present. |
 | Full-stack restart | `docker compose restart` restarted all seven services. `/health` returned 200 again. The post-restart JSON matched the pre-restart snapshot **exactly** for `portfolio`, `positions`, `orders`, and `paper_record`; no fill was lost. |
 | Idempotency after restart | Replaying `compose-exit-syn-btc` after the restart returned **409** (`client_order_id has already been used`) and the snapshot stayed identical. |
-| Cleanup | Synthetic test rows were truncated, the paper account was reseeded, `ares-run-live` and `ares-daily-reporter` were restarted, and the temporary test key was removed. The original `.env` key remains a default placeholder, so `/api/v1/*` returns **503** until a real `API_SECRET_KEY` is configured. |
+| Cleanup | Synthetic test rows were truncated, the paper account was reseeded, `ares-run-live` and `ares-daily-reporter` were restarted, and the temporary test key was removed. A unique local `API_SECRET_KEY` was then written to `.env` (never committed), so authenticated `/api/v1/*` now returns 200. |
 
 The test deliberately used synthetic symbols so the background paper worker could not mark
 or stop the positions during the restart window. The `/execute` approval checks, the
@@ -175,14 +174,14 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 1 | ~~Concurrent paper-ledger writes are last-writer-wins~~ | Closed by P1-C: writers serialize on `pg_try_advisory_xact_lock` across API/worker/runner, with an in-process cache lock. Busy writers fail closed with 503. | ~~P1~~ fixed |
 | 2 | `/execute` trusts the authenticated caller's agent payload | The server recomputes consensus and caps size, but an API-key holder can supply synthetic Market Analyst/Quant/Risk outputs. There is no signed or expiring signal token. The API key remains the trust boundary. | P2 |
 | 3 | ~~No role-based authorization on trading/live routes~~ | Closed by P1.6: viewer JWTs get 403 on `/execute` and all live controls; operator+ required; JWT role claim and API-key mapping tested on the real routes. | ~~P1~~ fixed |
-| 4 | ~~`mypy` fails~~ | Closed: the 22 errors in 8 test/script files are fixed and `mypy .` is clean on 184 files. CI should turn green on the next push. | ~~P1~~ fixed |
+| 4 | ~~`mypy` fails~~ | Closed: the 22 errors in 8 test/script files are fixed, `mypy .` is clean on 184 files, and CI run 39742069953 passed `lint`. | ~~P1~~ fixed |
 | 5 | `/analyze` concurrency/cost control absent | global `_last_state`, unbounded `BackgroundTasks`; auth is required, but runs are still not isolated. `/api/v1/metrics` no longer reads `_last_state`; `/agents/status` and `/risk` still do. | P1 |
 | 6 | Kill-switch latch is process-local | a Redis outage latches each process; `/live/arm` clears the API process, but a runner that also latched stays blocked until restarted (fail-closed, never auto-trades) | P1 operational |
 | 7 | ~~No automated PostgreSQL integration test in CI~~ | Closed by P1.4: `postgres-integration` runs hydrate → fill → restart → close, duplicate IDs, concurrent fills, and the busy lock on `postgres:16-alpine`; the local default suite skips the module without `ARES_TEST_POSTGRES_URL`. | ~~P2~~ fixed |
 | 8 | UI has mock data and fake settings | `frontend/src/app/markets/page.tsx:81`, `settings/page.tsx` (no API call, 10% vs backend 2%) | P2 |
 | 9 | Model catalog removals are not checked in CI | manual check only; `scripts/test_free_models.py` exists but is not a CI job | P2 |
 | 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency` and `0004_role_hierarchy` (plus P1-A columns); `0004` rewrites legacy `user` → `operator` and makes `viewer` the default. `init.sql` only runs on first container start; the backend entrypoint now stamps `0001` when `init.sql` initialized the schema, then applies the later idempotent revisions. Old short **positions** still cannot be inferred and default to long. | Operational |
-| 11 | Local `.env` API key is still the default placeholder | `/api/v1/*` returns **503** by design until a unique `API_SECRET_KEY` is set. The Compose exit used a temporary key and removed it; the repository must not contain the replacement secret. | Operational |
+| 11 | ~~Local `.env` API key is the default placeholder~~ | Closed locally: a unique `API_SECRET_KEY` is set in `.env` (never committed), and authenticated `/api/v1/*` returns 200. Other environments must set their own key. | ~~Operational~~ fixed locally |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 

@@ -13,13 +13,13 @@ was committed as `9c16122` on 2026-10-21; P1-B (approved `/execute` plus client-
 idempotency) followed in the next commit, `feat(paper): require approved execution and
 client order ids`. P1-C (paper writer serialization) is committed as `fix(paper): serialize
 ledger writers with an advisory lock`. P1.4 (real-PostgreSQL integration job) is committed
-as `test(paper): run the ledger suite against real PostgreSQL in CI`; the job passed on its
-first GitHub run (39601089127). P1.6 (role-based authorization) is committed locally and
-verified, together with the mypy cleanup; neither is pushed yet. P1.5 (degraded health plus
-Prometheus-backed metrics) is implemented and verified locally but remains uncommitted.
-The Phase 1 Compose exit was run successfully on 2026-10-21 (portfolio, positions, orders,
-and promotion record identical across a full-stack restart). The remaining release action
-is committing and pushing P1.5 plus the Compose bootstrap fixes.
+as `test(paper): run the ledger suite against real PostgreSQL in CI`. P1.6 (role-based
+authorization), the mypy cleanup, P1.5 (degraded health plus Prometheus-backed metrics), and
+the Compose bootstrap fixes are committed and pushed at `34ff7b8`; this docs
+reconciliation is on top. The Phase 1 Compose exit
+was run successfully on 2026-10-21 (portfolio, positions, orders, and promotion record
+identical across a full-stack restart). GitHub Actions run **39742069953** passed all five
+jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`. Phase 1 is closed.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
@@ -59,8 +59,8 @@ are in `02-STATUS.md`.
 | 1.2 | Secure `/execute`: require an approved signal/risk payload or explicitly mark manual paper trades | `backend/routers/trading.py`, `agents/execution.py`, schemas | A request without approval cannot create a position; manual trades are labeled/excluded from promotion | **Done (P1-B, approved-only; no manual path)** |
 | 1.3 | Order idempotency + concurrent-writer safety | ledger/repository, order schema | Duplicate client order IDs are rejected; row locking or optimistic versions prevent lost updates across API/worker/runner | **Done (P1-B duplicates, P1-C writer lock)** |
 | 1.4 | PostgreSQL integration test in CI | `tests/`, CI workflow | Testcontainers/Compose runs hydrate → fill → restart → close on a real database | **Done (P1.4)**; `postgres-integration` job |
-| 1.5 | `/health` returns 503 when degraded; real Prometheus metrics | `backend/main.py`, `backend/core/metrics.py` | Compose healthchecks use the enriched health signal; `/api/v1/metrics` no longer reads `_last_state` | **Done (P1.5, local, uncommitted)** |
-| 1.6 | Role-based authorization for trading/live controls | auth/JWT/API-key mapping, route tests | Viewer cannot trade; operator/admin required for live start/kill/arm/mode changes | **Done (P1.6, committed locally)** |
+| 1.5 | `/health` returns 503 when degraded; real Prometheus metrics | `backend/main.py`, `backend/core/metrics.py` | Compose healthchecks use the enriched health signal; `/api/v1/metrics` no longer reads `_last_state` | **Done (P1.5, committed and pushed)** |
+| 1.6 | Role-based authorization for trading/live controls | auth/JWT/API-key mapping, route tests | Viewer cannot trade; operator/admin required for live start/kill/arm/mode changes | **Done (P1.6, committed and pushed)** |
 | 1.E | Compose mid-trade restart exit | `docker/docker-compose.yml`, `docker/backend-entrypoint.sh`, `.gitattributes` | Portfolio, positions, orders, and promotion record identical after a full-stack restart; concurrent fills survive; duplicate IDs still 409 | **Done (2026-10-21)** |
 
 **Exit: met on 2026-10-21.** The full Compose stack was restarted with two open paper

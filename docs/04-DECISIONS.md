@@ -308,7 +308,7 @@ role authorization is ADR-016.
 ---
 
 ## ADR-016 - Roles are credential claims; live controls do not depend on the database
-**Date:** 2026-10-21 - **Status:** accepted, implemented (P1.6, committed locally)
+**Date:** 2026-10-21 - **Status:** accepted, implemented (P1.6, committed and pushed)
 
 **Context:** Before P1.6, any valid API key or JWT reached `/execute` and every live
 control. The database only knew `user`/`admin`/`super_admin`, so there was no read-only
