@@ -2,7 +2,7 @@
 # Status — verified state
 
 **Last verified:** 2026-10-22
-**Branch:** `fix/orchestration-reliability-frontend` — 18 commits ahead / 4 behind `master`
+**Branch:** `fix/orchestration-reliability-frontend` — 19 commits ahead / 4 behind `master`
 at verification time.
 The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
 strategy data`) passed GitHub Actions run **39780873063** on all five jobs: `lint`,
@@ -17,9 +17,9 @@ Earlier GitHub Actions runs **39742069953** (code), **39745749404** (docs), and
 The fifth Phase 2 slice — frontend lint, typecheck, tests, and their CI steps — is
 committed as **`88bdfef`** and passed GitHub Actions run **39785044719**, including the
 new lint, typecheck, test, and build steps. The docs correction `8fb7c5b` passed run
-**39786478379**. The sixth Phase 2 slice — read-only multi-turn chat — is verified below
-and included in this change. The local `.env` key is unique (never committed), so
-authenticated `/api/v1/*` calls work locally.
+**39786478379**. The sixth Phase 2 slice — read-only multi-turn chat — is committed as
+**`c3518e5`** and passed GitHub Actions run **39791860387** on all five jobs. The local
+`.env` key is unique (never committed), so authenticated `/api/v1/*` calls work locally.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
 ## Green
