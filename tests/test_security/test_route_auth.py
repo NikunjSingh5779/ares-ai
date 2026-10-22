@@ -42,6 +42,14 @@ def test_protected_get_routes_return_401_without_credentials(unauthenticated_cli
         assert response.status_code == 401, f"{path} returned {response.status_code}: {response.text}"
 
 
+def test_chat_requires_credentials(unauthenticated_client: TestClient) -> None:
+    response = unauthenticated_client.post(
+        "/api/v1/chat",
+        json={"messages": [{"role": "user", "content": "hello"}]},
+    )
+    assert response.status_code == 401
+
+
 def _iter_api_routes() -> Iterator[tuple[str, APIRoute, list[Any]]]:
     """Yield every mounted APIRoute plus the dependencies inherited at include time.
 

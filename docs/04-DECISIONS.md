@@ -474,3 +474,48 @@ remains a separate gated process; a future feature that edits paper/live strateg
 an explicit versioned-copy or approval design. The strategy service uses the proven
 JSONB/`RETURNING` pattern; a disposable-PostgreSQL round-trip for the new routes remains a
 follow-up test.
+
+---
+
+## ADR-020 — Chat is stateless, read-only, and client-held
+**Date:** 2026-10-22 **Status:** accepted
+
+**Context:** `/chat` called `POST /api/v1/analyze` and displayed the accepted status,
+so it was a pipeline trigger with a chat skin, not a conversation. A real assistant
+needs prior turns and a model call, but the platform's safety boundary says chat must
+never become a second order path. The deployment is single-user with a shared API key
+and no guaranteed user row.
+
+**Decision:**
+- Add `POST /api/v1/chat` with a bounded `ChatRequest` (1–20 turns, 1–4000
+  characters, last turn from the user, `extra="forbid"`).
+- Keep history client-held and stateless on the server; no conversation table and no
+  server-side memory. The page sends the recent turns each time.
+- Use the standard fallback router with a `chat` entry in `configs/models.yaml`; all
+  IDs are free-tier. Return `{reply, model, fallback_used}`.
+- Give the service no tools and no execution path. The system prompt forbids orders,
+  mode/kill-switch changes, promotion, fabricated trading data, secret requests, and
+  bypassing safety gates.
+- Return **503** if the chain is exhausted, the response is an error envelope, or the
+  text is empty. Never fabricate a reply.
+- Do not stream in this slice; a non-streaming request is simpler to validate and
+  keeps the error/fallback path explicit.
+
+**Alternatives considered:**
+- *Reuse `/analyze` and poll the pipeline.* Rejected: the pipeline is a trading
+  analysis, not a conversation, and its state is global.
+- *Persist conversations in PostgreSQL.* Rejected for now: the shared API key has no
+  user row, and a conversation table adds retention/privacy scope without a product
+  requirement. Client-held history is honest for a single-user dashboard.
+- *Give chat tools to query portfolio/orders.* Rejected: that creates a second data
+  path with its own authorization and freshness problems; the read-only UI pages
+  already show that data.
+- *Stream tokens.* Deferred: the fallback chain and empty/error handling are the
+  valuable parts; streaming can be added behind the same schema later.
+- *Let chat trigger an analysis.* Rejected: it would blur the explicit Analyze action
+  and could be mistaken for trade authorization.
+
+**Consequences:** Multi-turn context works without new state or migrations. A reload
+starts a new thread; there is no server-side transcript. Chat is a guide, not a trading
+operator, and a model outage fails closed with 503. Streaming and conversation
+persistence remain explicit future work.

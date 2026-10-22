@@ -126,3 +126,14 @@ agents:
       - open_router/poolside/laguna-xs-2.1:free
       - open_router/openrouter/free
     timeout_seconds: 15
+
+  chat:
+    # Read-only dashboard assistant. Short, grounded replies; no tool calls.
+    primary: open_router/google/gemma-4-26b-a4b-it:free
+    fallbacks:
+      - open_router/nvidia/nemotron-3-super-120b-a12b:free
+      - open_router/nvidia/nemotron-3.5-lightning:free
+    timeout_seconds: 45
+    rpm: 10
+    temperature: 0.4
+    max_tokens: 1024

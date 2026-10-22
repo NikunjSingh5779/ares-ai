@@ -48,12 +48,16 @@ starts on Cancel. Use the skip link with the keyboard and verify it focuses the 
 content. On `/strategy-builder`, save a draft, reload the page, confirm it appears in
 Saved Drafts, edit it, and confirm the version increases. Confirm an unsupported
 backtest type shows a disabled explanation instead of navigating to an invalid run.
+On `/chat`, send two related messages and confirm the second request carries the first
+user/assistant turns, the reply shows its model (and fallback marker when applicable),
+Enter sends, and the page never presents a trade action.
 
 ## Known gaps
 - `/strategy-builder` persists drafts, but its parameters are not yet consumed by the
   backtest engine; the handoff passes only the supported strategy type.
-- The chat page triggers `POST /api/v1/analyze` and shows the accepted status; it is
-  not yet a multi-turn conversational agent.
+- `/chat` has no streaming and no conversation persistence: history lives in React
+  state for the current page session and the last 20 turns are sent per request. It is
+  read-only and cannot place trades or change safety settings.
 - A manual axe/Lighthouse pass has not been run; lint and Vitest are now automated
   (`eslint . --max-warnings=0`, `tsc --noEmit`, `vitest run`) but no browser-based
   accessibility audit is configured.

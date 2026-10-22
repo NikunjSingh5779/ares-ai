@@ -23,6 +23,7 @@ python -m pytest tests/test_icm_structure.py -q --no-cov
 # One area
 python -m pytest tests/test_paper_trading_ledger.py -q
 python -m pytest tests/test_trading_router.py -q
+python -m pytest tests/test_chat_router.py tests/test_chat_service.py -q
 python -m pytest tests/test_security/test_role_auth.py -q
 
 # Full suite with the configured coverage gate (78%)
@@ -31,7 +32,7 @@ python -m pytest tests/ -q
 
 The default `addopts` in `pyproject.toml` enables coverage over `backend`,
 `agents`, `database`, `backtesting`, `paper_trading`, and `live_trading`, and
-fails under 78%. The last verified run was **1196 passed, 1 skipped, 81.11%**
+fails under 78%. The last verified run was **1214 passed, 1 skipped, 81.31%**
 (2026-10-22). Do not copy that number into a new claim without re-running.
 
 ## Real PostgreSQL tests
@@ -56,7 +57,7 @@ mypy .
 ```
 
 The CI `lint` job installs Python 3.14 with `uv` and runs all three. Mypy is
-clean on 198 source files as of 2026-10-22. New code must not add
+clean on 203 source files as of 2026-10-22. New code must not add
 `# type: ignore` to hide a real mismatch.
 
 ## Frontend
@@ -71,11 +72,13 @@ pnpm build       # next build
 ```
 
 The CI `frontend` job runs all four in that order. Tests live beside the code
-(`src/**/*.test.ts[x]`); `vitest.setup.ts` installs jest-dom matchers and clears
-sessionStorage between tests. The current suite is **14 tests** in 3 files:
+(`src/**/*.test.ts[x]`); `vitest.setup.ts` installs jest-dom matchers, clears
+sessionStorage between tests, and stubs `scrollIntoView` for the chat log. The
+current suite is **18 tests** in 4 files:
 `src/lib/api.test.ts` (error detail, timeout, abort, API-key header, 401),
 `src/lib/usePipelinePolling.test.tsx` (start-after-accept, backoff, single-flight,
-60 s timeout), and `src/components/AuthGate.test.tsx` (redirect and main landmark).
+60 s timeout), `src/components/AuthGate.test.tsx` (redirect and main landmark),
+and `src/app/chat/page.test.tsx` (empty state, prior-turn history, retry, clear).
 `react-hooks/set-state-in-effect` is disabled in `eslint.config.mjs` for the existing
 fetch-on-mount pages; the remaining React Compiler rules stay on.
 

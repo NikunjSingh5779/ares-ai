@@ -21,6 +21,7 @@ from backend.data.ingestor import MarketDataIngestor
 from backend.routers import (
     agents_router,
     analysis_router,
+    chat_router,
     journal_router,
     live_router,
     market_router,
@@ -143,6 +144,7 @@ app.include_router(predictions_router, dependencies=_auth)
 app.include_router(market_router, dependencies=_auth)
 app.include_router(settings_router, dependencies=_auth)
 app.include_router(strategies_router, dependencies=_auth)
+app.include_router(chat_router, dependencies=_auth)
 
 # ── Prometheus /metrics endpoint (ASGI mount) ─────────────────────────
 

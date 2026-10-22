@@ -7,12 +7,12 @@ Controllers translate; they must not own domain state.
 ## Layout (MVC)
 | Role | Path |
 |---|---|
-| Controllers | `routers/` — `analysis`, `trading`, `live`, `agents`, `journal`, `monitoring`, `backtest`, `predictions`, `market`, `settings`, `strategies`, `auth`, `users` |
+| Controllers | `routers/` — `analysis`, `trading`, `live`, `agents`, `journal`, `monitoring`, `backtest`, `predictions`, `market`, `settings`, `strategies`, `chat`, `auth`, `users` |
 | Models | `schemas/` (API), `db/models.py` (ORM) |
 | Views | JSON responses + OpenAPI `/docs`; SSE in `analysis.stream_analysis` |
 | Core | `core/` — `dependencies` (auth/roles), `roles`, `rate_limit`, `security` (headers/JWT), `metrics`, `logging`, `error_handlers`, `login_rate_limit` |
 | Data | `data/` — `ingestor`, `models`, `sources/` (yahoo, binance, coingecko, web_search) |
-| Services | `services/` — `user_service`, `settings_service`, `strategy_service` |
+| Services | `services/` — `user_service`, `settings_service`, `strategy_service`, `chat_service` |
 | App | `main.py` — lifespan, middleware, router registration, `/health` |
 
 ## Inputs
@@ -95,6 +95,18 @@ paths remain authoritative. No schema or migration change was needed because the
 table exists in the initial schema. Missing rows are **404**; store failures are
 **503**.
 
+## Chat boundary
+`POST /api/v1/chat` is a **read-only** conversational endpoint mounted behind
+`verify_auth`. `ChatRequest` accepts 1–20 turns of 1–4000 characters and requires
+the last turn to be from the user; unknown fields are **422**. History is
+client-held; there is no conversation table or server-side memory. The service
+prepends a fixed system prompt, runs the free-tier `chat` chain from
+`configs/models.yaml` through the standard fallback router, and returns
+`{reply, model, fallback_used}`. It has no tools and no execution path, so it
+cannot place/modify/cancel orders, change modes, promote a strategy, or touch the
+kill switch. An exhausted chain, an error envelope (including the NoOp client),
+or empty text returns **503**; the API never fabricates a reply.
+
 ## Known gaps
 - `/execute` trusts the authenticated caller's agent payload; there is no signed or
   expiring signal token. The API key remains the trust boundary.
@@ -109,3 +121,5 @@ table exists in the initial schema. Missing rows are **404**; store failures are
 - Dashboard preferences are one global `app_settings` row, not per user. The shared API
   key has no user row, and the deployment is single-user; multi-user needs an explicit
   user-scoped store.
+- Chat depends on live free-tier model availability; the configured chain is probed
+  manually, not in CI, and an exhausted chain fails closed with **503**.

@@ -22,6 +22,8 @@ import type {
   VisionOutput,
   SignalHistoryEntry,
   AnalyzeResponse,
+  ChatResponse,
+  ChatTurn,
   JournalHistoryEntry,
   BacktestResult,
   BacktestMetrics,
@@ -193,6 +195,17 @@ export async function analyze(
     method: "POST",
     body: JSON.stringify({ symbol, request: requestText }),
     timeoutMs: 20_000,
+  });
+}
+
+/** Send a bounded conversation to the read-only assistant. */
+export async function sendChatMessage(
+  messages: ChatTurn[],
+): Promise<ChatResponse> {
+  return request<ChatResponse>("/api/v1/chat", {
+    method: "POST",
+    body: JSON.stringify({ messages }),
+    timeoutMs: 60_000,
   });
 }
 

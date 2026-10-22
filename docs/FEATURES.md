@@ -43,7 +43,7 @@
 | Kronos OHLCV forecasting | Optional | Downloads `NeoQuasar/Kronos-small` on first use; not required by the core pipeline |
 | Improvement engine | Partial | Suggestions/metrics exist; history persistence and naming cleanup are Phase 3 |
 | Strategy builder | Working | Drafts persist through `/api/v1/strategies`; only draft/paused rows are editable and live/promotion fields stay server-owned |
-| Chat interface | Partial | Calls `POST /api/v1/analyze` and shows the accepted status; multi-turn agent chat remains Phase 2 |
+| Chat interface | Working | Read-only multi-turn `POST /api/v1/chat` with a free-tier fallback chain; no tools or execution path |
 
 ## Dashboard
 
@@ -57,7 +57,7 @@
 | Backtests | Working | Calls the backtest endpoint |
 | Settings | Working | Loads/saves `app_settings` through authenticated GET/PUT; safety limits (including the 2% cap) are read-only; default symbol and live refresh are wired into the pages |
 | Strategy builder | Working | Real load/save against `strategies`; unsupported backtest types fail honestly |
-| Chat | Partial | Pipeline trigger; multi-turn chat workflow pending |
+| Chat | Working | Multi-turn read-only assistant; history is client-held and sent per request; model/fallback metadata is shown |
 
 ## Platform and operations
 
@@ -70,7 +70,7 @@
 | Security headers, CORS, rate limiting | Working | Middleware in `backend/main.py`; login rate limiter |
 | Docker Compose stacks | Working | 7-service dev stack, 11-service root stack, production overlays |
 | CI | Working | lint, test, postgres-integration, frontend lint/typecheck/test/build, docker validation |
-| Frontend lint/typecheck/test in CI | Working | ESLint 9 flat config, `tsc --noEmit`, and 14 Vitest tests run before `pnpm build` |
+| Frontend lint/typecheck/test in CI | Working | ESLint 9 flat config, `tsc --noEmit`, and 18 Vitest tests run before `pnpm build` |
 | Automated deployment | Not present | CI validates; deployment is manual |
 | Grafana / Prometheus dashboards | Working | `docker/monitoring/`; alert rules are Phase 3 |
 

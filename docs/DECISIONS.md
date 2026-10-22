@@ -27,6 +27,7 @@
 | ADR-015 | Paper writes serialize on a transaction-scoped advisory lock | API/worker/runner cannot lose each other's updates; busy writer -> 503 |
 | ADR-017 | Compose bootstrap is shared by `init.sql` and Alembic | Fresh volumes stamp 0001 and apply 0002–0005; one migration head |
 | ADR-019 | Strategy drafts reuse `strategies`; lifecycle fields stay server-owned | Authenticated drafts save/load; status, live enablement, and promotion counters reject writes and stay gated |
+| ADR-020 | Chat is stateless, read-only, and client-held | Multi-turn history is sent per request; no tools or execution path; exhausted chain -> 503 |
 
 ## Models, safety, and operations
 

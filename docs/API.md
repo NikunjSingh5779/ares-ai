@@ -76,6 +76,21 @@ persists candles or makes a trading decision. Invalid intervals/sources return
 `422`; an empty result is `404`; an upstream failure is `502`; a fetch timeout is
 `504`.
 
+### Chat
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/api/v1/chat` | Required | Read-only assistant reply for a bounded conversation history |
+
+The body is `{messages:[{role:"user"|"assistant",content}]}` with **1–20**
+turns and **1–4000** characters per turn; the last turn must be from the user.
+The response is `{reply, model, fallback_used}`. The service prepends a fixed
+system prompt, runs the free-tier `chat` chain from `configs/models.yaml`, and
+returns **503** if every model fails, returns an error envelope, or returns empty
+text. It has no tools and no execution path: a reply cannot place, modify, or
+cancel an order, change a trading mode, promote a strategy, or touch the kill
+switch. Conversation history is client-held; there is no conversation table.
+
 ### Settings
 
 | Method | Path | Auth | Purpose |

@@ -2,73 +2,90 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send, Cpu, User, RefreshCw } from "lucide-react";
-import { analyze } from "@/lib/api";
+import { sendChatMessage } from "@/lib/api";
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  model?: string;
+  fallbackUsed?: boolean;
 }
 
+/** Matches the backend's maximum bounded conversation length. */
+const MAX_HISTORY = 20;
+
 const SUGGESTIONS = [
-  "Analyze BTC-USD",
-  "What's the market sentiment?",
-  "Check portfolio risk exposure",
-  "Run full pipeline analysis on ETH-USD",
-  "Show me recent signals",
+  "How does the risk gate work?",
+  "What does the 80% consensus rule mean?",
+  "Explain paper trading vs live trading",
+  "What should I check before promoting a strategy?",
 ];
 
+const EMPTY_STATE =
+  "Ask how the analysis pipeline, risk gates, paper ledger, or strategy promotion works. This assistant is read-only: it cannot place orders, change risk limits, or enable live trading.";
+
 export default function ChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      content: "Hello! I'm the ARES AI trading assistant. I can analyze markets, check signals, and provide trading insights. What would you like to explore?",
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, loading]);
 
-  const handleSend = async (message?: string) => {
-    const text = (message || input).trim();
-    if (!text || loading) return;
-
-    setInput("");
+  const requestReply = async (history: ChatMessage[]) => {
+    if (loadingRef.current || history.length === 0) return;
+    loadingRef.current = true;
+    setLoading(true);
     setError(null);
 
-    const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date() };
-    setMessages((prev) => [...prev, userMsg]);
-    setLoading(true);
-
     try {
-      // Extract symbol from message if present
-      const symbolMatch = text.match(/[A-Z]{2,5}[-]?[USD]{0,4}/i);
-      const symbol = symbolMatch ? symbolMatch[0].toUpperCase() : "BTC-USD";
-
-      const result = await analyze(symbol, text);
-
-      const assistantMsg: ChatMessage = {
-        role: "assistant",
-        content: `**Analysis complete for ${symbol}**\n\nStatus: ${result.status}\nSession: ${result.session_id}\n\n${result.message}`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
+      const result = await sendChatMessage(
+        history.slice(-MAX_HISTORY).map(({ role, content }) => ({ role, content })),
+      );
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: result.reply,
+          timestamp: new Date(),
+          model: result.model,
+          fallbackUsed: result.fallback_used,
+        },
+      ]);
     } catch (err) {
-      const errorMsg: ChatMessage = {
-        role: "assistant",
-        content: `Error: ${err instanceof Error ? err.message : "Analysis failed. Please try again."}`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
+      setError(
+        err instanceof Error ? err.message : "Chat request failed. Please try again.",
+      );
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
+  };
+
+  const handleSend = (message?: string) => {
+    const text = (message ?? input).trim();
+    if (!text || loading || loadingRef.current) return;
+
+    const userMsg: ChatMessage = {
+      role: "user",
+      content: text,
+      timestamp: new Date(),
+    };
+    const history = [...messages, userMsg].slice(-MAX_HISTORY);
+
+    setInput("");
+    setMessages(history);
+    void requestReply(history);
+  };
+
+  const handleRetry = () => {
+    if (loading || loadingRef.current || messages.length === 0) return;
+    void requestReply(messages);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -78,31 +95,51 @@ export default function ChatPage() {
     }
   };
 
+  const clearChat = () => {
+    setMessages([]);
+    setError(null);
+    setInput("");
+  };
+
   return (
     <div className="flex h-[calc(100vh-6rem)] flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="text-heading text-xl text-white">AI Chat</h1>
-          <p className="text-label mt-1">Conversational Trading Interface</p>
+          <p className="text-label mt-1">
+            Read-only assistant. It cannot place trades or change risk limits.
+          </p>
         </div>
         <button
-          onClick={() => setMessages([{
-            role: "assistant",
-            content: "Hello! I'm the ARES AI trading assistant. How can I help you today?",
-            timestamp: new Date(),
-          }])}
-          className="btn-primary !py-2 !px-3 !text-xs !font-mono"
+          onClick={clearChat}
+          disabled={messages.length === 0 || loading}
+          className="btn-primary !px-3 !py-2 !text-xs !font-mono disabled:opacity-50"
         >
           <RefreshCw size={12} />
           Clear Chat
         </button>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-3 mb-4">
+      <div
+        className="mb-4 flex-1 space-y-3 overflow-y-auto"
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
+        aria-busy={loading}
+      >
+        {messages.length === 0 && !loading && (
+          <div className="card-glass rounded-xl px-5 py-6">
+            <p className="font-mono text-xs leading-relaxed text-[#a1a1aa]">
+              {EMPTY_STATE}
+            </p>
+          </div>
+        )}
+
         {messages.map((msg, i) => (
-          <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}>
+          <div
+            key={`${msg.role}-${i}`}
+            className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}
+          >
             {msg.role === "assistant" && (
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#6366f1] shadow-lg shadow-[rgba(99,102,241,0.25)]">
                 <Cpu size={14} className="text-black" />
@@ -110,18 +147,22 @@ export default function ChatPage() {
             )}
             <div
               className={`max-w-[70%] rounded-xl px-4 py-3 ${
-                msg.role === "user"
-                  ? "bg-[#6366f1] text-black"
-                  : "card-glass"
+                msg.role === "user" ? "bg-[#6366f1] text-black" : "card-glass"
               }`}
             >
-              <p className="font-mono text-xs whitespace-pre-wrap leading-relaxed">
+              <p className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
                 {msg.content}
               </p>
-              <p className={`mt-1.5 font-mono text-[10px] ${
-                msg.role === "user" ? "text-[rgba(0,0,0,0.5)]" : "text-[#8b8b93]"
-              }`}>
+              <p
+                className={`mt-1.5 font-mono text-[10px] ${
+                  msg.role === "user"
+                    ? "text-[rgba(0,0,0,0.5)]"
+                    : "text-[#8b8b93]"
+                }`}
+              >
                 {msg.timestamp.toLocaleTimeString()}
+                {msg.model ? ` · ${msg.model}` : ""}
+                {msg.fallbackUsed ? " (fallback)" : ""}
               </p>
             </div>
             {msg.role === "user" && (
@@ -138,25 +179,36 @@ export default function ChatPage() {
               <Cpu size={14} className="text-black" />
             </div>
             <div className="card-glass rounded-xl px-4 py-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" role="status">
                 <RefreshCw size={12} className="animate-spin text-[#6366f1]" />
-                <span className="font-mono text-xs text-[#a1a1aa]">Analyzing...</span>
+                <span className="font-mono text-xs text-[#a1a1aa]">
+                  Thinking…
+                </span>
               </div>
             </div>
           </div>
         )}
 
         {error && (
-          <div className="rounded-xl border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.08)] px-4 py-3">
+          <div
+            role="alert"
+            className="rounded-xl border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.08)] px-4 py-3"
+          >
             <p className="font-mono text-xs text-[#ef4444]">{error}</p>
+            <button
+              onClick={handleRetry}
+              disabled={loading}
+              className="mt-2 font-mono text-[10px] text-white underline underline-offset-2 disabled:opacity-50"
+            >
+              Retry last message
+            </button>
           </div>
         )}
 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggestions */}
-      <div className="flex flex-wrap gap-2 mb-3">
+      <div className="mb-3 flex flex-wrap gap-2">
         {SUGGESTIONS.map((suggestion) => (
           <button
             key={suggestion}
@@ -169,20 +221,29 @@ export default function ChatPage() {
         ))}
       </div>
 
-      {/* Input */}
       <div className="flex gap-2">
+        <label htmlFor="chat-input" className="sr-only">
+          Message the ARES assistant
+        </label>
         <input
+          id="chat-input"
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask about markets, analysis, or portfolio..."
+          placeholder="Ask about the pipeline, risk gates, or strategy promotion..."
+          maxLength={4000}
           disabled={loading}
+          aria-describedby="chat-input-hint"
           className="flex-1 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-4 py-3 font-mono text-sm text-white placeholder-[#8b8b93] outline-none transition-colors focus:border-[#6366f1] disabled:opacity-50"
         />
+        <span id="chat-input-hint" className="sr-only">
+          Press Enter to send. The assistant is read-only and cannot place trades.
+        </span>
         <button
           onClick={() => handleSend()}
           disabled={!input.trim() || loading}
+          aria-label="Send message"
           className="btn-primary !px-4 !py-3 disabled:opacity-50"
         >
           <Send size={14} />

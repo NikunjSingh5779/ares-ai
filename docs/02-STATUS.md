@@ -2,7 +2,8 @@
 # Status — verified state
 
 **Last verified:** 2026-10-22
-**Branch:** `fix/orchestration-reliability-frontend` — 17 commits ahead / 4 behind `master`.
+**Branch:** `fix/orchestration-reliability-frontend` — 18 commits ahead / 4 behind `master`
+at verification time.
 The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
 strategy data`) passed GitHub Actions run **39780873063** on all five jobs: `lint`,
 `test`, `postgres-integration`, `frontend`, and `docker`.
@@ -15,23 +16,26 @@ Earlier GitHub Actions runs **39742069953** (code), **39745749404** (docs), and
 **39747241203** (handoff) also passed all five jobs.
 The fifth Phase 2 slice — frontend lint, typecheck, tests, and their CI steps — is
 committed as **`88bdfef`** and passed GitHub Actions run **39785044719**, including the
-new lint, typecheck, test, and build steps. The local `.env` key is unique (never
-committed), so authenticated `/api/v1/*` calls work locally.
+new lint, typecheck, test, and build steps. The docs correction `8fb7c5b` passed run
+**39786478379**. The sixth Phase 2 slice — read-only multi-turn chat — is verified below
+and included in this change. The local `.env` key is unique (never committed), so
+authenticated `/api/v1/*` calls work locally.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
 ## Green
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1196 passed, 1 skipped** (integration module skips without `ARES_TEST_POSTGRES_URL`) |
-| Coverage | `pytest tests/ -q` | **81.11%** default (gate 78%); the P1.4 integration module adds 5 tests when its URL is set |
+| Test suite | `pytest tests/ -q` | **1214 passed, 1 skipped** (integration module skips without `ARES_TEST_POSTGRES_URL`) |
+| Coverage | `pytest tests/ -q` | **81.31%** default (gate 78%); the P1.4 integration module adds 5 tests when its URL is set |
 | Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
 | Health and metrics | `pytest tests/test_monitoring -q` | **34 passed** — 503 on each degraded dependency, 200 only when all answer, Prometheus-backed JSON snapshot, `/metrics` exposition mount |
-| Type check | `mypy .` | **clean, 198 source files** |
+| Type check | `mypy .` | **clean, 203 source files** |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
 | Market candles | `pytest tests/test_market_router.py -q` | **13 passed** — validation, ordering, deduplication, 404/502/504, source selection |
 | Settings | `pytest tests/test_settings_router.py tests/test_settings_service.py -q` | **23 passed** — GET/PUT round-trip, normalization, 422 on safety overrides, 503 when the store is unavailable |
 | Strategy drafts | `pytest tests/test_strategy_router.py tests/test_strategy_service.py -q` | **29 passed** — create/list/get/update, JSON parsing, version bump, 404/409/422/503, and rejection of lifecycle/live fields |
+| Chat | `pytest tests/test_chat_router.py tests/test_chat_service.py -q` | **17 passed** — history bounds, last-user validation, system prompt, fallback metadata, error-envelope/empty checks, free-tier roster, cached service |
 | Lint | `ruff check .` | clean |
 | Format | `ruff format --check .` | clean |
 | PostgreSQL integration | `ARES_TEST_POSTGRES_URL=... pytest tests/test_postgres_integration.py -q` | **5 passed** — real hydrate → fill → restart → close, duplicate ID, concurrent fills, one-winner duplicate race, busy lock → retry |
@@ -43,10 +47,10 @@ committed), so authenticated `/api/v1/*` calls work locally.
 | Alembic | `python -m alembic heads` | **`0005_app_settings (head)`** |
 | PostgreSQL 16 P1-C check | temporary container: concurrent fills, duplicate client ID, held lock → 503-equivalent busy error, released lock retry, cancelled writer | passed; no leaked advisory locks; container and script removed |
 | PostgreSQL 16 P1-B check | temporary container: fresh `upgrade head`, P1-A schema → `stamp 0002` → `upgrade head`, duplicate execute before/after restart | passed; container and temporary scripts removed |
-| Frontend build | `pnpm build` (in `frontend/`) | passed (real candle chart on `/markets`; real settings read/write on `/settings`; bounded live/status polling plus skip-link/ARIA/contrast changes on `/live`; persisted draft save/load and backtest handoff on `/strategy-builder`; Next 16.2.12) |
+| Frontend build | `pnpm build` (in `frontend/`) | passed (real candle chart on `/markets`; real settings read/write on `/settings`; bounded live/status polling plus skip-link/ARIA/contrast changes on `/live`; persisted draft save/load and backtest handoff on `/strategy-builder`; read-only multi-turn chat on `/chat`; Next 16.2.12) |
 | Frontend lint | `pnpm lint` (in `frontend/`) | clean — ESLint 9 flat config with `eslint-config-next` core-web-vitals, `--max-warnings=0` |
 | Frontend type check | `pnpm typecheck` (in `frontend/`) | clean — `tsc --noEmit` |
-| Frontend tests | `pnpm test` (in `frontend/`) | **14 passed** in 3 files — API client, pipeline polling, auth gate (Vitest 5 + Testing Library + jsdom) |
+| Frontend tests | `pnpm test` (in `frontend/`) | **18 passed** in 4 files — API client, pipeline polling, auth gate, chat page (Vitest 5 + Testing Library + jsdom) |
 | API ↔ frontend paths | `app.openapi()` vs `src/lib/api.ts` | every path resolves |
 
 ## P0 fixes landed (2026-10-21)
@@ -203,7 +207,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Dead config removed | The unused `MAX_POSITION_SIZE_PCT` env field is gone from `configs/settings.py` and `.env.example`. `agents.risk.MAX_POSITION_SIZE_PCT` is the single 2% source; `tests/test_config.py` asserts the field is not environment-configurable. |
 | Focused tests | `pytest tests/test_settings_router.py tests/test_settings_service.py -q` — **23 passed**; `pytest tests/test_schema.py -q` — **16 passed**; `pytest tests/test_security/test_route_auth.py -q` — **5 passed**, including `/api/v1/settings`. |
 | Real PostgreSQL proof | Temporary PostgreSQL 16 container: fresh `alembic upgrade head` reached `0005_app_settings`; a second path at `0004` with `app_settings` dropped also upgraded cleanly and recreated the seeded row plus trigger; GET returned defaults; PUT ` eth-usd `/15 persisted as `ETH-USD`/15; a payload containing `safety.max_position_size_pct=100` returned **422**; a second Python process reloaded the persisted preferences. Container and temporary scripts were removed. |
-| Full verification (current tree) | `pytest tests/ -q` — **1196 passed, 1 skipped / 81.11%**; `mypy .` clean on **198 source files**; `ruff check .` and `ruff format --check .` clean; `pnpm build` passed. |
+| Full verification (at that slice) | `pytest tests/ -q` — **1196 passed, 1 skipped / 81.11%**; `mypy .` clean on **198 source files**; `ruff check .` and `ruff format --check .` clean; `pnpm build` passed. |
 
 ## Phase 2 — third slice: live polling, API errors, accessibility (verified 2026-10-22)
 
@@ -214,7 +218,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | API client | `frontend/src/lib/api.ts` gives every request a bounded timeout (30 s default; 10 s status/audit/agent, 20 s analyze/candles, 120 s backtest), honours caller `AbortSignal`s, exposes typed `ApiError` (with FastAPI `detail`) and `ApiTimeoutError`, and bounds `/auth/verify`. The existing 401 clear-and-redirect behavior is unchanged. |
 | Accessibility | Root layout has a skip link to `#main-content`; `AuthGate` renders the focusable `main` target. The sidebar has `aria-label`s and `aria-current="page"`. Live actions have labelled status regions, error `role="alert"`, a labelled trading-mode select, and kill/arm dialogs with `role="dialog"`, `aria-modal`, labelled titles/descriptions, Escape handling, and safe initial focus. Strategy-builder inputs are labelled and toggle buttons expose `aria-pressed`. |
 | Contrast | Muted small text was raised from `#52525b` to **`#8b8b93`** (5.86:1 on the base background) and `#71717a` to **`#a1a1aa`** (7.72:1); the `#3f3f46` captions were raised to `#8b8b93` as well. The `--color-text-muted` token now matches. |
-| Verification (current tree) | `pnpm build` passed (Next 16.2.12, TypeScript clean). `pytest tests/ -q` — **1196 passed, 1 skipped / 81.11%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **198 source files**. No safety gate or live-trading default changed; live remains paper-only and disabled by default. Frontend lint/typecheck/test CI and a manual axe/Lighthouse pass remain open. |
+| Verification (at that slice) | `pnpm build` passed (Next 16.2.12, TypeScript clean). `pytest tests/ -q` — **1196 passed, 1 skipped / 81.11%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **198 source files**. No safety gate or live-trading default changed; live remains paper-only and disabled by default. Frontend lint/typecheck/test CI and a manual axe/Lighthouse pass remain open. |
 
 ## Phase 2 — fourth slice: strategy draft persistence (verified 2026-10-22)
 
@@ -227,7 +231,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Frontend builder | `frontend/src/app/strategy-builder/page.tsx` now lists saved drafts, loads one into the form, creates or updates it, and shows explicit loading/error/saved states. Draft parameters are controlled inputs; `aria-pressed` and labels remain. The page states that saving never enables live trading. |
 | Backtest handoff | Supported draft types link to `/backtests?strategy=...`; the backtests page accepts only its real `momentum`, `mean_reversion`, `trend_following`, or `breakout` options. Unsupported draft types show a disabled explanation instead of sending an invalid request. |
 | Focused tests | `pytest tests/test_strategy_router.py tests/test_strategy_service.py -q` — **29 passed**: create/list/get/update, normalization, version bump, JSON row parsing, 404/409/422/503, rejection of lifecycle/live fields, and fail-closed promotion-race handling. The route-auth test now enumerates `/api/v1/strategies`. |
-| Full verification (current tree) | `pytest tests/ -q` — **1196 passed, 1 skipped / 81.11%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **198 source files**; `pnpm build` passed. No safety gate, live default, promotion rule, or test assertion changed. |
+| Full verification (at that slice) | `pytest tests/ -q` — **1196 passed, 1 skipped / 81.11%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **198 source files**; `pnpm build` passed. No safety gate, live default, promotion rule, or test assertion changed. |
 | Not yet run | The strategy service tests use a mock SQLAlchemy session. A disposable-PostgreSQL round-trip for the new routes was not run in this slice; the table already exists in the initial schema and the SQL mirrors the proven settings upsert/cast pattern. |
 
 ## Phase 2 — fifth slice: frontend lint, typecheck, and tests (verified 2026-10-22)
@@ -240,6 +244,20 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Fixes found by lint | `PriceTicker` no longer references `connect` before its declaration and cancels reconnects on cleanup; `EquityCurveChart` computes drawdown through a module-level loop instead of mutating a render-scope variable; the 401 redirect uses `location.replace`. No trading or safety behavior changed. |
 | CI | The `frontend` job in `.github/workflows/ci.yml` now runs `pnpm lint`, `pnpm typecheck`, `pnpm test`, then `pnpm build`. |
 | Verification | `pnpm lint`, `pnpm typecheck`, `pnpm test` (**14 passed**), and `pnpm build` (Next 16.2.12) all pass locally. No backend or safety-path change in this slice. |
+
+## Phase 2 — sixth slice: read-only multi-turn chat (verified 2026-10-22)
+
+| Piece | Evidence |
+|---|---|
+| Chat API | `backend/routers/chat.py` exposes authenticated `POST /api/v1/chat`, mounted behind `verify_auth` in `backend/main.py`. The body is `{messages:[{role:"user"|"assistant",content}]}` with **1–20** turns and **1–4000** characters per turn; the last turn must be from the user. The response is `{reply, model, fallback_used}`. |
+| Stateless history | There is no conversation table and no server-side memory. The frontend sends the recent turns with each request and the backend prepends a fixed system prompt. The single-user API-key deployment gets real multi-turn context without inventing a per-user store. |
+| Read-only safety | The service has no tools and no execution path. The system prompt forbids placing/modifying/cancelling orders, changing modes or the kill switch, promoting strategies, fabricating prices/positions/PnL, requesting secrets, and bypassing Risk, consensus, position, drawdown, or promotion gates. A chat reply cannot create a trade. |
+| Model chain | `configs/models.yaml` gains a `chat` entry with free-tier IDs only; `AgentModelConfig` appends the configured universal fallback. An exhausted chain, an error envelope (including the NoOp client), or empty/whitespace content returns **503**, never a fabricated reply. |
+| Service | `backend/services/chat_service.py` caches one service and reuses the standard `ModelRouter`/circuit-breaker/queue/retry stack. It logs the fallback model and exposes `reset_chat_service()` for tests. |
+| Frontend chat | `frontend/src/app/chat/page.tsx` keeps the conversation in React state, sends the last 20 turns per request, shows model/fallback metadata, keeps a failed user turn visible, offers retry, and uses an empty state that states the read-only boundary. The log has `role="log"`/`aria-live`, errors have `role="alert"`, the input has a real label and `aria-describedby`, the log exposes `aria-busy`, and Enter sends. |
+| Tests | `pytest tests/test_chat_router.py tests/test_chat_service.py -q` — **17 passed**; `tests/test_security/test_route_auth.py` adds the unauthenticated **401**. `pnpm test` — **18 passed** in 4 files, including a chat-page test that proves the second request contains the prior user and assistant turns. |
+| Verification (current tree) | `pytest tests/ -q` — **1214 passed, 1 skipped / 81.31%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **203 source files**; `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass. No safety gate, live default, promotion rule, or test assertion changed. |
+| Not yet run | No live OpenRouter request was made from this slice; model availability is still checked by the existing roster probe rather than by a real request in tests. Catalog drift remains gap #9. |
 
 ## Red / known gaps
 
@@ -256,8 +274,8 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 9 | Model catalog removals are not checked in CI | manual check only; `scripts/test_free_models.py` exists but is not a CI job | P2 |
 | 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency`, `0004_role_hierarchy`, and `0005_app_settings` (plus P1-A columns). `0004` rewrites legacy `user` → `operator` and makes `viewer` the default; `0005` creates the singleton `app_settings` row and its trigger, so `/api/v1/settings` returns **503** until it is applied. `init.sql` only runs on first container start; the backend entrypoint stamps `0001` when `init.sql` initialized the schema, then applies the later idempotent revisions. Old short **positions** still cannot be inferred and default to long. | Operational |
 | 11 | ~~Local `.env` API key is the default placeholder~~ | Closed locally: a unique `API_SECRET_KEY` is set in `.env` (never committed), and authenticated `/api/v1/*` returns 200. Other environments must set their own key. | ~~Operational~~ fixed locally |
-| 12 | ~~Frontend lint/typecheck/test is not a CI job~~ | Closed 2026-10-22: ESLint 9 flat config (`pnpm lint`, zero warnings), `pnpm typecheck` (`tsc --noEmit`), and Vitest/Testing Library (**14 tests**) run in the `frontend` CI job before `pnpm build`. | ~~P2~~ fixed |
-| 13 | Chat is a pipeline trigger, not a conversational agent | `chat/page.tsx` calls `POST /api/v1/analyze` and displays the accepted status; it does not stream agent replies or maintain multi-turn agent memory. Strategy drafts now persist through `/api/v1/strategies` (fourth slice); the remaining gap is the conversational workflow. | P2 |
+| 12 | ~~Frontend lint/typecheck/test is not a CI job~~ | Closed 2026-10-22: ESLint 9 flat config (`pnpm lint`, zero warnings), `pnpm typecheck` (`tsc --noEmit`), and Vitest/Testing Library (**18 tests**) run in the `frontend` CI job before `pnpm build`. | ~~P2~~ fixed |
+| 13 | ~~Chat is a pipeline trigger, not a conversational agent~~ | Closed 2026-10-22: `POST /api/v1/chat` sends the bounded history through a free-tier fallback chain and returns a model reply with fallback metadata. The page keeps multi-turn state and the new test proves prior turns are sent. Chat remains read-only: it has no tools and cannot place orders, change modes, promote strategies, or bypass safety gates. | ~~P2~~ fixed |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 

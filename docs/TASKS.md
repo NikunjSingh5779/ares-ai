@@ -37,12 +37,13 @@
       (2026-10-22; manual axe/Lighthouse still pending)
 - [x] Strategy builder: persist drafts through `/api/v1/strategies`; keep status,
       live enablement, and promotion fields server-owned. (2026-10-22)
-- [ ] Chat: make it a real multi-turn workflow; the page currently triggers
-      `/api/v1/analyze` and displays the accepted status.
+- [x] Chat: real multi-turn, read-only workflow through `POST /api/v1/chat`;
+      free-tier fallback chain, bounded history, no tools or trade path.
+      (2026-10-22; streaming and conversation persistence remain future work)
 - [x] Frontend lint/typecheck/test job in CI. (2026-10-22)
 
 **Phase 2 exit:** no page renders invented data; settings round-trip through the
-API; axe/Lighthouse pass.
+API; chat is multi-turn and read-only; axe/Lighthouse pass.
 
 ## Next — P1 gaps
 
@@ -60,7 +61,7 @@ API; axe/Lighthouse pass.
 - [x] Remove remaining frontend mock data from markets, settings, and the strategy
       builder. (2026-10-22)
 - [x] Fix frontend lint under Next 16 and add the frontend lint/typecheck/test CI job.
-      (2026-10-22; ESLint 9 + `tsc --noEmit` + 14 Vitest tests)
+      (2026-10-22; ESLint 9 + `tsc --noEmit` + Vitest, 18 tests now)
 - [ ] Add scheduled/CI validation of the model catalog.
 - [ ] Paper realism: gap-through stop fills, partial fills/liquidity,
       borrow/funding costs, per-symbol slippage.

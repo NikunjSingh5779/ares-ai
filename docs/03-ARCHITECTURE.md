@@ -31,6 +31,13 @@ Monitoring     backend/core/metrics.py   docker/prometheus   docker/grafana
 returns or streams it. The graph order is `PIPELINE_ORDER`; consensus and risk are
 deterministic nodes, not LLM calls.
 
+**Chat** (`POST /api/v1/chat`)
+`backend/routers/chat.py` validates a bounded history, then
+`backend/services/chat_service.py` prepends a fixed system prompt and runs the
+free-tier `chat` chain through `ModelRouter`. History is client-held and the
+service is stateless; it has no tools and no execution path. An exhausted chain,
+an error envelope, or empty text returns 503 rather than a fabricated reply.
+
 **Paper execution** (`POST /api/v1/execute`, `POST /api/v1/signal`, `scripts/run_live.py`)
 The normal pipeline path is `ExecutionAgent` (`agents/execution.py`) → `PaperTradingLedger`
 (`paper_trading/ledger.py`). The API path is different: `/execute` accepts only a typed

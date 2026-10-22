@@ -221,6 +221,19 @@ export interface AnalyzeResponse {
   session_id: string;
 }
 
+// ─── Chat ───────────────────────────────────────────────────────
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatResponse {
+  reply: string;
+  model: string;
+  fallback_used: boolean;
+}
+
 // ─── Market data ────────────────────────────────────────────────
 
 export interface Candle {

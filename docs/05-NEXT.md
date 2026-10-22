@@ -21,8 +21,10 @@ Phase 1 Compose exit
 was run successfully on 2026-10-21 (portfolio, positions, orders, and promotion record
 identical across a full-stack restart). The Phase 2 slices through `88bdfef` passed
 GitHub Actions run **39780873063** (feature slices) and **39785044719** (frontend CI)
-on all five jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`.
-Phase 1 is closed.
+on all five jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`;
+the docs correction `8fb7c5b` passed run **39786478379**. The sixth Phase 2 slice
+(read-only multi-turn chat) is verified and recorded in `02-STATUS.md`. Phase 1 is
+closed.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
@@ -109,21 +111,24 @@ Python client.
   stay server-owned; the form loads saved drafts and hands supported types to the
   backtest page. A mock-session test suite covers create/list/get/update and the
   404/409/422/503 boundaries.
-- Chat: **partial** — `chat/page.tsx` already calls `POST /api/v1/analyze` and shows
-  the accepted status, but it is not a multi-turn conversational agent. A real chat
-  workflow remains.
+- Chat: **done 2026-10-22** — `POST /api/v1/chat` sends a bounded (1–20 turn) history
+  through a free-tier fallback chain and returns the reply plus the model/fallback
+  metadata. The page keeps multi-turn state and sends prior turns; the service has no
+  tools and cannot place orders, change modes, promote strategies, or bypass a safety
+  gate. A `chat` entry in `configs/models.yaml` holds the model IDs.
 - Frontend lint/typecheck/test: **done 2026-10-22** — ESLint 9 flat config
   (`eslint . --max-warnings=0`), `tsc --noEmit`, and Vitest 5 + Testing Library
-  (**14 tests**) run in the `frontend` CI job before `pnpm build`.
+  (**18 tests**) run in the `frontend` CI job before `pnpm build`.
 **Exit:** no page renders invented data; settings round-trip through the API (met
 2026-10-22); live/pipeline polling is bounded and pause-aware (met 2026-10-22);
-strategy drafts round-trip through the API (met 2026-10-22); frontend lint,
-typecheck, and tests run in CI (met 2026-10-22); axe/Lighthouse pass remains.
+strategy drafts round-trip through the API (met 2026-10-22); chat is multi-turn and
+read-only (met 2026-10-22); frontend lint, typecheck, and tests run in CI (met
+2026-10-22); axe/Lighthouse pass remains.
 
 ## Phase 3 — hygiene
 
-- Keep `mypy .` green (clean on 198 files as of 2026-10-22).
-- Re-verify README numbers (current suite: 1196 passed / 81.11%) and roadmap status.
+- Keep `mypy .` green (clean on 203 files as of 2026-10-22).
+- Re-verify README numbers (current suite: 1214 passed / 81.31%) and roadmap status.
 - Improvement engine: persist history, rename “win rate”, remove the 75% consensus suggestion.
 - Add Prometheus alert rules; remove duplicate monitoring configs.
 - Prune stale branches and land Dependabot PRs.

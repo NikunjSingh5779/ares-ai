@@ -109,8 +109,10 @@ writing to memory only; the request must fail closed.
 - Markets, settings, and strategy-builder now read/write the backend; there is no
   mock-data fallback. If they show defaults or an empty list, check auth and
   `NEXT_PUBLIC_API_URL` connectivity rather than looking for seeded UI values.
-- The chat page triggers `POST /api/v1/analyze`; it does not yet maintain a
-  multi-turn agent conversation.
+- The chat page sends the last 20 turns to `POST /api/v1/chat`. A **503** means every
+  configured free `chat` model failed, returned an error envelope, or returned empty
+  text; check the provider key and the model IDs in `configs/models.yaml`. History is
+  client-held and stateless on the server, so reloading the page starts a new thread.
 
 ## CI failures
 
