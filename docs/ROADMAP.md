@@ -33,7 +33,7 @@
 | M10 API gateway | Verified |
 | M11 Frontend dashboard | Verified; Phase 2 UI realism remains |
 | M12 Live trading and safety gates | Verified; Zerodha/IBKR order methods are stubs |
-| M13 Monitoring, CI/CD, security | Verified; frontend lint job remains |
+| M13 Monitoring, CI/CD, security | Verified |
 | S1 Login brute-force protection | Verified |
 | R1 Deterministic frontend dependencies | Verified |
 
@@ -44,7 +44,7 @@
 - No fabricated data in any page.
 - Polling is guarded, abortable, and backs off on errors.
 - Accessibility checks pass.
-- Frontend lint/typecheck/test runs in CI.
+- Frontend lint/typecheck/test runs in CI. (met 2026-10-22)
 
 ## Phase 3 exit criteria
 

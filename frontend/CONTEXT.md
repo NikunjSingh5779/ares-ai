@@ -35,8 +35,9 @@ Static/SSR pages served by Next; no secrets in the bundle.
   `AuthGate` blocks protected pages when no key is present.
 
 ## Human check
-`pnpm build` (in `frontend/`), then click through the changed page. Confirm `/login`
-rejects a wrong key and that a protected page redirects without one. On `/markets`,
+`pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` (in `frontend/`), then
+click through the changed page. Confirm `/login` rejects a wrong key and that a
+protected page redirects without one. On `/markets`,
 confirm the chart loads real candles from `/api/v1/market/candles`, the symbol change
 does not start an analysis, and the **Analyze** button is the only trigger. On
 `/settings`, confirm the page loads the 2% safety cap, save a different default symbol
@@ -53,8 +54,8 @@ backtest type shows a disabled explanation instead of navigating to an invalid r
   backtest engine; the handoff passes only the supported strategy type.
 - The chat page triggers `POST /api/v1/analyze` and shows the accepted status; it is
   not yet a multi-turn conversational agent.
-- Frontend lint/typecheck/test is not yet a CI job: `pnpm build` type-checks, but the
-  `pnpm lint` script still calls the removed `next lint`. A manual axe/Lighthouse pass
-  has not been run.
+- A manual axe/Lighthouse pass has not been run; lint and Vitest are now automated
+  (`eslint . --max-warnings=0`, `tsc --noEmit`, `vitest run`) but no browser-based
+  accessibility audit is configured.
 - The style guide still uses a small number of direct hex colors; the muted-text values
   were raised for contrast, but a full design-token sweep remains optional polish.

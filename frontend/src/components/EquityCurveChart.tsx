@@ -15,19 +15,25 @@ interface EquityCurveChartProps {
   equityCurve: number[];
 }
 
+interface EquityPoint {
+  index: number;
+  equity: number;
+  drawdown: number;
+}
+
+function buildChartData(equityCurve: number[]): EquityPoint[] {
+  const points: EquityPoint[] = [];
+  let maxSoFar = 0;
+  for (const [index, equity] of equityCurve.entries()) {
+    if (equity > maxSoFar) maxSoFar = equity;
+    const drawdown = maxSoFar > 0 ? ((equity - maxSoFar) / maxSoFar) * 100 : 0;
+    points.push({ index, equity, drawdown });
+  }
+  return points;
+}
+
 export function EquityCurveChart({ equityCurve }: EquityCurveChartProps) {
-  const chartData = useMemo(() => {
-    let maxSoFar = 0;
-    return equityCurve.map((equity, i) => {
-      if (equity > maxSoFar) maxSoFar = equity;
-      const drawdown = maxSoFar > 0 ? ((equity - maxSoFar) / maxSoFar) * 100 : 0;
-      return {
-        index: i,
-        equity: equity,
-        drawdown: drawdown,
-      };
-    });
-  }, [equityCurve]);
+  const chartData = useMemo(() => buildChartData(equityCurve), [equityCurve]);
 
   if (!equityCurve || equityCurve.length === 0) {
     return (

@@ -69,8 +69,8 @@
 | Health and metrics | Working | `/health` 503 on dependency failure; Prometheus `/metrics`; JSON `/api/v1/metrics` |
 | Security headers, CORS, rate limiting | Working | Middleware in `backend/main.py`; login rate limiter |
 | Docker Compose stacks | Working | 7-service dev stack, 11-service root stack, production overlays |
-| CI | Working | lint, test, postgres-integration, frontend build, docker validation |
-| Frontend lint/typecheck/test in CI | Planned | Phase 2; `next lint` is invalid under Next 16 |
+| CI | Working | lint, test, postgres-integration, frontend lint/typecheck/test/build, docker validation |
+| Frontend lint/typecheck/test in CI | Working | ESLint 9 flat config, `tsc --noEmit`, and 14 Vitest tests run before `pnpm build` |
 | Automated deployment | Not present | CI validates; deployment is manual |
 | Grafana / Prometheus dashboards | Working | `docker/monitoring/`; alert rules are Phase 3 |
 

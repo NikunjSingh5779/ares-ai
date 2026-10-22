@@ -64,12 +64,20 @@ clean on 198 source files as of 2026-10-22. New code must not add
 ```powershell
 cd frontend
 pnpm install --frozen-lockfile
-pnpm build
+pnpm lint        # eslint . --max-warnings=0
+pnpm typecheck   # tsc --noEmit
+pnpm test        # vitest run (jsdom + Testing Library)
+pnpm build       # next build
 ```
 
-The CI `frontend` job runs the build. `pnpm lint` is currently invalid because
-`next lint` was removed in Next 16; a replacement lint/typecheck/test job is
-Phase 2. Do not add a CI step that is known to fail.
+The CI `frontend` job runs all four in that order. Tests live beside the code
+(`src/**/*.test.ts[x]`); `vitest.setup.ts` installs jest-dom matchers and clears
+sessionStorage between tests. The current suite is **14 tests** in 3 files:
+`src/lib/api.test.ts` (error detail, timeout, abort, API-key header, 401),
+`src/lib/usePipelinePolling.test.tsx` (start-after-accept, backoff, single-flight,
+60 s timeout), and `src/components/AuthGate.test.tsx` (redirect and main landmark).
+`react-hooks/set-state-in-effect` is disabled in `eslint.config.mjs` for the existing
+fetch-on-mount pages; the remaining React Compiler rules stay on.
 
 ## Docker / Compose
 

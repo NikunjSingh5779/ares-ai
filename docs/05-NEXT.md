@@ -19,8 +19,9 @@ the Compose bootstrap fixes are committed and pushed at `34ff7b8`; docs reconcil
 `0d55263`, the handoff refresh `e406d5d`, and the conventional docs set are on top. The
 Phase 1 Compose exit
 was run successfully on 2026-10-21 (portfolio, positions, orders, and promotion record
-identical across a full-stack restart). GitHub Actions run **39742069953** passed all five
-jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`. Phase 1 is closed.
+identical across a full-stack restart). The Phase 2 slices through `caae9d6` passed
+GitHub Actions run **39780863063** on all five jobs: `lint`, `test`,
+`postgres-integration`, `frontend`, and `docker`. Phase 1 is closed.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
@@ -110,12 +111,13 @@ Python client.
 - Chat: **partial** — `chat/page.tsx` already calls `POST /api/v1/analyze` and shows
   the accepted status, but it is not a multi-turn conversational agent. A real chat
   workflow remains.
-- Frontend lint/typecheck/test job in CI (`pnpm build` type-checks, but `pnpm lint`
-  is still the removed `next lint`).
+- Frontend lint/typecheck/test: **done 2026-10-22** — ESLint 9 flat config
+  (`eslint . --max-warnings=0`), `tsc --noEmit`, and Vitest 5 + Testing Library
+  (**14 tests**) run in the `frontend` CI job before `pnpm build`.
 **Exit:** no page renders invented data; settings round-trip through the API (met
 2026-10-22); live/pipeline polling is bounded and pause-aware (met 2026-10-22);
-strategy drafts round-trip through the API (met 2026-10-22); axe/Lighthouse pass
-remains.
+strategy drafts round-trip through the API (met 2026-10-22); frontend lint,
+typecheck, and tests run in CI (met 2026-10-22); axe/Lighthouse pass remains.
 
 ## Phase 3 — hygiene
 

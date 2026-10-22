@@ -145,7 +145,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     if (res.status === 401) {
       clearApiKey();
       if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-        window.location.assign("/login");
+        window.location.replace("/login");
       }
     }
 

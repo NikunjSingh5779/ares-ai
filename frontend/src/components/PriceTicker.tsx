@@ -1,56 +1,59 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export function PriceTicker({ symbol = 'BTCUSDT' }: { symbol?: string }) {
   const [price, setPrice] = useState<number | null>(null);
   const [prevPrice, setPrevPrice] = useState<number | null>(null);
   const [flash, setFlash] = useState<'up' | 'down' | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const connect = useCallback(() => {
-    const url = `wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@ticker`;
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.c) {
-        const currentPrice = parseFloat(data.c);
-        
-        setPrice(p => {
-          if (p !== null && p !== currentPrice) {
-            setPrevPrice(p);
-            if (currentPrice > p) setFlash('up');
-            else if (currentPrice < p) setFlash('down');
-            
-            setTimeout(() => setFlash(null), 500);
-          }
-          return currentPrice;
-        });
-      }
-    };
-
-    ws.onclose = () => {
-      reconnectTimeoutRef.current = setTimeout(connect, 3000);
-    };
-
-    ws.onerror = () => {
-      ws.close();
-    };
-  }, [symbol]);
 
   useEffect(() => {
+    const url = `wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@ticker`;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+
+    const connect = () => {
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.c) {
+          const currentPrice = parseFloat(data.c);
+
+          setPrice(p => {
+            if (p !== null && p !== currentPrice) {
+              setPrevPrice(p);
+              if (currentPrice > p) setFlash('up');
+              else if (currentPrice < p) setFlash('down');
+
+              setTimeout(() => setFlash(null), 500);
+            }
+            return currentPrice;
+          });
+        }
+      };
+
+      ws.onclose = () => {
+        if (!cancelled) reconnectTimer = setTimeout(connect, 3000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    };
+
     connect();
     return () => {
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       if (wsRef.current) {
         wsRef.current.onclose = null; // Prevent reconnect loop on unmount
         wsRef.current.close();
       }
     };
-  }, [connect]);
+  }, [symbol]);
 
   if (price === null) return (
     <div className="px-3 py-1.5 rounded-lg border bg-[rgba(255,255,255,0.02)] border-[rgba(255,255,255,0.08)] flex items-center gap-2">

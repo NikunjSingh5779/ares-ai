@@ -103,8 +103,9 @@ writing to memory only; the request must fail closed.
 - A CORS error means `API_CORS_ORIGINS` does not include the dashboard origin.
 - A blank page or redirect loop usually means no key in `sessionStorage`;
   `AuthGate` sends you to `/login`.
-- `pnpm build` is the supported check. `pnpm lint` is invalid under Next 16
-  until the Phase 2 CI work lands.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` are the supported
+  checks. A lint failure names the file and rule; run `pnpm lint --fix` only for
+  safe auto-fixes and re-run the full set.
 - Markets, settings, and strategy-builder now read/write the backend; there is no
   mock-data fallback. If they show defaults or an empty list, check auth and
   `NEXT_PUBLIC_API_URL` connectivity rather than looking for seeded UI values.

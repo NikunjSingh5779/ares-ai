@@ -39,7 +39,7 @@
       live enablement, and promotion fields server-owned. (2026-10-22)
 - [ ] Chat: make it a real multi-turn workflow; the page currently triggers
       `/api/v1/analyze` and displays the accepted status.
-- [ ] Frontend lint/typecheck/test job in CI.
+- [x] Frontend lint/typecheck/test job in CI. (2026-10-22)
 
 **Phase 2 exit:** no page renders invented data; settings round-trip through the
 API; axe/Lighthouse pass.
@@ -59,7 +59,8 @@ API; axe/Lighthouse pass.
       do not rely only on caller-supplied agent payloads.
 - [x] Remove remaining frontend mock data from markets, settings, and the strategy
       builder. (2026-10-22)
-- [ ] Fix frontend lint under Next 16 and add the frontend lint/typecheck/test CI job.
+- [x] Fix frontend lint under Next 16 and add the frontend lint/typecheck/test CI job.
+      (2026-10-22; ESLint 9 + `tsc --noEmit` + 14 Vitest tests)
 - [ ] Add scheduled/CI validation of the model catalog.
 - [ ] Paper realism: gap-through stop fills, partial fills/liquidity,
       borrow/funding costs, per-symbol slippage.

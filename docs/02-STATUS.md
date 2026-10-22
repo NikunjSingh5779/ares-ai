@@ -2,21 +2,21 @@
 # Status — verified state
 
 **Last verified:** 2026-10-22
-**Branch:** `fix/orchestration-reliability-frontend` — 15 commits ahead / 4 behind `master`.
+**Branch:** `fix/orchestration-reliability-frontend` — 16 commits ahead / 4 behind `master`
+at verification time.
+The verification baseline is `caae9d6` (`feat(phase-2): wire real market, settings, live,
+and strategy data`), which passed GitHub Actions run **39780863063** on all five jobs:
+`lint`, `test`, `postgres-integration`, `frontend`, and `docker`.
 P1-A is committed as `9c16122`; P1-B (approved-only `/execute` plus client-order
 idempotency) is committed as `feat(paper): require approved execution and client order
 ids`; P1-C (paper writer lock) is committed as `fix(paper): serialize ledger writers with
 an advisory lock`; P1.4 (real-PostgreSQL integration job) is committed as
 `test(paper): run the ledger suite against real PostgreSQL in CI`.
-`origin/fix/orchestration-reliability-frontend` contains the code through `34ff7b8`, the
-docs reconciliation `0d55263`, the handoff refresh `e406d5d`, and this conventional docs
-set on top. GitHub Actions runs **39742069953** (code), **39745749404** (docs), and
-**39747241203** (handoff) passed all five jobs: `lint`, `test`, `postgres-integration`,
-`frontend`, and `docker`.
-The working tree now contains the uncommitted Phase 2 market-candles, persisted-settings,
-live-polling/accessibility, and strategy-draft persistence slices (see below); commit/push
-awaits explicit approval. The local `.env` key is unique
-(never committed), so authenticated `/api/v1/*` calls work locally.
+Earlier GitHub Actions runs **39742069953** (code), **39745749404** (docs), and
+**39747241203** (handoff) also passed all five jobs.
+The fifth Phase 2 slice — frontend lint, typecheck, tests, and their CI steps — is
+verified below and included in this commit. The local `.env` key is unique (never
+committed), so authenticated `/api/v1/*` calls work locally.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
 ## Green
@@ -44,6 +44,9 @@ awaits explicit approval. The local `.env` key is unique
 | PostgreSQL 16 P1-C check | temporary container: concurrent fills, duplicate client ID, held lock → 503-equivalent busy error, released lock retry, cancelled writer | passed; no leaked advisory locks; container and script removed |
 | PostgreSQL 16 P1-B check | temporary container: fresh `upgrade head`, P1-A schema → `stamp 0002` → `upgrade head`, duplicate execute before/after restart | passed; container and temporary scripts removed |
 | Frontend build | `pnpm build` (in `frontend/`) | passed (real candle chart on `/markets`; real settings read/write on `/settings`; bounded live/status polling plus skip-link/ARIA/contrast changes on `/live`; persisted draft save/load and backtest handoff on `/strategy-builder`; Next 16.2.12) |
+| Frontend lint | `pnpm lint` (in `frontend/`) | clean — ESLint 9 flat config with `eslint-config-next` core-web-vitals, `--max-warnings=0` |
+| Frontend type check | `pnpm typecheck` (in `frontend/`) | clean — `tsc --noEmit` |
+| Frontend tests | `pnpm test` (in `frontend/`) | **14 passed** in 3 files — API client, pipeline polling, auth gate (Vitest 5 + Testing Library + jsdom) |
 | API ↔ frontend paths | `app.openapi()` vs `src/lib/api.ts` | every path resolves |
 
 ## P0 fixes landed (2026-10-21)
@@ -227,6 +230,17 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Full verification (current tree) | `pytest tests/ -q` — **1196 passed, 1 skipped / 81.11%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **198 source files**; `pnpm build` passed. No safety gate, live default, promotion rule, or test assertion changed. |
 | Not yet run | The strategy service tests use a mock SQLAlchemy session. A disposable-PostgreSQL round-trip for the new routes was not run in this slice; the table already exists in the initial schema and the SQL mirrors the proven settings upsert/cast pattern. |
 
+## Phase 2 — fifth slice: frontend lint, typecheck, and tests (verified 2026-10-22)
+
+| Piece | Evidence |
+|---|---|
+| ESLint | `frontend/eslint.config.mjs` is an ESLint 9 flat config built on `eslint-config-next/core-web-vitals` (16.4.2). `pnpm lint` runs `eslint . --max-warnings=0` and finishes with no warnings. `react-hooks/set-state-in-effect` is explicitly disabled for the existing fetch-on-mount pages; the other React Compiler rules remain enabled. |
+| Type check | `pnpm typecheck` runs `tsc --noEmit`; clean. |
+| Tests | Vitest 5.0.5 with jsdom and Testing Library. `pnpm test` — **14 passed** across 3 files: API detail/timeout/abort/API-key handling, pipeline polling (starts only after POST acceptance, backs off, single-flight, 60 s timeout), and `AuthGate` (redirect without a key, main landmark with one). |
+| Fixes found by lint | `PriceTicker` no longer references `connect` before its declaration and cancels reconnects on cleanup; `EquityCurveChart` computes drawdown through a module-level loop instead of mutating a render-scope variable; the 401 redirect uses `location.replace`. No trading or safety behavior changed. |
+| CI | The `frontend` job in `.github/workflows/ci.yml` now runs `pnpm lint`, `pnpm typecheck`, `pnpm test`, then `pnpm build`. |
+| Verification | `pnpm lint`, `pnpm typecheck`, `pnpm test` (**14 passed**), and `pnpm build` (Next 16.2.12) all pass locally. No backend or safety-path change in this slice. |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
@@ -242,7 +256,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 9 | Model catalog removals are not checked in CI | manual check only; `scripts/test_free_models.py` exists but is not a CI job | P2 |
 | 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency`, `0004_role_hierarchy`, and `0005_app_settings` (plus P1-A columns). `0004` rewrites legacy `user` → `operator` and makes `viewer` the default; `0005` creates the singleton `app_settings` row and its trigger, so `/api/v1/settings` returns **503** until it is applied. `init.sql` only runs on first container start; the backend entrypoint stamps `0001` when `init.sql` initialized the schema, then applies the later idempotent revisions. Old short **positions** still cannot be inferred and default to long. | Operational |
 | 11 | ~~Local `.env` API key is the default placeholder~~ | Closed locally: a unique `API_SECRET_KEY` is set in `.env` (never committed), and authenticated `/api/v1/*` returns 200. Other environments must set their own key. | ~~Operational~~ fixed locally |
-| 12 | Frontend lint/typecheck/test is not a CI job | `pnpm lint` still runs `next lint`, which Next 16 removed; CI runs `pnpm build` (including TypeScript) but no component or hook tests. | P2 |
+| 12 | ~~Frontend lint/typecheck/test is not a CI job~~ | Closed 2026-10-22: ESLint 9 flat config (`pnpm lint`, zero warnings), `pnpm typecheck` (`tsc --noEmit`), and Vitest/Testing Library (**14 tests**) run in the `frontend` CI job before `pnpm build`. | ~~P2~~ fixed |
 | 13 | Chat is a pipeline trigger, not a conversational agent | `chat/page.tsx` calls `POST /api/v1/analyze` and displays the accepted status; it does not stream agent replies or maintain multi-turn agent memory. Strategy drafts now persist through `/api/v1/strategies` (fourth slice); the remaining gap is the conversational workflow. | P2 |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
