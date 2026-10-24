@@ -20,7 +20,9 @@ The fifth Phase 2 slice — frontend lint, typecheck, tests, and their CI steps 
 committed as **`88bdfef`** and passed GitHub Actions run **39785044719**, including the
 new lint, typecheck, test, and build steps. The docs correction `8fb7c5b` passed run
 **39786478379**. The sixth Phase 2 slice — read-only multi-turn chat — is committed as
-**`c3518e5`** and passed GitHub Actions run **39791860387** on all five jobs. The local
+**`c3518e5`** and passed GitHub Actions run **39791860387** on all five jobs. The
+improvement-history slice `c322f23` passed GitHub Actions run **40097868595** on all
+five jobs, including `postgres-integration` with all three PostgreSQL modules. The local
 `.env` key is unique (never committed), so authenticated `/api/v1/*` calls work locally.
 **Method:** commands run locally against the working tree, not labels copied from earlier docs.
 
@@ -44,7 +46,7 @@ new lint, typecheck, test, and build steps. The docs correction `8fb7c5b` passed
 | Lint | `ruff check .` | clean |
 | Format | `ruff format --check .` | clean |
 | PostgreSQL integration | `ARES_TEST_POSTGRES_URL=... pytest tests/test_postgres_integration.py tests/test_postgres_strategy_integration.py tests/test_postgres_improvement_integration.py -q` | **23 passed** — real hydrate → fill → restart → close, duplicate ID, concurrent fills, one-winner duplicate race, busy lock → retry, the strategy route → service → JSONB round-trip, and the reflection/improvement run → record → API round-trip |
-| CI PostgreSQL job | GitHub Actions `CI` run 39742069953 | **passed** on `postgres:16-alpine` — the then-current 5 ledger tests, no skip; the strategy and improvement modules were added after this run (gap #15) |
+| CI PostgreSQL job | GitHub Actions `CI` run 40097868595 | **passed** on `postgres:16-alpine` — all three modules, **23 tests**, no skip (5 ledger, 12 strategy, 6 improvement) |
 | Paper-ledger tests | `pytest tests/test_paper_trading_ledger.py -q` | **34 passed** — hydration, atomic write, duplicate ID, writer lock, rejection/rollback, restart mid-trade |
 | Trading-route tests | `pytest tests/test_trading_router.py -q` | **17 passed** — approval, derivation, 409/422/503, busy-lock retry |
 | Schema tests | `pytest tests/test_schema.py -q` | **16 passed** — 21 tables, ledger/idempotency columns, app_settings, init/schema parity, migration splitter |
@@ -322,7 +324,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Wiring | `Supervisor` accepts an optional `post_run_hook`, invoked after `log_execution` in both `run` and `stream_analysis`. `backend/routers/analysis.py` and `scripts/run_live.py` pass the persistence hook; backtests intentionally do not record improvement history. A hook failure is logged and never changes the pipeline result. |
 | Safety | Suggestions remain advisory: apply marks a record, never mutates `configs/`, a threshold, a position cap, a promotion gate, or the kill switch. The execution-rate decline record still proposes only `max_drawdown_pct: 15.0`. No safety gate or test assertion changed. |
 | Tests | Engine **20 passed**, service **11 passed**, agents router **7 passed**, supervisor **30 passed**; the real-PostgreSQL module adds **6 passed**. Combined PostgreSQL run: **23 passed** (5 ledger + 12 strategy + 6 improvement). Full suite **1253 passed, 3 skipped / 82.17%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **211 source files**. |
-| CI | `.github/workflows/ci.yml::postgres-integration` now runs all three PostgreSQL modules. The updated command has not yet been exercised by a GitHub Actions run (gap #15). |
+| CI | `.github/workflows/ci.yml::postgres-integration` runs all three PostgreSQL modules. GitHub Actions run **40097868595** passed it (46 s, 23 tests) along with `lint`, `test`, `frontend`, and `docker`; gap #15 is closed. |
 
 ## Red / known gaps
 
@@ -342,7 +344,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 12 | ~~Frontend lint/typecheck/test is not a CI job~~ | Closed 2026-10-22: ESLint 9 flat config (`pnpm lint`, zero warnings), `pnpm typecheck` (`tsc --noEmit`), and Vitest/Testing Library (**18 tests**) run in the `frontend` CI job before `pnpm build`. | ~~P2~~ fixed |
 | 13 | ~~Chat is a pipeline trigger, not a conversational agent~~ | Closed 2026-10-22: `POST /api/v1/chat` sends the bounded history through a free-tier fallback chain and returns a model reply with fallback metadata. The page keeps multi-turn state and the new test proves prior turns are sent. Chat remains read-only: it has no tools and cannot place orders, change modes, promote strategies, or bypass safety gates. | ~~P2~~ fixed |
 | 14 | Local chat is chat-only and process-gated | Live smoke passed 2026-10-24 against Strata `qwen3.6-35b-a3b-ud-q4_k_m` (direct 0.49 s, ChatService 0.99 s, local-only). Pipeline agents still use remote models; a local pipeline needs schema-compliance and latency evidence before it can be proposed. The gate is process-local, so multiple backend processes are not serialized against each other. | P2 |
-| 15 | Updated PostgreSQL CI command has not run on GitHub Actions | `.github/workflows/ci.yml::postgres-integration` now runs all three PostgreSQL modules, but the last green run (39742069953) predates the strategy and improvement module edits. The next push exercises it. | P2 |
+| 15 | ~~Updated PostgreSQL CI command has not run on GitHub Actions~~ | Closed 2026-10-24: GitHub Actions run **40097868595** ran `.github/workflows/ci.yml::postgres-integration` with all three modules (5 ledger + 12 strategy + 6 improvement = **23 passed**, no skip) on `postgres:16-alpine`. | ~~P2~~ fixed |
 | 16 | Accessibility audit did not exercise data-populated states | The 2026-10-24 pass used a 503 API stub, so tables, charts, and dialogs with real data were not audited. The route shells, login, and loading/error states are clean. | P3 |
 | 17 | ~~Improvement history is in-memory and the engine is not wired into the pipeline~~ | Closed 2026-10-24: `reflection_runs`/`improvement_records` (migration `0006`) persist structured reflection and suggestions; the supervisor post-run hook calls the engine after every production pipeline run, best-effort; the API reads PostgreSQL and returns 503 on store failure. `analyze(history=...)` keeps trend context across restarts. | ~~P2~~ fixed |
 

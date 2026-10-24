@@ -23,8 +23,9 @@ identical across a full-stack restart). The Phase 2 slices through `88bdfef` pas
 GitHub Actions run **39780873063** (feature slices) and **39785044719** (frontend CI)
 on all five jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`;
 the docs correction `8fb7c5b` passed run **39786478379**. The sixth Phase 2 slice
-(read-only multi-turn chat) is verified and recorded in `02-STATUS.md`. Phase 1 is
-closed.
+(read-only multi-turn chat) is verified and recorded in `02-STATUS.md`. The improvement-history
+slice `c322f23` passed run **40097868595** on all five jobs, including
+`postgres-integration` with all three modules. Phase 1 is closed.
 
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
