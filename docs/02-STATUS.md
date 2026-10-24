@@ -336,6 +336,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Delivery gap | The dev stack has no Alertmanager target. Rules evaluate and appear on Prometheus `/alerts` and in the `ALERTS` series, but nothing pages. That is an operational follow-up, not a safety gate. |
 | Single config set | Both `docker-compose.yml` and `docker/docker-compose.yml` mount `docker/monitoring/prometheus.yml`, `alert-rules.yml`, and the Grafana provisioning files. The stale gitignored `docker/prometheus/` and `docker/grafana/` copies were removed and their ignore rules dropped; the richer 10-panel overview dashboard was preserved as `docker/monitoring/grafana-overview.json` and is mounted alongside the trading dashboard. |
 | Validation | `promtool check config` reports 1 rule file and valid syntax; `promtool check rules` reports **7 rules**. `docker compose ... config --quiet` passes for both compose files. `pytest tests/test_infra_config.py -q` — **18 passed**, including rule fields, emitted-metric coverage, compose mounts, and dashboard JSON. Full suite **1259 passed, 3 skipped / 82.17%**; `ruff` and `mypy` clean on **211 files**. |
+| CI | GitHub Actions run **40099879748** passed all five jobs: `lint`, `test`, `postgres-integration` (23 tests), `frontend`, and `docker`. |
 | Safety | Alerting is read-only observability. No rule, dashboard, or compose change touches the kill switch, approval mode, promotion gate, or a trading threshold. |
 
 ## Red / known gaps
