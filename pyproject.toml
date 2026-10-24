@@ -36,7 +36,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
 
     # Monitoring
-    "prometheus-client>=0.25.0",
+    "prometheus-client>=0.26.0",
 
     # Auth
     "python-jose[cryptography]>=3.3.0",
