@@ -43,7 +43,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     
     # Trading & Exchange
-    "ccxt>=4.0.0",
+    "ccxt>=4.5.68",
 
     # Data Science & Time Series
     "pandas>=2.0.0",
