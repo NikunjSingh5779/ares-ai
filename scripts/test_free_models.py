@@ -249,8 +249,8 @@ async def main() -> int:  # noqa: PLR0915
         try:
             free_ids = await fetch_free_model_ids()
             print(f"OpenRouter reports {len(free_ids)} free models")
-        except Exception as e:
-            print(f"Warning: could not fetch OpenRouter free list: {e}")
+        except Exception as exc:
+            print(f"Warning: could not fetch OpenRouter free list: {exc}")
 
     # Dry run — list only
     if args.dry_run:
