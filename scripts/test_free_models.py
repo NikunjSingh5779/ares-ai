@@ -256,8 +256,8 @@ async def main() -> int:  # noqa: PLR0915
     if args.dry_run:
         print(f"\n{'Agent':<20} {'Role':<10} {'Model':<55}")
         print("-" * 85)
-        for e in all_entries:
-            print(f"{e['agent']:<20} {e['role']:<10} {e['model']:<55}")
+        for entry in all_entries:
+            print(f"{entry['agent']:<20} {entry['role']:<10} {entry['model']:<55}")
         return 0
 
     # Create single LLMClient (auto-populates all provider credentials from env)

@@ -20,25 +20,40 @@ class AgentModelConfig:
     def __init__(
         self,
         agent_name: str,
-        primary: str,
+        primary: str | None = None,
         fallbacks: list[str] | None = None,
-        timeout: int = 60,
-        rpm: int = 20,
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
+        timeout: int = 30,
+        rpm: int = 2,
+        temperature: float = 0.1,
+        max_tokens: int = 2048,
+        breaker_threshold: int = 3,
+        breaker_reset_seconds: float = 300,
     ) -> None:
         self.agent_name = agent_name
-        self.primary = primary
+        self.primary = primary or ""
         self.fallbacks = fallbacks or []
         self.timeout = timeout
         self.rpm = rpm
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.breaker_threshold = breaker_threshold
+        self.breaker_reset_seconds = breaker_reset_seconds
 
     @property
     def model_chain(self) -> list[str]:
-        """Full ordered chain: primary + fallbacks."""
-        return [self.primary, *self.fallbacks]
+        """Full ordered chain: primary + fallbacks (blank-safe for deterministic agents).
+
+        Deterministic agents carry no LLM config, so ``primary`` may be empty
+        and the chain is empty — the pipeline must never call an LLM for them.
+        """
+        chain = [self.primary] if self.primary else []
+        chain.extend(f for f in self.fallbacks if f)
+        return chain
+
+    @property
+    def uses_llm(self) -> bool:
+        """True if this agent has at least one configured LLM model."""
+        return bool(self.model_chain)
 
     def has_fallbacks(self) -> bool:
         return len(self.fallbacks) > 0
@@ -46,22 +61,44 @@ class AgentModelConfig:
     def to_dict(self) -> dict[str, Any]:
         return {
             "agent_name": self.agent_name,
-            "primary": self.primary,
+            "primary": self.primary or None,
             "fallbacks": self.fallbacks,
             "timeout": self.timeout,
             "rpm": self.rpm,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "breaker_threshold": self.breaker_threshold,
+            "breaker_reset_seconds": self.breaker_reset_seconds,
         }
 
     @classmethod
-    def from_dict(cls, agent_name: str, data: dict[str, Any]) -> AgentModelConfig:
+    def from_dict(
+        cls,
+        agent_name: str,
+        data: dict[str, Any],
+        defaults: dict[str, Any] | None = None,
+    ) -> AgentModelConfig:
+        """Build config from a raw YAML agent entry, inheriting ``defaults``.
+
+        Repairs loading so that top-level ``defaults`` and every per-agent
+        override (``timeout_seconds``, ``rate_limit_rpm``, ``temperature``,
+        ``max_tokens``, ``circuit_breaker_threshold``,
+        ``circuit_breaker_reset_seconds``) are actually honored. Deterministic
+        agents with no ``primary`` key yield an empty, non-LLM chain.
+        """
+        d = defaults or {}
         return cls(
             agent_name=agent_name,
-            primary=data["primary"],
+            primary=data.get("primary"),
             fallbacks=data.get("fallbacks", []),
-            timeout=data.get("timeout", 60),
-            rpm=data.get("rpm", 20),
-            temperature=data.get("temperature", 0.7),
-            max_tokens=data.get("max_tokens", 4096),
+            timeout=data.get("timeout_seconds", d.get("timeout_seconds", 30)),
+            rpm=data.get("rate_limit_rpm", d.get("rate_limit_rpm", 2)),
+            temperature=data.get("temperature", d.get("temperature", 0.1)),
+            max_tokens=data.get("max_tokens", d.get("max_tokens", 2048)),
+            breaker_threshold=data.get("circuit_breaker_threshold", d.get("circuit_breaker_threshold", 3)),
+            breaker_reset_seconds=data.get(
+                "circuit_breaker_reset_seconds", d.get("circuit_breaker_reset_seconds", 300)
+            ),
         )
 
 
@@ -113,4 +150,12 @@ def load_model_roster(path: str | None = None) -> ModelRoster:
     if not raw or "agents" not in raw:
         raise ValueError("Invalid model roster: missing 'agents' key")
 
-    return ModelRoster.from_config(raw["agents"])
+    # Repaired loading: top-level ``defaults`` are threaded into every agent
+    # entry so default timeout/rpm/temperature/max_tokens/circuit-breaker
+    # values are honored unless a per-agent override explicitly replaces them.
+    defaults = raw.get("defaults", {})
+
+    agents: dict[str, AgentModelConfig] = {}
+    for agent_name, data in raw["agents"].items():
+        agents[agent_name] = AgentModelConfig.from_dict(agent_name, data, defaults=defaults)
+    return ModelRoster(agents)

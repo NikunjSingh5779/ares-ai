@@ -1,118 +1,63 @@
 # =============================================================================
-# ARES AI — Model Roster
+# ARES AI — Model Roster (Free-only OpenRouter runtime)
 # =============================================================================
 # All model IDs live here — never hardcoded in agent source files.
-# Configured exclusively with working free-tier models across OpenRouter
-# and OpenCode, matching the best model size/capabilities to each agent's purpose.
+#
+# The runtime is deliberately restricted:
+#   * OpenRouter (free) is the ONLY LLM provider. Any model listed here
+#     must be a `:free` OpenRouter endpoint so a paid request is never sent.
+#   * `max_price_*` defaults are ZERO for prompt, completion, per-request and
+#     per-image. When OpenRouter advertises a model with any non-zero price it
+#     is treated as ineligible and the chain fails closed (never trades).
+#   * Only the four required LLM agents (market_analyst, quant, risk, news)
+#     carry model chains. All other agents are deterministic and intentionally
+#     have NO model configuration.
 # =============================================================================
 
 defaults:
-  timeout_seconds: 60
-  max_retries: 3
+  timeout_seconds: 30
+  max_retries: 2
+  rate_limit_rpm: 2
+  max_concurrent_pipelines: 1
   circuit_breaker_threshold: 3
   circuit_breaker_reset_seconds: 300
-  rate_limit_rpm: 4
+  temperature: 0.1
+  max_tokens: 2048
+  # Zero price ceilings — never pay for any LLM token.
+  max_price_prompt: 0
+  max_price_completion: 0
+  max_price_request: 0
+  max_price_image: 0
 
 agents:
-  supervisor:
-    # Needs fast, low-latency routing decisions
-    primary: opencode/deepseek-v4-flash-free
-    fallbacks:
-      - open_router/qwen/qwen3-next-80b-a3b-instruct:free
-      - opencode/nemotron-3-ultra-free
-    timeout_seconds: 30
-    max_retries: 3
-
-  coding:
-    # Needs excellent code generation capabilities
-    primary: open_router/qwen/qwen3-coder:free
-    fallbacks:
-      - open_router/north-mini-code:free
-      - open_router/poolside/laguna-m.1:free
-    timeout_seconds: 120
-
   market_analyst:
-    # Needs strong reasoning, chart pattern recognition, and strict JSON output
-    primary: open_router/nvidia/nemotron-3-ultra-550b-a55b:free
+    # Strong reasoning, chart pattern recognition, strict JSON output.
+    primary: open_router/nvidia/nemotron-3-super-120b-a12b:free
     fallbacks:
-      - open_router/qwen/qwen3-next-80b-a3b-instruct:free
-      - open_router/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+      - open_router/google/gemma-4-31b-it:free
+      - open_router/openai/gpt-oss-20b:free
     timeout_seconds: 60
 
   quant:
-    # Needs rigorous math logic, volatility calculations, and perfect JSON compliance
-    primary: open_router/openai/gpt-oss-120b:free
+    # Rigorous math logic, volatility calculations, JSON compliance.
+    primary: open_router/nvidia/nemotron-3-super-120b-a12b:free
     fallbacks:
       - open_router/openai/gpt-oss-20b:free
-      - open_router/nvidia/nemotron-3-nano-30b-a3b:free
+      - open_router/google/gemma-4-31b-it:free
     timeout_seconds: 90
 
   risk:
-    # Needs strict rule adherence, no hallucinations, and flawless JSON output
+    # Strict rule adherence, no hallucinations, flawless JSON output.
     primary: open_router/nvidia/nemotron-3-super-120b-a12b:free
     fallbacks:
-      - open_router/qwen/qwen3-next-80b-a3b-instruct:free
+      - open_router/openai/gpt-oss-20b:free
       - open_router/google/gemma-4-31b-it:free
     timeout_seconds: 45
 
   news:
-    # Needs large context windows and strong text sentiment analysis
-    primary: open_router/nex-agi/nex-n2-pro:free
+    # Large context windows and strong text sentiment analysis.
+    primary: open_router/google/gemma-4-26b-a4b-it:free
     fallbacks:
-      - open_router/google/gemma-4-26b-a4b-it:free
       - open_router/nvidia/nemotron-nano-9b-v2:free
+      - open_router/openai/gpt-oss-20b:free
     timeout_seconds: 45
-
-  consensus:
-    # Consensus is deterministic (no LLM), but needs a config entry
-    primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
-    fallbacks:
-      - opencode/qwen3.6-plus-free
-    timeout_seconds: 15
-
-  reflection:
-    # Needs strong post-trade reasoning and evaluation capabilities
-    primary: open_router/meta-llama/llama-3.3-70b-instruct:free
-    fallbacks:
-      - open_router/qwen/qwen3-next-80b-a3b-instruct:free
-      - opencode/mimo-v2.5-free
-    timeout_seconds: 60
-
-  journal:
-    # Journal is deterministic (no LLM)
-    primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
-    fallbacks:
-      - opencode/qwen3.6-plus-free
-    timeout_seconds: 15
-
-  memory:
-    # Memory is deterministic (no LLM)
-    primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
-    fallbacks:
-      - opencode/minimax-m3-free
-      - opencode/qwen3.6-plus-free
-    timeout_seconds: 15
-
-  execution:
-    # Execution is deterministic (no LLM)
-    primary: open_router/nvidia/nemotron-3-nano-30b-a3b:free
-    fallbacks:
-      - opencode/qwen3.6-plus-free
-    timeout_seconds: 15
-
-  vision:
-    # Needs Vision (VL) capabilities for chart/image processing
-    # Fallbacks: no reliable free VL models currently available on OpenRouter.
-    # VisionAgent's built-in rule-based fallback (chart pattern detection from
-    # OHLCV data) is the real fallback — works without any model at all.
-    primary: open_router/nvidia/nemotron-nano-12b-v2-vl:free
-    fallbacks: []
-    timeout_seconds: 30
-
-  fast:
-    # Fallback for fast generic tasks
-    primary: opencode/qwen3.6-plus-free
-    fallbacks:
-      - open_router/liquid/lfm-2.5-1.2b-thinking:free
-      - open_router/openrouter/free
-    timeout_seconds: 15
