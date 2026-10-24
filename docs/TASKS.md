@@ -73,8 +73,10 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
       carries counts; it points at `02-STATUS.md`. `05-NEXT.md` refreshed.)
 - [x] Improvement engine: rename “win rate” to execution rate and remove the
       75% consensus suggestion. (2026-10-24)
-- [ ] Improvement engine: persist reflection/improvement history across restarts
-      and invoke analysis after the reflection node.
+- [x] Improvement engine: persist reflection/improvement history across restarts
+      and invoke analysis after the reflection node. (2026-10-24: migration `0006`,
+      `improvement_service`, best-effort supervisor hook in `/analyze` and the live
+      runner; backtests intentionally do not record history.)
 - [ ] Add Prometheus alert rules; remove duplicate monitoring configs.
 - [ ] Prune stale branches and land Dependabot PRs.
 

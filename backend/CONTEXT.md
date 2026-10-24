@@ -12,7 +12,7 @@ Controllers translate; they must not own domain state.
 | Views | JSON responses + OpenAPI `/docs`; SSE in `analysis.stream_analysis` |
 | Core | `core/` — `dependencies` (auth/roles), `roles`, `rate_limit`, `security` (headers/JWT), `metrics`, `logging`, `error_handlers`, `login_rate_limit` |
 | Data | `data/` — `ingestor`, `models`, `sources/` (yahoo, binance, coingecko, web_search) |
-| Services | `services/` — `user_service`, `settings_service`, `strategy_service`, `chat_service` |
+| Services | `services/` — `user_service`, `settings_service`, `strategy_service`, `chat_service`, `improvement_service` |
 | App | `main.py` — lifespan, middleware, router registration, `/health` |
 
 ## Inputs
@@ -97,6 +97,22 @@ table exists in the initial schema. Missing rows are **404**; store failures are
 rejection, and promoted-row **409** are covered against real PostgreSQL by
 `tests/test_postgres_strategy_integration.py`.
 
+## Improvement history boundary
+`GET /api/v1/agents/improvements` (limit 1–100),
+`POST /api/v1/agents/improvements/apply`, and
+`GET /api/v1/agents/improvements/metrics` read/write the PostgreSQL
+`reflection_runs` and `improvement_records` tables through
+`improvement_service`. The service inserts the reflection run, analyzes the last
+100 committed runs (excluding the current row), and inserts generated records in
+one transaction; any failure rolls back. The supervisor post-run hook calls
+`record_reflection_improvement` after `log_execution`; it has a 5 s timeout and
+logs/swallows failures so history can never change a trade decision.
+Suggestions are advisory: apply only sets `applied`/`applied_at` and never
+mutates configuration or a safety limit. A store failure returns **503**; an
+unknown or malformed record ID returns **404**. Migration `0006` owns both
+tables; `tests/test_postgres_improvement_integration.py` covers the real
+round-trip.
+
 ## Chat boundary
 `POST /api/v1/chat` is a **read-only** conversational endpoint mounted behind
 `verify_auth`. `ChatRequest` accepts 1–20 turns of 1–4000 characters and requires
@@ -128,3 +144,7 @@ NoOp client), or empty text returns **503**; the API never fabricates a reply.
   user-scoped store.
 - Chat depends on live free-tier model availability; the configured chain is probed
   manually, not in CI, and an exhausted chain fails closed with **503**.
+- Improvement history is global across symbols, not per strategy or per account. That
+  matches the single-user deployment; scoping it would need an explicit owner column.
+- A history write is best-effort: a database outage skips that run's reflection record,
+  and the trade result is intentionally unchanged.

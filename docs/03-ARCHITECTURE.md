@@ -112,7 +112,7 @@ slippage modelled; entry at next candle open when no fixed price).
 | **Model** — data shape/rules | `backend/schemas/`, `backend/db/models.py` | `frontend/src/types/api.ts` | `agents/state.py` (Pydantic slices) |
 | **View** — what is returned/shown | response models + `/docs` | `frontend/src/app/**/page.tsx`, `frontend/src/components/` | typed output schemas rendered by `/api/v1/agents/status` |
 | **Controller** — request/action logic | `backend/routers/<domain>.py` | `frontend/src/lib/api.ts`, `frontend/src/lib/usePipelinePolling.ts` | `agents/<agent>.py`, `agents/supervisor.py` |
-| **Domain/service** — rules that outlive a request | `paper_trading/`, `live_trading/`, `backtesting/` | — | `agents/consensus.py`, `agents/risk.py`, `agents/improvement.py` |
+| **Domain/service** — rules that outlive a request | `paper_trading/`, `live_trading/`, `backtesting/`, `backend/services/` | — | `agents/consensus.py`, `agents/risk.py`, `agents/improvement.py` |
 | **Factory/reference** — stable config | `configs/`, `docker/`, `.github/` | `docs/design.md` | `configs/models.yaml` |
 | **Product/output** — per-run artifacts | `logs/`, `htmlcov/` | build output | `agent_logs`, `journal`, `memories` tables |
 
@@ -131,13 +131,15 @@ A router may validate and delegate; it must not own portfolio state or exchange 
 | Model roster | `configs/models.yaml` | — | validated free IDs + universal fallback appended by `AgentModelConfig` |
 | Dashboard preferences | singleton `app_settings` JSONB row | `settings_service` through `PUT /api/v1/settings/preferences` | non-safety only; safety limits are computed from `agents.risk`/`agents.consensus`/`configs.settings` (ADR-018) |
 | Strategy drafts | PostgreSQL `strategies` | `strategy_service` through `/api/v1/strategies` | draft/paused edits only; status, live enablement, and promotion counters are server-owned and never written by this surface |
-| Schema | `database/schema.sql`, `database/init.sql`, tracked `migrations/versions/` | Alembic / Compose bootstrap | `init.sql` is a byte-identical bootstrap copy; `0001`–`0005` are the migration chain; a fresh volume stamps `0001` after `init.sql`, then applies the idempotent later revisions (ADR-017) |
+| Reflection/improvement history | PostgreSQL `reflection_runs`, `improvement_records` | `improvement_service` through the best-effort supervisor post-run hook and `/api/v1/agents/improvements` | advisory only; applying a record never mutates configuration or a safety limit; a history outage leaves the pipeline result unchanged |
+| Schema | `database/schema.sql`, `database/init.sql`, tracked `migrations/versions/` | Alembic / Compose bootstrap | `init.sql` is a byte-identical bootstrap copy; `0001`–`0006` are the migration chain; a fresh volume stamps `0001` after `init.sql`, then applies the idempotent later revisions (ADR-017) |
 
 ADR-005 is implemented for paper state; ADR-014 adds the approved `/execute` contract and
 client-order idempotency; ADR-015 serializes paper writers across processes; ADR-017 fixes
 the Compose bootstrap and Chroma version handshake; ADR-018 keeps dashboard preferences
-durable while safety limits remain read-only. The remaining ownership/isolation issue is
-the pipeline result (ADR-006 / Phase 2), not the paper portfolio.
+durable while safety limits remain read-only; ADR-022 persists improvement history while
+keeping suggestions advisory. The remaining ownership/isolation issue is the pipeline
+result (ADR-006 / Phase 2), not the paper portfolio.
 
 ## 5. Dependency rules (target, enforced by review)
 

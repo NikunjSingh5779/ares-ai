@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -766,12 +767,23 @@ class Supervisor:
         registry: AgentRegistry,
         router: ModelRouter,
         logger: AgentLogger,
+        post_run_hook: Callable[[AgentState], Awaitable[None]] | None = None,
     ) -> None:
         self.registry = registry
         self.router = router
         self.logger = logger
+        self.post_run_hook = post_run_hook
         self.graph: CompiledStateGraph[AgentState, None, AgentState, AgentState] | None = None
         self._agent_configs: dict[str, AgentModelConfig] = {}
+
+    async def _run_post_hook(self, state: AgentState) -> None:
+        """Run the optional post-pipeline hook without failing the pipeline."""
+        if self.post_run_hook is None:
+            return
+        try:
+            await self.post_run_hook(state)
+        except Exception:  # noqa: BLE001 - a history write must not change a trade result
+            logger.warning("Post-run hook failed; pipeline result unchanged", exc_info=True)
 
     def build_graph(self) -> None:
         """Build the LangGraph state graph.
@@ -824,6 +836,7 @@ class Supervisor:
         result = await self.graph.ainvoke(state)  # type: ignore[union-attr]
         final_state = AgentState.model_validate(result)
         await self.log_execution(final_state)
+        await self._run_post_hook(final_state)
         return final_state
 
     async def run_analysis(self, symbol: str, request: str) -> AgentState:
@@ -856,6 +869,7 @@ class Supervisor:
 
         if final_state:
             await self.log_execution(final_state)
+            await self._run_post_hook(final_state)
 
     def run_sync(self, **kwargs: Any) -> AgentState:
         """Synchronous convenience wrapper for testing."""

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 import pytest
 
@@ -229,6 +230,90 @@ class TestStrategyImprovementEngine:
         # Fresh engine should have no history
         fresh_engine = StrategyImprovementEngine()
         assert fresh_engine.get_recent_improvements() == []
+
+
+class TestExternalHistory:
+    """Database mode supplies history instead of relying on process globals."""
+
+    def test_external_history_does_not_mutate_process_state(self):
+        engine = StrategyImprovementEngine()
+        history = [
+            {
+                "evaluation": "Trade executed: long at $100",
+                "confidence_accuracy": 90.0,
+                "improvement_suggestions": [],
+            }
+            for _ in range(5)
+        ]
+
+        result = engine.analyze(_make_reflection(executed=True), history=history)
+
+        assert result.metrics["total_runs"] == 5
+        assert engine.get_recent_improvements() == []
+        assert engine.get_metrics_summary()["total_runs"] == 0
+
+    def test_external_history_drives_trend_detection(self):
+        engine = StrategyImprovementEngine()
+        history = [
+            {
+                "evaluation": "Trade executed: long at $100",
+                "confidence_accuracy": 90.0,
+                "improvement_suggestions": [],
+            }
+            for _ in range(9)
+        ]
+        history[-4:] = [
+            {
+                "evaluation": "Trade executed: long at $100",
+                "confidence_accuracy": 90.0,
+                "improvement_suggestions": [],
+            },
+            {
+                "evaluation": "Trade executed: long at $100",
+                "confidence_accuracy": 90.0,
+                "improvement_suggestions": [],
+            },
+            {
+                "evaluation": "Trade not executed: no consensus",
+                "confidence_accuracy": 90.0,
+                "improvement_suggestions": [],
+            },
+            {
+                "evaluation": "Trade not executed: no consensus",
+                "confidence_accuracy": 90.0,
+                "improvement_suggestions": [],
+            },
+        ]
+
+        result = engine.analyze(_make_reflection(executed=False), history=history)
+
+        assert [record.category for record in result.records] == ["risk_calibration"]
+        assert engine.get_recent_improvements() == []
+
+    def test_metrics_for_uses_supplied_history(self):
+        engine = StrategyImprovementEngine()
+        history = [
+            {
+                "evaluation": "Trade executed: long at $100",
+                "confidence_accuracy": 80.0,
+                "improvement_suggestions": [],
+            }
+            for _ in range(5)
+        ]
+
+        metrics = engine.metrics_for(history)
+
+        assert metrics["total_runs"] == 5
+        assert metrics["execution_rate"] == 100.0
+
+    def test_generated_record_ids_are_uuids(self):
+        engine = StrategyImprovementEngine()
+        for _ in range(5):
+            engine.analyze(_make_reflection(extra_suggestions=["Review risk criteria"]))
+
+        records = engine.get_recent_improvements()
+        assert records
+        UUID(records[0]["id"])
 
 
 class TestImprovementRecord:

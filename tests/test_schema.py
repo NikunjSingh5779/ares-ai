@@ -31,8 +31,8 @@ def test_schema_not_empty() -> None:
     assert "CREATE TABLE" in content, "Schema must contain CREATE TABLE statements"
 
 
-def test_all_19_tables_present() -> None:
-    """Schema must define all 19 required tables."""
+def test_all_21_tables_present() -> None:
+    """Schema must define all 21 required tables."""
     content = SCHEMA_PATH.read_text()
     tables = TABLE_PATTERN.findall(content)
     table_names = {t.lower() for t in tables}
@@ -57,6 +57,8 @@ def test_all_19_tables_present() -> None:
         "backtests",
         "paper_trades",
         "live_trades",
+        "reflection_runs",
+        "improvement_records",
     }
 
     missing = expected_tables - table_names

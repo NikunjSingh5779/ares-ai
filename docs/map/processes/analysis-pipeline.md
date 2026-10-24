@@ -18,7 +18,7 @@ request
   → Journal (persist outcome + lessons)
   → Reflection (evaluate prediction vs outcome)
   → Memory (Chroma/in-memory recall + consolidation)
-  → Improvement (cross-run trend analysis, after memory)
+  → post-run hook: persist reflection, analyze cross-run trends (best-effort)
 ```
 
 Consensus and Risk are **gates, not advisers**: if either rejects, execution is skipped
@@ -31,6 +31,8 @@ and the outcome is recorded as no-trade.
 ## Outputs
 - `AgentState` with every node’s typed output.
 - Paper/live trade row (via Execution + Journal) when approved.
+- `reflection_runs` + advisory `improvement_records` when the post-run hook succeeds;
+  a failure is logged and does not change the result.
 - `_last_state` in the API process, read by `/agents/status` and `/risk` (not by
   `/api/v1/metrics`, which reads the Prometheus registry).
 
@@ -42,6 +44,8 @@ and the outcome is recorded as no-trade.
 - Add/reorder a node → `PIPELINE_ORDER`, graph edges, `REQUIRED_AGENTS`, status UI, this card.
 - Change a threshold → `agents/consensus.py` / `agents/risk.py` + boundary tests.
 - Change the entry route → `backend/routers/analysis.py`, `frontend/src/lib/api.ts`, types.
+- Change the post-run hook → `agents/supervisor.py`, `backend/services/improvement_service.py`,
+  `scripts/run_live.py`, `tests/test_supervisor.py`, `tests/test_improvement_service.py`.
 
 ## Tests
 `tests/test_supervisor.py`, `test_consensus.py`, `test_risk.py`,

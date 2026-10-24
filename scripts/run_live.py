@@ -28,6 +28,7 @@ from backend.data.ingestor import MarketDataIngestor
 from backend.data.models import MarketDataRequest
 from backend.routers.live import _get_engine as _get_live_engine
 from backend.routers.trading import get_paper_trading_ledger
+from backend.services.improvement_service import record_reflection_improvement
 from database.connection import async_session_factory
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -126,7 +127,12 @@ async def main():
             if last_candle_timestamp is None or current_timestamp > last_candle_timestamp:
                 logger.info(f"New candle closed at {current_timestamp}. Triggering analysis pipeline...")
 
-                pipeline = Supervisor(registry=registry, router=router_model, logger=logger_instance)
+                pipeline = Supervisor(
+                    registry=registry,
+                    router=router_model,
+                    logger=logger_instance,
+                    post_run_hook=record_reflection_improvement,
+                )
                 pipeline.build_graph()
 
                 async for state in pipeline.stream_analysis(symbol=symbol, request="Live analysis run"):

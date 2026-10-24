@@ -12,10 +12,11 @@
   ledger, approved `/execute`, idempotency, writer lock, real-PostgreSQL CI,
   degraded health, Prometheus metrics, role authorization, and the Compose
   restart exit are complete.
-- **Phase 2 — product realism and UI:** next. No page may render invented data;
-  settings must persist; accessibility and frontend CI must pass.
-- **Phase 3 — hygiene:** after Phase 2. Typing, README numbers, improvement
-  history, alert rules, branch/Dependabot cleanup.
+- **Phase 2 — product realism and UI:** closed on 2026-10-24. Real candles,
+  persisted settings, strategy drafts, bounded polling, read-only chat, frontend CI,
+  and the accessibility audit are complete.
+- **Phase 3 — hygiene:** in progress. Typing, README numbers, and improvement history
+  are done; Prometheus alert rules and branch/Dependabot cleanup remain.
 
 ## Milestone history (verified)
 
@@ -51,7 +52,8 @@
 
 - Mypy stays green.
 - README and roadmap numbers match verified state.
-- Improvement history is persisted and naming is consistent.
+- Improvement history is persisted and naming is consistent. (met 2026-10-24:
+  `reflection_runs`/`improvement_records`, migration `0006`, post-run hook)
 - Prometheus alert rules exist without duplicate configs.
 - Stale branches and Dependabot PRs are handled.
 

@@ -61,7 +61,7 @@ for production.
 
 - `database/init.sql` runs only on a fresh PostgreSQL volume.
 - The backend entrypoint stamps Alembic `0001` when `init.sql` created the
-  schema, then applies the idempotent `0002`–`0005` revisions.
+  schema, then applies the idempotent `0002`–`0006` revisions.
 - For an existing database, run `python -m alembic upgrade head` before
   starting the new backend.
 - `python -m alembic heads` must show exactly one head.

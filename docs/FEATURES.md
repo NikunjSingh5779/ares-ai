@@ -41,7 +41,7 @@
 | Technical indicators and candlesticks | Working | `agents/indicators.py`, `agents/candlesticks.py` |
 | Web research / DuckDuckGo | Working | Research endpoints; treat external content as untrusted data |
 | Kronos OHLCV forecasting | Optional | Downloads `NeoQuasar/Kronos-small` on first use; not required by the core pipeline |
-| Improvement engine | Partial | Suggestions/metrics exist; history persistence and naming cleanup are Phase 3 |
+| Improvement engine | Working | Suggestions and metrics persist in `reflection_runs`/`improvement_records`; a best-effort post-run hook analyzes committed history. Apply only marks a record; it never changes configuration or a safety limit. |
 | Strategy builder | Working | Drafts persist through `/api/v1/strategies`; only draft/paused rows are editable and live/promotion fields stay server-owned |
 | Chat interface | Working | Read-only multi-turn `POST /api/v1/chat` with a free-tier fallback chain plus an opt-in local fallback; no tools or execution path |
 

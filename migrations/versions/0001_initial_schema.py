@@ -117,6 +117,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Drop all tables created by the schema."""
     tables = [
+        "improvement_records",
+        "reflection_runs",
         "live_trades",
         "paper_trades",
         "backtests",

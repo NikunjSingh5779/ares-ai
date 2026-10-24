@@ -364,7 +364,7 @@ server only spoke v1 while the Python client was 1.5.9, with the volume mounted 
 - Keep `init.sql` as the fresh-volume schema bootstrap.
 - Before `alembic upgrade head`, the entrypoint checks whether `users` exists without an
   `alembic_version` row; if so, it runs `alembic stamp 0001`. The later revisions
-  (currently `0002`–`0005`) are idempotent and then bring the database to head.
+  (currently `0002`–`0006`) are idempotent and then bring the database to head.
 - Force LF for `*.sh` in `.gitattributes`, and keep `backend-entrypoint.sh` LF in the tree.
 - Force container-internal service hostnames in the backend environment. The root `.env`
   remains host-oriented; it is not the container network contract.
@@ -563,3 +563,54 @@ gates. The gate is per process, not a distributed lock, and local chat remains
 chat-only. A live smoke test is manual because CI has no model server; one passed
 against Strata on 2026-10-24 (direct 0.49 s, ChatService 0.99 s, local-only, and
 `POST /api/v1/chat` returned 200).
+
+## ADR-022 — Improvement history is durable; suggestions stay advisory
+**Date:** 2026-10-24 **Status:** accepted
+
+**Context:** The improvement engine analyzed a process-local reflection list. A restart
+erased trend context, a second worker had a different view, and the API returned an empty
+list in normal operation because the pipeline never called `analyze()`. Reflection output
+was persisted only as human-readable journal text, so the engine's numeric fields could
+not be queried across runs.
+
+**Decision:**
+- Add `reflection_runs` for structured reflection output and `improvement_records` for
+  generated suggestions, with indexes and a unique
+  `(reflection_run_id, category, description)` retry guard. Migration
+  `0006_improvement_history` owns both tables.
+- Give engine records UUIDs so they map directly to the PostgreSQL primary key and cannot
+  collide when two runs finish in the same millisecond.
+- Let `StrategyImprovementEngine.analyze()` accept an explicit oldest-first history
+  window. In that mode it must not mutate process globals; the persistence service owns
+  committed history and passes the window.
+- Persist in one async transaction: insert the reflection run, load the last 100
+  committed runs excluding that row, analyze, insert generated records, commit. Roll
+  back on any failure.
+- Invoke persistence from an optional `Supervisor.post_run_hook` after `log_execution`
+  in both `run` and `stream_analysis`. The hook is best-effort with a 5 s timeout; it
+  logs and swallows failures and never changes the pipeline result. Wire it in
+  `/api/v1/analyze` and `scripts/run_live.py`; do not record backtest history.
+- Make the improvement API PostgreSQL-backed. A store failure is **503**; an unknown or
+  malformed record ID is **404**; `apply` only marks `applied`/`applied_at`.
+- Keep suggestions advisory. No generated or applied record may mutate a threshold,
+  position cap, drawdown limit, promotion gate, or the kill switch.
+
+**Alternatives considered:**
+- *Reuse the `journal` table's JSON/text.* Rejected: the engine needs typed numeric and
+  list fields across runs; journal prose is for humans and has a different lifecycle.
+- *Keep the process-global history and add a background flusher.* Rejected: restarts and
+  multiple workers still lose or diverge from history, and the API would remain
+  process-dependent.
+- *Make improvement a LangGraph node.* Rejected: a history outage could fail or delay a
+  completed trade run. The post-run hook keeps history off the decision path.
+- *Write history inside `ReflectionAgent`.* Rejected: analyst agents do not own database
+  access, and coupling the agent to persistence makes failure semantics unclear.
+- *Scope history per symbol or strategy now.* Rejected for this slice: the deployment is
+  single-user and the engine is a global strategy review. Scoping needs an explicit owner
+  column and a product decision.
+
+**Consequences:** Improvement trends survive restarts and multiple workers, and the API
+returns real history. The hook is intentionally lossy during a database outage; that run
+is skipped and the trade result is unchanged. History is global across symbols, and
+suggestions are not linked to the exact config field they would change, so an operator
+must map a suggestion to a parameter before editing configuration.

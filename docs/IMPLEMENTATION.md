@@ -15,7 +15,7 @@
 | `live_trading/` | Live engine, safety gates, audit trail, exchange connectors |
 | `backtesting/` | Pure-Python backtest engine |
 | `database/` | Canonical DDL (`schema.sql`), Compose bootstrap copy (`init.sql`), async connection factory |
-| `migrations/` | Alembic environment and `0001`–`0005` revisions |
+| `migrations/` | Alembic environment and `0001`–`0006` revisions |
 | `configs/` | Settings loader and `models.yaml` roster/fallback chains |
 | `frontend/` | Next.js dashboard (App Router) |
 | `landing/` | Astro marketing page |

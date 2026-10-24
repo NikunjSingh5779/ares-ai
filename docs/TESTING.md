@@ -13,6 +13,8 @@
   against a real PostgreSQL 16 instance and is skipped unless a URL is set.
 - `tests/test_postgres_strategy_integration.py` exercises the strategy draft
   routes and JSONB persistence against the same opt-in disposable database.
+- `tests/test_postgres_improvement_integration.py` exercises the reflection run →
+  improvement record → API round-trip against the same database.
 - Agent, router, ledger, role, monitoring, schema, and worker tests are separate
   modules; run the narrowest one first.
 
@@ -26,6 +28,7 @@ python -m pytest tests/test_icm_structure.py -q --no-cov
 python -m pytest tests/test_paper_trading_ledger.py -q
 python -m pytest tests/test_trading_router.py -q
 python -m pytest tests/test_chat_router.py tests/test_chat_service.py -q
+python -m pytest tests/test_improvement.py tests/test_improvement_service.py tests/test_agents_router.py -q
 python -m pytest tests/test_local_gate.py tests/test_client.py tests/test_router.py -q
 python -m pytest tests/test_security/test_role_auth.py -q
 
@@ -35,7 +38,7 @@ python -m pytest tests/ -q
 
 The default `addopts` in `pyproject.toml` enables coverage over `backend`,
 `agents`, `database`, `backtesting`, `paper_trading`, and `live_trading`, and
-fails under 78%. The last verified run was **1229 passed, 2 skipped, 81.90%**
+fails under 78%. The last verified run was **1253 passed, 3 skipped, 82.17%**
 (2026-10-24). Do not copy that number into a new claim without re-running.
 
 ## Real PostgreSQL tests
@@ -43,16 +46,17 @@ fails under 78%. The last verified run was **1229 passed, 2 skipped, 81.90%**
 ```powershell
 $env:ARES_TEST_POSTGRES_URL = "postgresql+asyncpg://ares:ares_test@localhost:5432/ares_ai_test"
 $env:ARES_REQUIRE_POSTGRES_INTEGRATION = "1"
-python -m pytest tests/test_postgres_integration.py tests/test_postgres_strategy_integration.py -q --no-cov
+python -m pytest tests/test_postgres_integration.py tests/test_postgres_strategy_integration.py tests/test_postgres_improvement_integration.py -q --no-cov
 ```
 
 The CI `postgres-integration` job starts `postgres:16-alpine`, loads
-`database/schema.sql`, and runs both modules. With
+`database/schema.sql`, and runs all three modules. With
 `ARES_REQUIRE_POSTGRES_INTEGRATION=1`, a missing URL is a hard failure, not a
-silent skip. Both modules refuse to run unless the target database name
-contains `test`; the strategy fixture deletes only `strategies` rows. On a
-disposable PostgreSQL 16 container the combined run was **17 passed** (5 ledger
-and 12 strategy).
+silent skip. Every module refuses to run unless the target database name
+contains `test`; the strategy fixture deletes only `strategies` rows, and the
+improvement fixture deletes only `improvement_records` then `reflection_runs`.
+On a disposable PostgreSQL 16 container the combined run was **23 passed**
+(5 ledger, 12 strategy, and 6 improvement).
 
 ## Local model tests
 
@@ -73,7 +77,7 @@ mypy .
 ```
 
 The CI `lint` job installs Python 3.14 with `uv` and runs all three. Mypy is
-clean on 206 source files as of 2026-10-24. New code must not add
+clean on 211 source files as of 2026-10-24. New code must not add
 `# type: ignore` to hide a real mismatch.
 
 ## Frontend

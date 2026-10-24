@@ -25,6 +25,7 @@ from agents.retry import RetryConfig
 from agents.router import ModelRouter
 from agents.state import AgentState
 from agents.supervisor import Supervisor
+from backend.services.improvement_service import record_reflection_improvement
 from database.connection import async_session_factory
 
 router = APIRouter(prefix="/api/v1", tags=["trading"])
@@ -130,6 +131,7 @@ def _get_supervisor() -> Supervisor:
         registry=registry,
         router=router_model,
         logger=logger,
+        post_run_hook=record_reflection_improvement,
     )
     supervisor.build_graph()
 

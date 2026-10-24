@@ -25,7 +25,7 @@ the tests that catch a break. They do not duplicate code.
 |---|---|---|
 | Analysis pipeline | `processes/analysis-pipeline.md` | `/api/v1/analyze`, `/signal`, SSE |
 | Execution and promotion | `processes/execution.md` | `/execute`, `/live/*`, runner loop |
-| Self-improvement | `processes/self-improvement.md` | after memory, `/agents/improvements` |
+| Self-improvement | `processes/self-improvement.md` | post-run hook after memory/log, `/agents/improvements` |
 
 ## Rules
 

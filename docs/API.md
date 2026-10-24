@@ -168,9 +168,9 @@ PostgreSQL is unreachable.
 | GET | `/api/v1/journal/history` | Required | Journal history |
 | GET | `/api/v1/memory` | Required | Memory records |
 | GET | `/api/v1/agents/status` | Required | Agent run status |
-| GET | `/api/v1/agents/improvements` | Required | Improvement suggestions |
-| POST | `/api/v1/agents/improvements/apply` | Required | Apply an improvement |
-| GET | `/api/v1/agents/improvements/metrics` | Required | Improvement metrics |
+| GET | `/api/v1/agents/improvements` | Required | Recent persisted improvement suggestions (limit 1–100) |
+| POST | `/api/v1/agents/improvements/apply` | Required | Mark a suggestion applied (advisory; no config change) |
+| GET | `/api/v1/agents/improvements/metrics` | Required | Improvement metrics computed from committed reflection history |
 | GET | `/api/v1/risk` | Required | Risk snapshot |
 | POST | `/api/v1/backtest/run` | Required | Run a backtest |
 
