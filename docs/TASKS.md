@@ -71,8 +71,10 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
 - [ ] Keep `mypy .` green.
 - [x] Re-verify README numbers and roadmap status. (2026-10-24: README no longer
       carries counts; it points at `02-STATUS.md`. `05-NEXT.md` refreshed.)
-- [ ] Improvement engine: persist history, rename “win rate”, remove the 75%
-      consensus suggestion.
+- [x] Improvement engine: rename “win rate” to execution rate and remove the
+      75% consensus suggestion. (2026-10-24)
+- [ ] Improvement engine: persist reflection/improvement history across restarts
+      and invoke analysis after the reflection node.
 - [ ] Add Prometheus alert rules; remove duplicate monitoring configs.
 - [ ] Prune stale branches and land Dependabot PRs.
 

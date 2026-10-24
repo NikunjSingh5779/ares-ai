@@ -138,7 +138,10 @@ authenticated route shells; data-populated states remain an optional follow-up.
 - Keep `mypy .` green (clean on 206 files as of 2026-10-24).
 - Keep verified numbers out of README; it points at `02-STATUS.md` as the single
   source of truth. Re-check roadmap status when a slice lands.
-- Improvement engine: persist history, rename “win rate”, remove the 75% consensus suggestion.
+- Improvement engine: **metric rename and unsafe suggestion removed 2026-10-24.**
+  `win_rate` is now `execution_rate` (it measured executed/total), and the decline
+  record no longer proposes lowering consensus confidence to 75%. Persist history
+  across restarts and invoke the engine after reflection remain open.
 - Add Prometheus alert rules; remove duplicate monitoring configs.
 - Prune stale branches and land Dependabot PRs.
 

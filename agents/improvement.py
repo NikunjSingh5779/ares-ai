@@ -18,8 +18,8 @@ from typing import Any
 # Constants
 # ---------------------------------------------------------------------------
 
-WIN_RATE_DECLINE_THRESHOLD: float = 0.15
-"""Win rate decline (over 10 runs) that triggers a degradation alert."""
+EXECUTION_RATE_DECLINE_THRESHOLD: float = 0.15
+"""Execution rate decline (over 10 runs) that triggers a degradation alert."""
 
 CONFIDENCE_ACCURACY_DECLINE_THRESHOLD: float = 10.0
 """Confidence accuracy decline (in percentage points) that triggers an alert."""
@@ -86,7 +86,7 @@ class StrategyImprovementEngine:
     """Cross-session strategy improvement analyzer.
 
     Examines reflection outputs across multiple runs to detect:
-    - Declining win rate or confidence accuracy
+    - Declining execution rate or confidence accuracy
     - Increasing error rates
     - Pattern of risk-approval changes
     - Agent-specific reliability degradation
@@ -136,7 +136,7 @@ class StrategyImprovementEngine:
             )
 
         # Trend checks
-        records.extend(self._check_win_rate_trend(metrics))
+        records.extend(self._check_execution_rate_trend(metrics))
         records.extend(self._check_confidence_accuracy_trend(metrics))
         records.extend(self._check_error_rate(reflection_output))
         records.extend(self._check_suggestion_overlap(reflection_output))
@@ -163,7 +163,7 @@ class StrategyImprovementEngine:
         if total == 0:
             return {
                 "avg_confidence_accuracy": 0.0,
-                "win_rate": 0.0,
+                "execution_rate": 0.0,
                 "error_rate": 0.0,
                 "total_runs": 0.0,
             }
@@ -172,9 +172,9 @@ class StrategyImprovementEngine:
         accuracies = [r.get("confidence_accuracy", 0) for r in recent]
         avg_accuracy = sum(accuracies) / len(accuracies) if accuracies else 0.0
 
-        # Win rate: how many evaluations mention "executed" favorably
+        # Execution rate: how many evaluations mention "executed" favorably
         executed_count = sum(1 for r in recent if "Trade executed" in r.get("evaluation", ""))
-        win_rate = executed_count / total if total > 0 else 0.0
+        execution_rate = executed_count / total if total > 0 else 0.0
 
         # Error rate from suggestion overlap
         suggestions_with_errors = sum(
@@ -184,13 +184,13 @@ class StrategyImprovementEngine:
 
         return {
             "avg_confidence_accuracy": round(avg_accuracy, 2),
-            "win_rate": round(win_rate * 100, 2),
+            "execution_rate": round(execution_rate * 100, 2),
             "error_rate": round(error_rate * 100, 2),
             "total_runs": float(total),
         }
 
-    def _check_win_rate_trend(self, metrics: dict[str, float]) -> list[ImprovementRecord]:
-        """Check if win rate has declined significantly."""
+    def _check_execution_rate_trend(self, metrics: dict[str, float]) -> list[ImprovementRecord]:
+        """Check if execution rate has declined significantly."""
         records: list[ImprovementRecord] = []
 
         # Compare recent half vs older half of the window
@@ -219,18 +219,18 @@ class StrategyImprovementEngine:
         )
 
         decline = older_rate - newer_rate
-        if decline > WIN_RATE_DECLINE_THRESHOLD:
+        if decline > EXECUTION_RATE_DECLINE_THRESHOLD:
             record = ImprovementRecord(
                 id=_next_id(),
                 timestamp=datetime.now(UTC).isoformat(),
                 category="risk_calibration",
                 severity="high",
-                description=f"Win rate declined by {decline:.1%} over recent runs",
+                description=f"Execution rate declined by {decline:.1%} over recent runs",
                 metric_before=round(older_rate * 100, 2),
                 metric_after=round(newer_rate * 100, 2),
                 rationale=f"Execution rate dropped from {older_rate:.1%} to {newer_rate:.1%}. "
                 f"Consider reviewing risk thresholds and consensus confidence criteria.",
-                suggested_params={"max_drawdown_pct": 15.0, "min_consensus_confidence": 75.0},
+                suggested_params={"max_drawdown_pct": 15.0},
             )
             records.append(record)
             _improvement_history.append(record)
@@ -347,6 +347,7 @@ class StrategyImprovementEngine:
                 "metric_after": r.metric_after,
                 "applied": r.applied,
                 "rationale": r.rationale,
+                "suggested_params": r.suggested_params,
             }
             for r in recent
         ]

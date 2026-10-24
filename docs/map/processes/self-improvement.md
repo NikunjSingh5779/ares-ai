@@ -27,8 +27,9 @@ trade outcome
 
 ## Human check
 - Suggestions are advisory. Inspect before applying; `apply` only marks the record.
-- A suggestion that lowers a safety threshold must be rejected (current code suggests
-  `min_consensus_confidence: 75`).
+- A suggestion that lowers a safety threshold must be rejected. The execution-rate
+  decline record no longer proposes `min_consensus_confidence: 75`; keep the 80%
+  consensus gate out of generated parameter suggestions.
 
 ## Change impact
 - Change a metric → `agents/improvement.py` + `tests/test_improvement.py` + the API type.
@@ -40,5 +41,5 @@ trade outcome
 `tests/test_journal_agent.py`.
 
 ## Known gaps
-History is in-memory and lost on restart; “win_rate” actually measures execution rate;
+History is in-memory and lost on restart; the engine is not invoked by the pipeline;
 no link from a suggestion to the parameter it would change.

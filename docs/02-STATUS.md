@@ -2,9 +2,10 @@
 # Status — verified state
 
 **Last verified:** 2026-10-24
-**Branch:** `fix/orchestration-reliability-frontend` — 22 commits ahead / 4 behind `master`
-at verification time. This slice adds the real-PostgreSQL strategy route module, the
-opt-in local chat fallback, and the accessibility audit.
+**Branch:** `fix/orchestration-reliability-frontend` — 23 commits ahead / 4 behind `master`
+at verification time. Recent verified work adds the real-PostgreSQL strategy route
+module, the opt-in local chat fallback, the accessibility audit, and the improvement
+metric correction.
 The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
 strategy data`) passed GitHub Actions run **39780873063** on all five jobs: `lint`,
 `test`, `postgres-integration`, `frontend`, and `docker`.
@@ -297,6 +298,16 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Scope | The audit covers `/login` plus every route's rendered shell and loading/error states. Data-populated tables, charts, and dialogs were not exercised because the API was stubbed to 503; a pass with real data remains optional follow-up. |
 | Verification | `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass after the fixes. No safety gate, API behavior, or test assertion changed. |
 
+## Phase 3 — first slice: improvement metric correctness (verified 2026-10-24)
+
+| Piece | Evidence |
+|---|---|
+| Metric | `win_rate` is now `execution_rate` in `agents/improvement.py` and the metrics endpoint; the value always measured executed/total, not winning trades. `WIN_RATE_DECLINE_THRESHOLD` became `EXECUTION_RATE_DECLINE_THRESHOLD`, and the check and description now say execution rate. |
+| Safety | The execution-rate decline record no longer suggests `min_consensus_confidence: 75.0`; it keeps only `max_drawdown_pct: 15.0`. This removes a generated suggestion that contradicted the >80% consensus gate. |
+| API | `GET /api/v1/agents/improvements` now includes each record's `suggested_params` so an operator can review a suggestion before applying it; the apply endpoint still only marks `applied`. |
+| Tests | `pytest tests/test_improvement.py -q` — **16 passed**, including an assertion that the decline record has no `min_consensus_confidence` key. Full suite **1229 passed, 2 skipped / 81.90%**; `ruff` and `mypy` clean on **206 files**. |
+| Open | History is still process-local and `analyze()` is not called by the pipeline; persistence and wiring remain Phase 3 work. |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
@@ -317,6 +328,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 14 | Local chat is chat-only and process-gated | Live smoke passed 2026-10-24 against Strata `qwen3.6-35b-a3b-ud-q4_k_m` (direct 0.49 s, ChatService 0.99 s, local-only). Pipeline agents still use remote models; a local pipeline needs schema-compliance and latency evidence before it can be proposed. The gate is process-local, so multiple backend processes are not serialized against each other. | P2 |
 | 15 | Updated PostgreSQL CI command has not run on GitHub Actions | `.github/workflows/ci.yml::postgres-integration` now runs both PostgreSQL modules, but the last green run (39742069953) predates the strategy module edit. The next push exercises it. | P2 |
 | 16 | Accessibility audit did not exercise data-populated states | The 2026-10-24 pass used a 503 API stub, so tables, charts, and dialogs with real data were not audited. The route shells, login, and loading/error states are clean. | P3 |
+| 17 | Improvement history is in-memory and the engine is not wired into the pipeline | `analyze()` is called only by tests; the API reads a process-local list that is empty after restart, so no improvement record is generated in normal operation. Persisting reflection/improvement history and invoking analysis after the reflection node remain open. | P2 |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 

@@ -78,10 +78,10 @@ class TestStrategyImprovementEngine:
         metrics = engine.get_metrics_summary()
         assert metrics["total_runs"] >= MIN_RUNS_FOR_ANALYSIS
         assert metrics["avg_confidence_accuracy"] > 0
-        assert metrics["win_rate"] > 0
+        assert metrics["execution_rate"] > 0
 
-    def test_win_rate_decline_detection(self):
-        """Should detect when win rate declines significantly.
+    def test_execution_rate_decline_detection(self):
+        """Should detect when execution rate declines significantly.
 
         StrategyImprovementEngine splits the last MIN_RUNS_FOR_ANALYSIS (5)
         entries into older_half (first 2) and newer_half (last 3). For a
@@ -104,9 +104,11 @@ class TestStrategyImprovementEngine:
         engine.analyze(_make_reflection(executed=False))
 
         records = engine.get_recent_improvements()
-        win_rate_records = [r for r in records if r["category"] == "risk_calibration"]
-        assert len(win_rate_records) > 0
-        assert "declined" in win_rate_records[0]["description"].lower()
+        execution_rate_records = [r for r in records if r["category"] == "risk_calibration"]
+        assert len(execution_rate_records) > 0
+        assert "declined" in execution_rate_records[0]["description"].lower()
+        # A decline must never suggest weakening the 80% consensus gate.
+        assert "min_consensus_confidence" not in execution_rate_records[0]["suggested_params"]
 
     def test_confidence_accuracy_decline_detection(self):
         """Should detect when confidence accuracy declines significantly."""
@@ -193,7 +195,7 @@ class TestStrategyImprovementEngine:
 
         metrics = engine.get_metrics_summary()
         assert "avg_confidence_accuracy" in metrics
-        assert "win_rate" in metrics
+        assert "execution_rate" in metrics
         assert "error_rate" in metrics
         assert "total_runs" in metrics
         assert metrics["total_runs"] >= 5

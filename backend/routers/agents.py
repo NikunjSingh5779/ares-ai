@@ -93,7 +93,7 @@ async def apply_improvement(body: dict[str, Any]) -> dict[str, Any]:
 async def improvement_metrics() -> dict[str, float]:
     """Get aggregate improvement metrics summary.
 
-    Returns avg_confidence_accuracy, win_rate, error_rate, total_runs.
+    Returns avg_confidence_accuracy, execution_rate, error_rate, total_runs.
     """
     engine = get_improvement_engine()
     return engine.get_metrics_summary()
