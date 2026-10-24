@@ -20,7 +20,7 @@ dependencies = [
 
     # Validation
     "pydantic[email]>=2.9.0",
-    "pydantic-settings>=2.5.0",
+    "pydantic-settings>=2.14.2",
 
     # Agent orchestration
     "langgraph>=0.2.0",
