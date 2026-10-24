@@ -204,3 +204,29 @@ def test_production_allows_custom_secrets() -> None:
     )
     assert s.environment == "production"
     assert s.api_secret_key == "a1b2c3d4e5-production-secret"
+
+
+def test_local_llm_defaults_are_opt_in_and_single_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in (
+        "LOCAL_LLM_ENABLED",
+        "LOCAL_LLM_BASE_URL",
+        "LOCAL_LLM_TIMEOUT_SECONDS",
+        "LOCAL_LLM_MAX_CONCURRENT",
+        "LOCAL_LLM_QUEUE_TIMEOUT_SECONDS",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    s = Settings()
+
+    assert s.local_llm_enabled is False
+    assert s.local_llm_base_url == "http://127.0.0.1:8080/v1"
+    assert s.local_llm_timeout_seconds == 90.0
+    assert s.local_llm_max_concurrent == 1
+    assert s.local_llm_queue_timeout_seconds == 20.0
+
+
+def test_local_llm_rejects_invalid_gate_limits() -> None:
+    with pytest.raises(ValidationError):
+        Settings(local_llm_max_concurrent=0)
+    with pytest.raises(ValidationError):
+        Settings(local_llm_queue_timeout_seconds=0)

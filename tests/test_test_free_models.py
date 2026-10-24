@@ -46,6 +46,14 @@ class TestFlattenAgentModels:
         agents = {e["agent"] for e in entries}
         assert agents == {"market_analyst", "vision", "consensus"}
 
+    def test_flatten_skips_local_entries(self, sample_roster: dict[str, Any]) -> None:
+        sample_roster["agents"]["local_chat"] = {"primary": "local/model", "fallbacks": []}
+
+        entries = flatten_agent_models(sample_roster)
+
+        assert len(entries) == 6
+        assert all(not e["model"].startswith("local/") for e in entries)
+
     def test_flatten_empty_roster(self) -> None:
         entries = flatten_agent_models({"agents": {}})
         assert entries == []

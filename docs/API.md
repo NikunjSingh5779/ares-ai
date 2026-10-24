@@ -85,10 +85,13 @@ persists candles or makes a trading decision. Invalid intervals/sources return
 The body is `{messages:[{role:"user"|"assistant",content}]}` with **1–20**
 turns and **1–4000** characters per turn; the last turn must be from the user.
 The response is `{reply, model, fallback_used}`. The service prepends a fixed
-system prompt, runs the free-tier `chat` chain from `configs/models.yaml`, and
-returns **503** if every model fails, returns an error envelope, or returns empty
-text. It has no tools and no execution path: a reply cannot place, modify, or
-cancel an order, change a trading mode, promote a strategy, or touch the kill
+system prompt and runs the free-tier `chat` chain from `configs/models.yaml`.
+When `LOCAL_LLM_ENABLED=true`, the separate `local_chat` entry is appended after
+the remote chain, or used alone when no remote provider is configured; it is
+gated to one local request per process by default. The route returns **503** if
+every model fails, the local gate is busy, an error envelope is returned, or the
+text is empty. It has no tools and no execution path: a reply cannot place, modify,
+or cancel an order, change a trading mode, promote a strategy, or touch the kill
 switch. Conversation history is client-held; there is no conversation table.
 
 ### Settings

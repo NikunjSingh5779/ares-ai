@@ -1,9 +1,10 @@
 <!-- docs/02-STATUS.md -->
 # Status — verified state
 
-**Last verified:** 2026-10-22
-**Branch:** `fix/orchestration-reliability-frontend` — 19 commits ahead / 4 behind `master`
-at verification time.
+**Last verified:** 2026-10-24
+**Branch:** `fix/orchestration-reliability-frontend` — 21 commits ahead / 4 behind `master`
+at verification time. This slice adds the real-PostgreSQL strategy route module and
+the opt-in local chat fallback.
 The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
 strategy data`) passed GitHub Actions run **39780873063** on all five jobs: `lint`,
 `test`, `postgres-integration`, `frontend`, and `docker`.
@@ -26,20 +27,21 @@ new lint, typecheck, test, and build steps. The docs correction `8fb7c5b` passed
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1214 passed, 1 skipped** (integration module skips without `ARES_TEST_POSTGRES_URL`) |
-| Coverage | `pytest tests/ -q` | **81.31%** default (gate 78%); the P1.4 integration module adds 5 tests when its URL is set |
+| Test suite | `pytest tests/ -q` | **1229 passed, 2 skipped** (both PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`) |
+| Coverage | `pytest tests/ -q` | **81.90%** default (gate 78%); the ledger module adds 5 tests and the strategy module adds 12 when the URL is set |
 | Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
 | Health and metrics | `pytest tests/test_monitoring -q` | **34 passed** — 503 on each degraded dependency, 200 only when all answer, Prometheus-backed JSON snapshot, `/metrics` exposition mount |
-| Type check | `mypy .` | **clean, 203 source files** |
+| Type check | `mypy .` | **clean, 206 source files** |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
 | Market candles | `pytest tests/test_market_router.py -q` | **13 passed** — validation, ordering, deduplication, 404/502/504, source selection |
 | Settings | `pytest tests/test_settings_router.py tests/test_settings_service.py -q` | **23 passed** — GET/PUT round-trip, normalization, 422 on safety overrides, 503 when the store is unavailable |
-| Strategy drafts | `pytest tests/test_strategy_router.py tests/test_strategy_service.py -q` | **29 passed** — create/list/get/update, JSON parsing, version bump, 404/409/422/503, and rejection of lifecycle/live fields |
-| Chat | `pytest tests/test_chat_router.py tests/test_chat_service.py -q` | **17 passed** — history bounds, last-user validation, system prompt, fallback metadata, error-envelope/empty checks, free-tier roster, cached service |
+| Strategy drafts | `pytest tests/test_strategy_router.py tests/test_strategy_service.py -q` | **29 passed** — create/list/get/update, JSON parsing, version bump, 404/409/422/503, and rejection of lifecycle/live fields; the real-PostgreSQL module adds 12 route/service cases |
+| Chat | `pytest tests/test_chat_router.py tests/test_chat_service.py -q` | **21 passed** — history bounds, last-user validation, system prompt, fallback metadata, error-envelope/empty checks, free-tier roster, cached service, remote-plus-local and local-only chain selection |
+| Local model gate | `pytest tests/test_local_gate.py tests/test_client.py tests/test_router.py -q` | **27 passed** — process-wide serialization/timeout, prefix stripping, no auth header, `reasoning_effort="off"`, local timeout, busy skip without breaker failure |
 | Lint | `ruff check .` | clean |
 | Format | `ruff format --check .` | clean |
-| PostgreSQL integration | `ARES_TEST_POSTGRES_URL=... pytest tests/test_postgres_integration.py -q` | **5 passed** — real hydrate → fill → restart → close, duplicate ID, concurrent fills, one-winner duplicate race, busy lock → retry |
-| CI PostgreSQL job | GitHub Actions `CI` run 39742069953 | **passed** on `postgres:16-alpine` — all 5 tests, no skip |
+| PostgreSQL integration | `ARES_TEST_POSTGRES_URL=... pytest tests/test_postgres_integration.py tests/test_postgres_strategy_integration.py -q` | **17 passed** — real hydrate → fill → restart → close, duplicate ID, concurrent fills, one-winner duplicate race, busy lock → retry, plus the strategy route → service → JSONB round-trip |
+| CI PostgreSQL job | GitHub Actions `CI` run 39742069953 | **passed** on `postgres:16-alpine` — the then-current 5 ledger tests, no skip; the strategy module was added after this run (gap #15) |
 | Paper-ledger tests | `pytest tests/test_paper_trading_ledger.py -q` | **34 passed** — hydration, atomic write, duplicate ID, writer lock, rejection/rollback, restart mid-trade |
 | Trading-route tests | `pytest tests/test_trading_router.py -q` | **17 passed** — approval, derivation, 409/422/503, busy-lock retry |
 | Schema tests | `pytest tests/test_schema.py -q` | **16 passed** — 19 tables, ledger/idempotency columns, app_settings, init/schema parity, migration splitter |
@@ -133,6 +135,18 @@ signal token (P2) remains open.
 | Busy writer | While one connection holds the advisory lock, a writer with a 0.2 s timeout raises `PaperLedgerBusyError` and writes nothing; after release the same request succeeds. |
 | CI job | `.github/workflows/ci.yml::postgres-integration` starts `postgres:16-alpine`, loads `database/schema.sql`, installs with `uv --locked`, and runs the module with `--no-cov`. `ARES_REQUIRE_POSTGRES_INTEGRATION=1` makes a missing URL a hard failure, never a silent skip. Verified on GitHub Actions run 39742069953 (all 5 tests passed). |
 | Verified locally (at the P1.4 commit) | Temporary PostgreSQL 16 container (schema from `database/schema.sql`): **5 passed in 5.2 s**; full suite **1108 passed / 80.10%** with the URL and **1103 passed + 1 skipped / 80.08%** without. Container removed. |
+
+## P1.4b — real-PostgreSQL strategy route round-trip (verified 2026-10-22)
+
+| Piece | Evidence |
+|---|---|
+| Opt-in module | `tests/test_postgres_strategy_integration.py` uses the same `ARES_TEST_POSTGRES_URL` / `ARES_REQUIRE_POSTGRES_INTEGRATION` guard and refuses a database name without `test`. |
+| Isolation | The fixture deletes only `strategies`; it never truncates users or paper tables. The route app uses `httpx.ASGITransport` and overrides `get_db` with a real `async_sessionmaker`. |
+| Round-trip | POST → GET → list returns the committed row; a separate engine observes JSONB `config`/`parameters`, `version=1`, `status=draft`, and `live_trading_enabled=false`. |
+| Version and lifecycle | PUT bumps `version` to 2 and preserves draft/live/promotion fields; a row promoted directly to `backtesting` returns **409** and its name/version/status are unchanged; a `paused` row remains editable. |
+| Rejection boundaries | POST/PUT lifecycle or live-enablement fields return **422** and do not write; missing rows return **404**. |
+| Verification | Disposable `postgres:16-alpine` with `database/schema.sql`: **12 passed in 4.07 s**; combined with the ledger module **17 passed in 11.70 s**. Container removed. |
+| CI follow-up | `.github/workflows/ci.yml::postgres-integration` now runs both modules; the updated CI command has not yet been exercised by a GitHub Actions run. |
 
 ## P1.6 — role-based authorization (committed and pushed, verified 2026-10-21)
 
@@ -232,7 +246,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Backtest handoff | Supported draft types link to `/backtests?strategy=...`; the backtests page accepts only its real `momentum`, `mean_reversion`, `trend_following`, or `breakout` options. Unsupported draft types show a disabled explanation instead of sending an invalid request. |
 | Focused tests | `pytest tests/test_strategy_router.py tests/test_strategy_service.py -q` — **29 passed**: create/list/get/update, normalization, version bump, JSON row parsing, 404/409/422/503, rejection of lifecycle/live fields, and fail-closed promotion-race handling. The route-auth test now enumerates `/api/v1/strategies`. |
 | Full verification (at that slice) | `pytest tests/ -q` — **1196 passed, 1 skipped / 81.11%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **198 source files**; `pnpm build` passed. No safety gate, live default, promotion rule, or test assertion changed. |
-| Not yet run | The strategy service tests use a mock SQLAlchemy session. A disposable-PostgreSQL round-trip for the new routes was not run in this slice; the table already exists in the initial schema and the SQL mirrors the proven settings upsert/cast pattern. |
+| PostgreSQL follow-up (closed 2026-10-22) | The unit tests still use a mock SQLAlchemy session; the real-PostgreSQL round-trip now lives in `tests/test_postgres_strategy_integration.py` and covers create/list/get/update, JSONB, version bumps, 422/409/404. |
 
 ## Phase 2 — fifth slice: frontend lint, typecheck, and tests (verified 2026-10-22)
 
@@ -256,8 +270,22 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Service | `backend/services/chat_service.py` caches one service and reuses the standard `ModelRouter`/circuit-breaker/queue/retry stack. It logs the fallback model and exposes `reset_chat_service()` for tests. |
 | Frontend chat | `frontend/src/app/chat/page.tsx` keeps the conversation in React state, sends the last 20 turns per request, shows model/fallback metadata, keeps a failed user turn visible, offers retry, and uses an empty state that states the read-only boundary. The log has `role="log"`/`aria-live`, errors have `role="alert"`, the input has a real label and `aria-describedby`, the log exposes `aria-busy`, and Enter sends. |
 | Tests | `pytest tests/test_chat_router.py tests/test_chat_service.py -q` — **17 passed**; `tests/test_security/test_route_auth.py` adds the unauthenticated **401**. `pnpm test` — **18 passed** in 4 files, including a chat-page test that proves the second request contains the prior user and assistant turns. |
-| Verification (current tree) | `pytest tests/ -q` — **1214 passed, 1 skipped / 81.31%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **203 source files**; `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass. No safety gate, live default, promotion rule, or test assertion changed. |
+| Verification (at that slice) | `pytest tests/ -q` — **1214 passed, 1 skipped / 81.31%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **203 source files**; `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass. No safety gate, live default, promotion rule, or test assertion changed. |
 | Not yet run | No live OpenRouter request was made from this slice; model availability is still checked by the existing roster probe rather than by a real request in tests. Catalog drift remains gap #9. |
+
+## Phase 2 — seventh slice: opt-in local chat fallback (verified 2026-10-24)
+
+| Piece | Evidence |
+|---|---|
+| Provider | `agents/client.py` routes `local/` IDs to `LOCAL_LLM_BASE_URL`, strips the prefix before the request, sends no `Authorization` header, injects `reasoning_effort="off"`, and uses the provider's local timeout. |
+| Gate | `agents/local_gate.py` is a process-wide semaphore shared by every `ModelRouter`; default `max_concurrent=1`, queue timeout 20 s. A busy local model raises `LocalModelBusyError`, which skips that candidate without retrying or recording a breaker failure. |
+| Roster and chain | `configs/models.yaml` has a separate `local_chat` entry (`local/qwen3.6-35b-a3b-ud-q4_k_m`). When local is enabled and a remote provider exists, the chat chain is the remote free chain → local; with no remote provider it is local-only. The remote free-tier `chat` chain is unchanged. A missing `local_chat` entry, busy gate, exhausted chain, or empty text returns **503**. |
+| Settings | `LOCAL_LLM_ENABLED=false`, base URL default `http://127.0.0.1:8080/v1`, timeout 90 s, max concurrent 1, queue timeout 20 s. Because the dev Compose stack publishes the backend on host 8080, `.env.example` uses `http://host.docker.internal:8081/v1` for Compose and documents `127.0.0.1:8080` for a host-run backend. No model is bundled and no download is started. |
+| Safety scope | Chat remains read-only: no tools, sub-agents, live web/news retrieval, or trading actions. Local scope is chat-only; pipeline agents remain on the remote chain. The gate is per process, not a distributed lock. |
+| Tests | `pytest tests/test_local_gate.py tests/test_client.py tests/test_router.py -q` — **27 passed**; the chat suite is **21 passed**; full suite **1229 passed, 2 skipped / 81.90%**; `ruff` and `mypy` clean on **206 files**. |
+| Frontend | `frontend/src/lib/api.ts` chat timeout is 120 s so a slow local fallback is not cut off before the backend's 90 s model timeout; `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass. |
+| Live smoke (2026-10-24) | Strata on `127.0.0.1:8080` exposed `qwen3.6-35b-a3b-ud-q4_k_m`. With remote keys blanked in the smoke process, a direct `LLMClient` call returned `LOCAL OK` in **0.49 s**, `ChatService` used the local-only chain and returned `LOCAL CHAT OK` in **0.99 s**, and `POST /api/v1/chat` returned **200** with `LOCAL ROUTE OK`, `model=local/qwen3.6-35b-a3b-ud-q4_k_m`, and `fallback_used=false`. No remote request was made and no API key was sent. |
+| Not in CI | The live smoke is manual because CI has no model server; pipeline-local routing remains disabled. |
 
 ## Red / known gaps
 
@@ -269,13 +297,15 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 4 | ~~`mypy` fails~~ | Closed: the 22 errors in 8 test/script files are fixed, `mypy .` is clean on 184 files, and CI run 39742069953 passed `lint`. | ~~P1~~ fixed |
 | 5 | `/analyze` concurrency/cost control absent | global `_last_state`, unbounded `BackgroundTasks`; auth is required, but runs are still not isolated. `/api/v1/metrics` no longer reads `_last_state`; `/agents/status` and `/risk` still do. | P1 |
 | 6 | Kill-switch latch is process-local | a Redis outage latches each process; `/live/arm` clears the API process, but a runner that also latched stays blocked until restarted (fail-closed, never auto-trades) | P1 operational |
-| 7 | ~~No automated PostgreSQL integration test in CI~~ | Closed by P1.4: `postgres-integration` runs hydrate → fill → restart → close, duplicate IDs, concurrent fills, and the busy lock on `postgres:16-alpine`; the local default suite skips the module without `ARES_TEST_POSTGRES_URL`. | ~~P2~~ fixed |
+| 7 | ~~No automated PostgreSQL integration test in CI~~ | Closed by P1.4/P1.4b: `postgres-integration` runs hydrate → fill → restart → close, duplicate IDs, concurrent fills, and the busy lock, plus the strategy route → service → JSONB round-trip on `postgres:16-alpine`; the local default suite skips both modules without `ARES_TEST_POSTGRES_URL`. | ~~P2~~ fixed |
 | 8 | ~~Remaining UI polling and accessibility gaps~~ | Closed 2026-10-22: `/live` fetches status/audit concurrently, pauses when hidden, guards in-flight refreshes, aborts on unmount, and force-refreshes after controls; `usePipelinePolling` single-polls with abort/backoff; `api.ts` has bounded timeouts and typed errors; skip link, navigation/dialog ARIA, labelled controls, and stronger muted-text contrast are in place. | ~~P2~~ fixed |
 | 9 | Model catalog removals are not checked in CI | manual check only; `scripts/test_free_models.py` exists but is not a CI job | P2 |
 | 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency`, `0004_role_hierarchy`, and `0005_app_settings` (plus P1-A columns). `0004` rewrites legacy `user` → `operator` and makes `viewer` the default; `0005` creates the singleton `app_settings` row and its trigger, so `/api/v1/settings` returns **503** until it is applied. `init.sql` only runs on first container start; the backend entrypoint stamps `0001` when `init.sql` initialized the schema, then applies the later idempotent revisions. Old short **positions** still cannot be inferred and default to long. | Operational |
 | 11 | ~~Local `.env` API key is the default placeholder~~ | Closed locally: a unique `API_SECRET_KEY` is set in `.env` (never committed), and authenticated `/api/v1/*` returns 200. Other environments must set their own key. | ~~Operational~~ fixed locally |
 | 12 | ~~Frontend lint/typecheck/test is not a CI job~~ | Closed 2026-10-22: ESLint 9 flat config (`pnpm lint`, zero warnings), `pnpm typecheck` (`tsc --noEmit`), and Vitest/Testing Library (**18 tests**) run in the `frontend` CI job before `pnpm build`. | ~~P2~~ fixed |
 | 13 | ~~Chat is a pipeline trigger, not a conversational agent~~ | Closed 2026-10-22: `POST /api/v1/chat` sends the bounded history through a free-tier fallback chain and returns a model reply with fallback metadata. The page keeps multi-turn state and the new test proves prior turns are sent. Chat remains read-only: it has no tools and cannot place orders, change modes, promote strategies, or bypass safety gates. | ~~P2~~ fixed |
+| 14 | Local chat is chat-only and process-gated | Live smoke passed 2026-10-24 against Strata `qwen3.6-35b-a3b-ud-q4_k_m` (direct 0.49 s, ChatService 0.99 s, local-only). Pipeline agents still use remote models; a local pipeline needs schema-compliance and latency evidence before it can be proposed. The gate is process-local, so multiple backend processes are not serialized against each other. | P2 |
+| 15 | Updated PostgreSQL CI command has not run on GitHub Actions | `.github/workflows/ci.yml::postgres-integration` now runs both PostgreSQL modules, but the last green run (39742069953) predates the strategy module edit. The next push exercises it. | P2 |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 

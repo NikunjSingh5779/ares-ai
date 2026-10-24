@@ -6,8 +6,10 @@ from typing import Any
 
 import pytest
 
+from agents.client import LLMClient
 from agents.models import AgentModelConfig, ModelRoster, load_model_roster
 from agents.router import RouterResult
+from backend.core.config import settings as app_settings
 from backend.schemas.chat import ChatTurn
 from backend.services import chat_service
 from backend.services.chat_service import (
@@ -132,12 +134,23 @@ def test_real_roster_has_a_free_chat_chain() -> None:
     assert config.max_tokens > 0
 
 
+def test_real_roster_has_a_separate_local_chat_entry() -> None:
+    config = load_model_roster().get("local_chat")
+
+    assert config.primary == "local/qwen3.6-35b-a3b-ud-q4_k_m"
+    assert config.fallbacks == []
+    assert config.rpm == 1
+    assert config.timeout >= 60
+    assert all(model.endswith((":free", "/free")) for model in load_model_roster().get("chat").model_chain)
+
+
 def test_get_chat_service_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     roster = ModelRoster({"chat": _config()})
     client = FakeClient()
 
     monkeypatch.setattr(chat_service, "load_model_roster", lambda: roster)
     monkeypatch.setattr(chat_service, "create_llm_client", lambda: client)
+    monkeypatch.setattr(app_settings, "local_llm_enabled", False)
     chat_service.reset_chat_service()
 
     try:
@@ -145,5 +158,95 @@ def test_get_chat_service_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
         second = chat_service.get_chat_service()
         assert first is second
         assert first.model_chain == ["primary-model", "fallback-model", "universal-model"]
+    finally:
+        chat_service.reset_chat_service()
+
+
+def _local_config() -> AgentModelConfig:
+    return AgentModelConfig(
+        agent_name="local_chat",
+        primary="local/qwen3.6-35b-a3b-ud-q4_k_m",
+        fallbacks=[],
+        timeout=90,
+        rpm=1,
+        temperature=0.4,
+        max_tokens=1024,
+        universal_fallback=None,
+    )
+
+
+def _remote_config() -> AgentModelConfig:
+    return AgentModelConfig(
+        agent_name="chat",
+        primary="open_router/primary:free",
+        fallbacks=["open_router/fallback:free"],
+        timeout=45,
+        rpm=7,
+        temperature=0.2,
+        max_tokens=123,
+        universal_fallback="open_router/universal:free",
+    )
+
+
+def test_get_chat_service_appends_local_as_fallback_to_remote(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote = _remote_config()
+    local = _local_config()
+    roster = ModelRoster({"chat": remote, "local_chat": local})
+    client = LLMClient(providers={"open_router": {"api_key": "sk-test", "base_url": "https://example.test/v1"}})
+    client.providers = {"open_router": {"api_key": "sk-test", "base_url": "https://example.test/v1"}}
+
+    monkeypatch.setattr(chat_service, "load_model_roster", lambda: roster)
+    monkeypatch.setattr(chat_service, "create_llm_client", lambda: client)
+    monkeypatch.setattr(app_settings, "local_llm_enabled", True)
+    chat_service.reset_chat_service()
+
+    try:
+        service = chat_service.get_chat_service()
+        assert service.model_chain == [
+            "open_router/primary:free",
+            "open_router/fallback:free",
+            "open_router/universal:free",
+            "local/qwen3.6-35b-a3b-ud-q4_k_m",
+        ]
+    finally:
+        chat_service.reset_chat_service()
+
+
+def test_get_chat_service_uses_local_only_without_remote_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote = _config()
+    local = _local_config()
+    roster = ModelRoster({"chat": remote, "local_chat": local})
+    client = LLMClient(providers={"local": {"api_key": "", "base_url": "http://127.0.0.1:8080/v1"}})
+    client.providers = {"local": {"api_key": "", "base_url": "http://127.0.0.1:8080/v1"}}
+
+    monkeypatch.setattr(chat_service, "load_model_roster", lambda: roster)
+    monkeypatch.setattr(chat_service, "create_llm_client", lambda: client)
+    monkeypatch.setattr(app_settings, "local_llm_enabled", True)
+    chat_service.reset_chat_service()
+
+    try:
+        service = chat_service.get_chat_service()
+        assert service.model_chain == ["local/qwen3.6-35b-a3b-ud-q4_k_m"]
+    finally:
+        chat_service.reset_chat_service()
+
+
+def test_get_chat_service_fails_closed_when_local_entry_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    roster = ModelRoster({"chat": _config()})
+
+    monkeypatch.setattr(chat_service, "load_model_roster", lambda: roster)
+    monkeypatch.setattr(chat_service, "create_llm_client", lambda: FakeClient())
+    monkeypatch.setattr(app_settings, "local_llm_enabled", True)
+    chat_service.reset_chat_service()
+
+    try:
+        with pytest.raises(ChatUnavailableError, match="not configured"):
+            chat_service.get_chat_service()
     finally:
         chat_service.reset_chat_service()

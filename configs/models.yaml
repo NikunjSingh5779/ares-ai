@@ -137,3 +137,14 @@ agents:
     rpm: 10
     temperature: 0.4
     max_tokens: 1024
+
+  local_chat:
+    # Opt-in local OpenAI-compatible server (Strata). The `local/` prefix routes
+    # to LOCAL_LLM_BASE_URL; the server receives the bare model id. Kept outside
+    # the remote `chat` chain so the free-tier assertion stays honest.
+    primary: local/qwen3.6-35b-a3b-ud-q4_k_m
+    fallbacks: []
+    timeout_seconds: 90
+    rpm: 1
+    temperature: 0.4
+    max_tokens: 1024

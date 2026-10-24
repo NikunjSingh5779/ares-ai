@@ -77,9 +77,13 @@ def flatten_agent_models(roster: dict[str, Any]) -> list[dict[str, Any]]:
     agents = roster.get("agents", {})
     for agent_name, cfg in agents.items():
         primary = cfg.get("primary")
-        if primary:
+        # The free-tier probe only understands remote providers; local entries
+        # are opt-in and are validated by the local chat tests instead.
+        if primary and not str(primary).startswith("local/"):
             entries.append({"agent": agent_name, "role": "primary", "model": primary})
         for fb in cfg.get("fallbacks", []):
+            if str(fb).startswith("local/"):
+                continue
             entries.append({"agent": agent_name, "role": "fallback", "model": fb})
     return entries
 

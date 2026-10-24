@@ -111,11 +111,13 @@ Python client.
   stay server-owned; the form loads saved drafts and hands supported types to the
   backtest page. A mock-session test suite covers create/list/get/update and the
   404/409/422/503 boundaries.
-- Chat: **done 2026-10-22** — `POST /api/v1/chat` sends a bounded (1–20 turn) history
-  through a free-tier fallback chain and returns the reply plus the model/fallback
-  metadata. The page keeps multi-turn state and sends prior turns; the service has no
-  tools and cannot place orders, change modes, promote strategies, or bypass a safety
-  gate. A `chat` entry in `configs/models.yaml` holds the model IDs.
+- Chat: **done 2026-10-22; local fallback 2026-10-23** — `POST /api/v1/chat` sends a
+  bounded (1–20 turn) history through a free-tier fallback chain and returns the reply
+  plus the model/fallback metadata. The page keeps multi-turn state and sends prior
+  turns; the service has no tools and cannot place orders, change modes, promote
+  strategies, or bypass a safety gate. A `chat` entry in `configs/models.yaml` holds
+  the remote IDs; the separate opt-in `local_chat` entry is appended when enabled or
+  used alone when no remote key exists.
 - Frontend lint/typecheck/test: **done 2026-10-22** — ESLint 9 flat config
   (`eslint . --max-warnings=0`), `tsc --noEmit`, and Vitest 5 + Testing Library
   (**18 tests**) run in the `frontend` CI job before `pnpm build`.

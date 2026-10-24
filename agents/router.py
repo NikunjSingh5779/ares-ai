@@ -14,6 +14,7 @@ from typing import Any
 
 from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.client import LLMClient, NoOpLLMClient
+from agents.local_gate import LocalModelBusyError, LocalModelGate, get_local_model_gate, is_local_model
 from agents.queue import QueueRegistry
 from agents.retry import RetryConfig, with_retry
 
@@ -120,7 +121,22 @@ class ModelRouter:
                     attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
                     result.errors.append(attempt_info)
                     continue
+                local_gate: LocalModelGate | None = None
+                gate_acquired = False
                 try:
+                    if is_local_model(model_id):
+                        local_gate = get_local_model_gate()
+                        try:
+                            await local_gate.acquire()
+                            gate_acquired = True
+                        except LocalModelBusyError as e:
+                            # Busy is a queue condition, not a model failure: do
+                            # not trip the breaker or retry behind the gate.
+                            attempt_info["error"] = str(e)
+                            attempt_info["error_type"] = "local_model_busy"
+                            attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
+                            result.errors.append(attempt_info)
+                            continue
                     # Execute with retry
                     retry_result = await with_retry(
                         func=lambda: self.client.chat_completion(
@@ -133,6 +149,8 @@ class ModelRouter:
                         breaker=breaker,
                     )
                 finally:
+                    if gate_acquired and local_gate is not None:
+                        local_gate.release()
                     await queue.release()
                 attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
                 if retry_result.success:

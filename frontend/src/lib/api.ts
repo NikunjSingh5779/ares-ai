@@ -205,7 +205,9 @@ export async function sendChatMessage(
   return request<ChatResponse>("/api/v1/chat", {
     method: "POST",
     body: JSON.stringify({ messages }),
-    timeoutMs: 60_000,
+    // A local model can need more than the old 60 s while the remote chain is
+    // unavailable; the backend still fails closed on its own timeout.
+    timeoutMs: 120_000,
   });
 }
 

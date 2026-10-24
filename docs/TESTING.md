@@ -11,6 +11,8 @@
   catalog budget, and relative links in entry documents.
 - `tests/test_postgres_integration.py` exercises the durable paper ledger
   against a real PostgreSQL 16 instance and is skipped unless a URL is set.
+- `tests/test_postgres_strategy_integration.py` exercises the strategy draft
+  routes and JSONB persistence against the same opt-in disposable database.
 - Agent, router, ledger, role, monitoring, schema, and worker tests are separate
   modules; run the narrowest one first.
 
@@ -24,6 +26,7 @@ python -m pytest tests/test_icm_structure.py -q --no-cov
 python -m pytest tests/test_paper_trading_ledger.py -q
 python -m pytest tests/test_trading_router.py -q
 python -m pytest tests/test_chat_router.py tests/test_chat_service.py -q
+python -m pytest tests/test_local_gate.py tests/test_client.py tests/test_router.py -q
 python -m pytest tests/test_security/test_role_auth.py -q
 
 # Full suite with the configured coverage gate (78%)
@@ -32,21 +35,34 @@ python -m pytest tests/ -q
 
 The default `addopts` in `pyproject.toml` enables coverage over `backend`,
 `agents`, `database`, `backtesting`, `paper_trading`, and `live_trading`, and
-fails under 78%. The last verified run was **1214 passed, 1 skipped, 81.31%**
-(2026-10-22). Do not copy that number into a new claim without re-running.
+fails under 78%. The last verified run was **1229 passed, 2 skipped, 81.90%**
+(2026-10-24). Do not copy that number into a new claim without re-running.
 
 ## Real PostgreSQL tests
 
 ```powershell
 $env:ARES_TEST_POSTGRES_URL = "postgresql+asyncpg://ares:ares_test@localhost:5432/ares_ai_test"
 $env:ARES_REQUIRE_POSTGRES_INTEGRATION = "1"
-python -m pytest tests/test_postgres_integration.py -q --no-cov
+python -m pytest tests/test_postgres_integration.py tests/test_postgres_strategy_integration.py -q --no-cov
 ```
 
 The CI `postgres-integration` job starts `postgres:16-alpine`, loads
-`database/schema.sql`, and runs the module. With
+`database/schema.sql`, and runs both modules. With
 `ARES_REQUIRE_POSTGRES_INTEGRATION=1`, a missing URL is a hard failure, not a
-silent skip.
+silent skip. Both modules refuse to run unless the target database name
+contains `test`; the strategy fixture deletes only `strategies` rows. On a
+disposable PostgreSQL 16 container the combined run was **17 passed** (5 ledger
+and 12 strategy).
+
+## Local model tests
+
+The `local/` provider tests use `pytest-httpx` and a fake async gate; they do not
+start Strata or require a GPU. They cover prefix stripping, no `Authorization`
+header, `reasoning_effort="off"`, gate serialization/timeout, local-only chain
+selection, and the local-plus-remote fallback chain. A live local smoke test is
+manual and opt-in through `LOCAL_LLM_ENABLED=true`. On 2026-10-24 Strata served
+`qwen3.6-35b-a3b-ud-q4_k_m`: a direct client reply took **0.49 s**, the local-only
+`ChatService` reply took **0.99 s**, and `POST /api/v1/chat` returned **200**.
 
 ## Lint, format, types
 
@@ -57,7 +73,7 @@ mypy .
 ```
 
 The CI `lint` job installs Python 3.14 with `uv` and runs all three. Mypy is
-clean on 203 source files as of 2026-10-22. New code must not add
+clean on 206 source files as of 2026-10-24. New code must not add
 `# type: ignore` to hide a real mismatch.
 
 ## Frontend

@@ -63,6 +63,14 @@ class Settings(BaseSettings):
     mistral_api_key: str = ""
     mistral_base_url: str = "https://api.mistral.ai/v1"
 
+    # Local OpenAI-compatible LLM (opt-in, chat-first). No API key is required.
+    # The model ID lives in configs/models.yaml; this only points at the server.
+    local_llm_enabled: bool = False
+    local_llm_base_url: str = "http://127.0.0.1:8080/v1"
+    local_llm_timeout_seconds: float = Field(default=90.0, gt=0.0, le=300.0)
+    local_llm_max_concurrent: int = Field(default=1, ge=1, le=8)
+    local_llm_queue_timeout_seconds: float = Field(default=20.0, gt=0.0, le=300.0)
+
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8000

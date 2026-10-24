@@ -52,10 +52,11 @@ surface.
   schema tests. Do not edit the shipped initial migration.
 
 **Tests:** `tests/test_strategy_service.py`, `tests/test_strategy_router.py`,
-`tests/test_security/test_route_auth.py`, `tests/test_schema.py`, and
-`tests/test_icm_structure.py`.
+`tests/test_postgres_strategy_integration.py`, `tests/test_security/test_route_auth.py`,
+`tests/test_schema.py`, and `tests/test_icm_structure.py`.
 
 **Known gaps:** draft parameters are stored but not yet consumed by the backtest
-engine (the handoff passes only the strategy type). A disposable-PostgreSQL
-round-trip for these routes has not yet been added; the service tests use a mock
-session, and the table already exists in the initial schema.
+engine (the handoff passes only the strategy type). The real-PostgreSQL module
+covers create/list/get/update, JSONB round-trips, version bumps, lifecycle-field
+422s, the 409 promotion boundary, and 404s; the service unit tests still use a
+mock session for SQL-shape assertions.

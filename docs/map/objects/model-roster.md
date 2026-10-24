@@ -1,40 +1,53 @@
 <!-- docs/map/objects/model-roster.md -->
 # Model roster and fallback chain
 
-**What it is:** the config-driven list of free-tier models per agent, plus the runtime
-that walks the chain, retries, rate-limits, and trips circuit breakers.
+**What it is:** the config-driven list of free-tier remote models per agent, plus the
+opt-in local chat fallback and the runtime that walks the chain, retries, rate-limits,
+gates local concurrency, and trips circuit breakers.
 
 **Homes:**
 - `configs/models.yaml` — the **only** place model IDs exist.
 - `agents/models.py` — loads/validates the roster (`AgentModelConfig`).
 - `agents/router.py` — primary → fallback 1 → fallback 2, per-call result.
 - `agents/circuit_breaker.py`, `agents/retry.py`, `agents/queue.py` — resilience.
-- `agents/client.py` — HTTP client for OpenRouter/OpenCode.
+- `agents/client.py` — HTTP client for OpenRouter/OpenCode and the `local/` provider.
+- `agents/local_gate.py` — process-wide semaphore shared by every local-model router.
 - `agents/base.py` — converts router output into a typed agent output.
 
 **Shape:** per agent `{primary, fallbacks[], timeout_seconds, max_retries}`; defaults for
-timeout, retries, breaker threshold/reset, RPM, and `universal_fallback`.
+timeout, retries, breaker threshold/reset, RPM, and `universal_fallback`. The separate
+`local_chat` entry uses `local/qwen3.6-35b-a3b-ud-q4_k_m`; it is not part of the
+free-tier `chat` chain.
 
-**Writers:** humans edit YAML. The breaker/queue keep per-process state.
+**Writers:** humans edit YAML. The breaker/queue and local gate keep per-process state.
 
-**Readers:** every LLM-backed agent, `scripts/run_live.py`, `backend/routers/analysis.py`.
+**Readers:** every LLM-backed agent, `scripts/run_live.py`, `backend/routers/analysis.py`,
+and `backend/services/chat_service.py`.
 
 **Invariants:**
 - No model ID in source (hard rule #1).
 - A failed required agent causes rejection, never approval.
 - `AgentModelConfig.model_chain` appends `defaults.universal_fallback`
-  (`open_router/openrouter/free`) last, deduplicated.
+  (`open_router/openrouter/free`) last, deduplicated. The chat service uses the
+  explicit local entry, not its universal fallback.
 - Every fallback used is logged and counted (`AGENTS_FALLBACK_TOTAL`).
+- The local model is single-request by default; acquisition is bounded, and a busy
+  gate skips the model without recording a breaker failure.
 
 **Change impact:**
 - Swap a model → YAML only; run the live-catalog check before merging.
 - Change retry/breaker → `agents/retry.py`, `circuit_breaker.py`, and their tests.
 - Add a provider → `agents/client.py` provider map + env var + `.env.example`.
+- Change local concurrency → `agents/local_gate.py` and `LOCAL_LLM_*` settings; keep
+  Strata's `--parallel N` as a separate server-side choice.
 
 **Tests:** `tests/test_router.py`, `test_retry.py`, `test_circuit_breaker.py`,
-`test_queue.py`, `test_models.py`, `tests/test_test_free_models.py`.
+`test_queue.py`, `test_models.py`, `test_local_gate.py`, `test_client.py`,
+`test_chat_service.py`, `tests/test_test_free_models.py`.
 
 **Known gaps:** catalog removals are not yet checked in CI. The roster was validated
 against the live OpenRouter catalog on 2026-10-21 (14 unique free models, all
 present). Rule-based fallbacks still hide model failures; the universal fallback
-only guarantees one last model attempt.
+only guarantees one last model attempt. The local model is chat-only for now; its
+`qwen3.6-35b-a3b-ud-q4_k_m` ID was smoke-tested against a live Strata server on
+2026-10-24.

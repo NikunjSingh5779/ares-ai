@@ -93,7 +93,9 @@ update bumps `version` without touching lifecycle fields. The draft `parameters`
 are not a safety override: the Risk, consensus, promotion, execution, and kill-switch
 paths remain authoritative. No schema or migration change was needed because the
 table exists in the initial schema. Missing rows are **404**; store failures are
-**503**.
+**503**. The route -> service -> JSONB round-trip, version bump, lifecycle-field
+rejection, and promoted-row **409** are covered against real PostgreSQL by
+`tests/test_postgres_strategy_integration.py`.
 
 ## Chat boundary
 `POST /api/v1/chat` is a **read-only** conversational endpoint mounted behind
@@ -102,10 +104,13 @@ the last turn to be from the user; unknown fields are **422**. History is
 client-held; there is no conversation table or server-side memory. The service
 prepends a fixed system prompt, runs the free-tier `chat` chain from
 `configs/models.yaml` through the standard fallback router, and returns
-`{reply, model, fallback_used}`. It has no tools and no execution path, so it
-cannot place/modify/cancel orders, change modes, promote a strategy, or touch the
-kill switch. An exhausted chain, an error envelope (including the NoOp client),
-or empty text returns **503**; the API never fabricates a reply.
+`{reply, model, fallback_used}`. When `LOCAL_LLM_ENABLED=true`, `local_chat` is
+appended after the remote chain when a remote provider is configured, or used
+alone when none is. The `local/` call is gated process-wide (default one
+concurrent request) and busy waits fail closed. It has no tools and no execution
+path, so it cannot place/modify/cancel orders, change modes, promote a strategy,
+or touch the kill switch. An exhausted chain, an error envelope (including the
+NoOp client), or empty text returns **503**; the API never fabricates a reply.
 
 ## Known gaps
 - `/execute` trusts the authenticated caller's agent payload; there is no signed or

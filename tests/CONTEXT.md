@@ -15,6 +15,8 @@
   and durable merge/upsert behavior.
 - `test_postgres_integration.py` — opt-in real-PostgreSQL ledger tests; skipped unless
   `ARES_TEST_POSTGRES_URL` points at a disposable database whose name contains `test`.
+- `test_postgres_strategy_integration.py` — opt-in strategy route/service/JSONB tests
+  with the same guard; deletes only `strategies` rows.
 - `conftest.py` — shared fixtures; overrides `verify_auth` **and** the role dependencies
   (`require_trading_access`, `require_live_control`) for domain tests only. Auth/role
   tests remove those overrides and exercise the real gates.

@@ -519,3 +519,47 @@ and no guaranteed user row.
 starts a new thread; there is no server-side transcript. Chat is a guide, not a trading
 operator, and a model outage fails closed with 503. Streaming and conversation
 persistence remain explicit future work.
+
+## ADR-021 — Local chat is opt-in, separate, and process-wide gated
+**Date:** 2026-10-23 **Status:** accepted
+
+**Context:** Operators can run an OpenAI-compatible model locally. The local server is
+useful as a free fallback, but it usually serves one generation at a time, is not part
+of the remote free-tier catalog, and must not make the pipeline depend on a workstation
+being available. The remote `chat` chain's free-tier assertion must stay honest.
+
+**Decision:**
+- Add a separate `local_chat` roster entry with a `local/` model ID. Do not insert local
+  IDs into the remote `chat` chain or the universal fallback. The remote chain remains
+  free-tier only.
+- Make local use opt-in with `LOCAL_LLM_ENABLED=false`. Add a configurable base URL,
+  timeout, concurrency, and queue timeout; bundle no model and start no download.
+- Strip `local/` before the HTTP request, send no `Authorization` header, and request
+  `reasoning_effort="off"` so reasoning tokens do not consume the chat budget.
+- Gate local calls in `ModelRouter` with one process-wide semaphore, default
+  `max_concurrent=1`. A busy local candidate is skipped without retry or breaker
+  failure and the chat route returns **503** if no fallback answers.
+- Use local as an appended chat fallback when a remote provider is configured and as
+  the only chat chain when none is. Keep pipeline agents remote for now.
+- In Compose, reach a host-run server through `host.docker.internal`; for a host-run
+  backend, use loopback.
+
+**Alternatives considered:**
+- *Replace the remote chat chain with local.* Rejected: local availability would become
+  a hard dependency and the free-tier roster check would no longer describe chat.
+- *Enable local for every agent.* Rejected for now: schema compliance and latency are
+  unproven; chat is the lowest-risk scope.
+- *Gate per router instead of per process.* Rejected: chat and analysis can each hold a
+  router, so per-router limits could still overlap on the single local server.
+- *Wait indefinitely for a local slot.* Rejected: a blocked request hides overload.
+  A bounded wait then 503 is explicit.
+- *Bundle the model or download it on first use.* Rejected: multi-GB artifacts and
+  silent network activity are not acceptable defaults.
+- *Add live web/news retrieval to improve local answers.* Rejected: chat stays read-only
+  and tool-free.
+
+**Consequences:** Local chat is usable without weakening the remote chain or safety
+gates. The gate is per process, not a distributed lock, and local chat remains
+chat-only. A live smoke test is manual because CI has no model server; one passed
+against Strata on 2026-10-24 (direct 0.49 s, ChatService 0.99 s, local-only, and
+`POST /api/v1/chat` returned 200).

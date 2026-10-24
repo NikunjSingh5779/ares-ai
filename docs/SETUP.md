@@ -22,7 +22,9 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 Put the generated value in `.env` as `API_SECRET_KEY`. The shipped placeholder
 is rejected with `503` on every non-public route. Also set **either**
 `OPENROUTER_API_KEY` or `OPENCODE_API_KEY` for real agent reasoning; the
-pipeline simulation works without them.
+pipeline simulation works without them. Chat-only local use is available without
+a remote key through the optional local model section below; pipeline agents
+still use the remote chain.
 
 Keep `LIVE_TRADING_ENABLED=false` and `DEFAULT_TRADING_MODE=human_approval` for
 paper-only work.
@@ -70,6 +72,51 @@ chains):
 ```powershell
 uv run python scripts/test_free_models.py --dry-run
 uv run python scripts/test_free_models.py
+```
+
+The free-model probe skips `local/` entries; they are opt-in and are not part of
+the remote free-tier chain.
+
+## Optional: local chat model (Strata)
+
+The local fallback is opt-in, chat-only, and off by default. **No model is bundled
+and no download starts automatically.** Start an OpenAI-compatible local server
+yourself (for example Strata) before enabling it. The model ID is
+`configs/models.yaml::local_chat.primary`; update that YAML entry if your server
+serves a different ID, never the Python source. The shipped example is
+`local/qwen3.6-35b-a3b-ud-q4_k_m`; check `/v1/models` and keep the `local/`
+prefix while the server receives the bare ID. Strata's own `--parallel N` is a
+server-side choice and is separate from the application's process-wide gate.
+
+For a host-run backend, point at loopback:
+
+```dotenv
+LOCAL_LLM_ENABLED=true
+LOCAL_LLM_BASE_URL=http://127.0.0.1:8080/v1
+```
+
+For the Compose backend, `127.0.0.1` is the container itself. The dev Compose
+stack already publishes the backend on host **8080**, so run Strata on another
+host port and use Docker Desktop's host alias. The shipped `.env.example` uses
+8081:
+
+```dotenv
+LOCAL_LLM_ENABLED=true
+LOCAL_LLM_BASE_URL=http://host.docker.internal:8081/v1
+```
+
+Use any free host port for Strata; only `LOCAL_LLM_BASE_URL` must match it.
+
+No API key is sent. The defaults are a 90 s model timeout, one concurrent local
+request process-wide, and a 20 s queue wait; a busy local model returns **503**
+instead of retrying or tripping its circuit breaker. Restart the backend after
+changing these values. With a remote provider
+configured, local is used only after the remote `chat` chain is exhausted. With
+no remote key, chat is local-only. Local routing is not enabled for pipeline
+agents. Check the server directly before opening the dashboard:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/v1/models
 ```
 
 ## 4. Run the dashboard

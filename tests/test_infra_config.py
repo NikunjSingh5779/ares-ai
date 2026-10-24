@@ -6,6 +6,7 @@ Verifies build-time config files stay correct across edits.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import yaml
@@ -80,6 +81,23 @@ def test_fullstack_backend_forces_container_service_hosts() -> None:
     assert "@postgres:5432/" in environment["DATABASE_URL"]
     assert environment["REDIS_HOST"] == "redis"
     assert environment["CHROMA_HOST"] == "chromadb"
+
+
+def test_dev_compose_local_llm_port_does_not_collide_with_backend() -> None:
+    """The dev Compose backend already owns host 8080; Strata must use another port.
+
+    A container request to ``host.docker.internal:8080`` would otherwise reach the
+    backend's own published port instead of the local model.
+    """
+    compose = yaml.safe_load((PROJECT_ROOT / "docker" / "docker-compose.yml").read_text(encoding="utf-8"))
+    host_port = compose["services"]["backend"]["ports"][0].split(":", 1)[0]
+    env_text = (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8")
+    match = re.search(r"^LOCAL_LLM_BASE_URL=http://host\.docker\.internal:(\d+)/v1$", env_text, re.MULTILINE)
+
+    assert match is not None, ".env.example must document the Compose local-model URL"
+    assert match.group(1) != host_port, (
+        f".env.example points the local model at host port {host_port}, which Compose already publishes for the backend"
+    )
 
 
 def test_chroma_is_pinned_to_client_version_and_data_path() -> None:

@@ -34,9 +34,13 @@ deterministic nodes, not LLM calls.
 **Chat** (`POST /api/v1/chat`)
 `backend/routers/chat.py` validates a bounded history, then
 `backend/services/chat_service.py` prepends a fixed system prompt and runs the
-free-tier `chat` chain through `ModelRouter`. History is client-held and the
-service is stateless; it has no tools and no execution path. An exhausted chain,
-an error envelope, or empty text returns 503 rather than a fabricated reply.
+free-tier `chat` chain through `ModelRouter`. With `LOCAL_LLM_ENABLED=true`, the
+service appends the separate `local_chat` entry after the remote chain, or uses it
+alone when no remote provider is configured; the opt-in `local/` call shares one
+process-wide gate (default one request) and fails closed when busy. History is
+client-held and the service is stateless; it has no tools and no execution path.
+An exhausted chain, an error envelope, or empty text returns 503 rather than a
+fabricated reply.
 
 **Paper execution** (`POST /api/v1/execute`, `POST /api/v1/signal`, `scripts/run_live.py`)
 The normal pipeline path is `ExecutionAgent` (`agents/execution.py`) → `PaperTradingLedger`

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
+from pytest_httpx import HTTPXMock
 
 from agents.client import LLMClient, NoOpLLMClient, create_llm_client
 
@@ -22,6 +25,40 @@ class TestLLMClientInit:
         assert client.providers["open_router"]["api_key"] == "sk-test-key"
         assert client.providers["open_router"]["base_url"] == "https://api.test.com/v1"
         assert client.default_timeout == 120
+
+    @pytest.mark.asyncio
+    async def test_local_provider_strips_prefix_sets_reasoning_off_and_omits_auth(
+        self,
+        httpx_mock: HTTPXMock,
+    ) -> None:
+        httpx_mock.add_response(
+            url="http://local.test/v1/chat/completions",
+            method="POST",
+            json={"choices": [{"message": {"content": "ok"}}]},
+        )
+        client = LLMClient(
+            providers={
+                "local": {
+                    "api_key": "",
+                    "base_url": "http://local.test/v1/",
+                    "timeout": 3,
+                }
+            }
+        )
+
+        response = await client.chat_completion(
+            model="local/qwen3.6-35b-a3b-ud-q4_k_m",
+            messages=[{"role": "user", "content": "hello"}],
+        )
+        await client.close()
+
+        assert response["choices"][0]["message"]["content"] == "ok"
+        request = httpx_mock.get_request()
+        assert request is not None
+        payload = json.loads(request.content)
+        assert payload["model"] == "qwen3.6-35b-a3b-ud-q4_k_m"
+        assert payload["reasoning_effort"] == "off"
+        assert "authorization" not in request.headers
 
 
 class TestNoOpLLMClient:
@@ -76,6 +113,32 @@ class TestCreateLLMClient:
         monkeypatch.setattr(settings, "opencode_api_key", "")
         monkeypatch.setattr(settings, "gemini_api_key", "")
         monkeypatch.setattr(settings, "mistral_api_key", "")
+        monkeypatch.setattr(settings, "local_llm_enabled", False)
 
         client = create_llm_client()
         assert isinstance(client, NoOpLLMClient)
+
+    def test_creates_local_client_when_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Local is opt-in, needs no API key, and carries its own timeout."""
+        for key in ["OPENROUTER_API_KEY", "OPENCODE_API_KEY", "GEMINI_API_KEY", "MISTRAL_API_KEY"]:
+            monkeypatch.delenv(key, raising=False)
+
+        from backend.core.config import settings
+
+        monkeypatch.setattr(settings, "openrouter_api_key", "")
+        monkeypatch.setattr(settings, "opencode_api_key", "")
+        monkeypatch.setattr(settings, "gemini_api_key", "")
+        monkeypatch.setattr(settings, "mistral_api_key", "")
+        monkeypatch.setattr(settings, "local_llm_enabled", True)
+        monkeypatch.setattr(settings, "local_llm_base_url", "http://127.0.0.1:8080/v1/")
+        monkeypatch.setattr(settings, "local_llm_timeout_seconds", 90.0)
+
+        client = create_llm_client()
+
+        assert isinstance(client, LLMClient)
+        assert "open_router" not in client.providers
+        assert client.providers["local"] == {
+            "api_key": "",
+            "base_url": "http://127.0.0.1:8080/v1",
+            "timeout": 90.0,
+        }

@@ -10,16 +10,18 @@ from __future__ import annotations
 import logging
 
 from agents.circuit_breaker import CircuitBreakerRegistry
-from agents.client import create_llm_client
+from agents.client import LLMClient, NoOpLLMClient, create_llm_client
 from agents.models import AgentModelConfig, load_model_roster
 from agents.queue import QueueRegistry
 from agents.retry import RetryConfig
 from agents.router import ModelRouter
+from backend.core.config import settings
 from backend.schemas.chat import ChatResponse, ChatTurn
 
 logger = logging.getLogger("ares.chat")
 
 CHAT_MODEL_KEY = "chat"
+LOCAL_CHAT_MODEL_KEY = "local_chat"
 
 SYSTEM_PROMPT = """You are the ARES AI dashboard assistant, a read-only guide to a
 paper-trading research platform.
@@ -48,16 +50,47 @@ class ChatUnavailableError(RuntimeError):
     """Raised when every configured chat model fails or returns no text."""
 
 
+def _has_configured_provider(
+    client: LLMClient | NoOpLLMClient,
+    model_chain: list[str],
+) -> bool:
+    """Return whether the remote chain has at least one configured provider."""
+    if not isinstance(client, LLMClient):
+        return False
+    for model_id in model_chain:
+        provider, separator, _ = model_id.partition("/")
+        if separator and provider in client.providers:
+            return True
+    return False
+
+
+def _dedupe_models(models: list[str]) -> list[str]:
+    """Keep chain order while removing duplicate model IDs."""
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for model_id in models:
+        if model_id not in seen:
+            seen.add(model_id)
+            deduped.append(model_id)
+    return deduped
+
+
 class ChatService:
     """Run one bounded chat turn through the model fallback chain."""
 
-    def __init__(self, router: ModelRouter, model_config: AgentModelConfig) -> None:
+    def __init__(
+        self,
+        router: ModelRouter,
+        model_config: AgentModelConfig,
+        model_chain: list[str] | None = None,
+    ) -> None:
         self._router = router
         self._config = model_config
+        self._model_chain = list(model_chain) if model_chain is not None else list(model_config.model_chain)
 
     @property
     def model_chain(self) -> list[str]:
-        return self._config.model_chain
+        return list(self._model_chain)
 
     async def reply(self, messages: list[ChatTurn]) -> ChatResponse:
         """Return a model reply or raise :class:`ChatUnavailableError`."""
@@ -99,14 +132,29 @@ def get_chat_service() -> ChatService:
     """Return the process-wide chat service, creating it on first use."""
     global _service  # noqa: PLW0603
     if _service is None:
-        config = load_model_roster().get(CHAT_MODEL_KEY)
+        roster = load_model_roster()
+        config = roster.get(CHAT_MODEL_KEY)
+        client = create_llm_client()
+        chain = list(config.model_chain)
+        if settings.local_llm_enabled:
+            try:
+                local_config = roster.get(LOCAL_CHAT_MODEL_KEY)
+            except KeyError as exc:
+                raise ChatUnavailableError("Local chat model is not configured") from exc
+            local_chain = [local_config.primary, *local_config.fallbacks]
+            if _has_configured_provider(client, config.model_chain):
+                # Local is a fallback when a remote free provider is configured.
+                chain = _dedupe_models([*chain, *local_chain])
+            else:
+                # No remote key: skip doomed remote attempts and run local only.
+                chain = _dedupe_models(local_chain)
         router = ModelRouter(
-            llm_client=create_llm_client(),
+            llm_client=client,
             breaker_registry=CircuitBreakerRegistry(),
             queue_registry=QueueRegistry(),
             retry_config=RetryConfig(max_retries=2, base_delay=0.5),
         )
-        _service = ChatService(router=router, model_config=config)
+        _service = ChatService(router=router, model_config=config, model_chain=chain)
     return _service
 
 

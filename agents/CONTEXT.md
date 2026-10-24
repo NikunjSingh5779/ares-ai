@@ -9,6 +9,7 @@ modules gate. This is the controller + model layer of the pipeline.
 - `base.py` — `BaseAgent`, `AgentContext`, typed I/O validation.
 - `state.py` — `AgentState` and every agent output schema (the models).
 - `router.py`, `client.py`, `retry.py`, `queue.py`, `circuit_breaker.py` — model execution.
+- `local_gate.py` — process-wide semaphore for the opt-in `local/` provider.
 - Agents: `market_analyst`, `quant`, `news`, `vision`, `risk`, `execution`, `journal`,
   `reflection`, `memory`, `kronos_predictor`.
 - Deterministic gates: `consensus.py`; rules in `risk.py`, `indicators.py`, `candlesticks.py`.
@@ -30,6 +31,8 @@ Also emits `AGENTS_RUNS_TOTAL` / `AGENTS_FALLBACK_TOTAL` metrics.
 
 ## Invariants
 - Model IDs only in `configs/models.yaml`; the configured universal fallback is appended.
+- The `local/` provider is opt-in, chat-first, and gated process-wide (default one
+  concurrent request). A busy local gate skips that model without tripping its breaker.
 - `rationale` required on every trading-relevant output.
 - A failed required agent rejects; never approve by default.
 - No exchange or DB access from analyst agents; only Execution/Journal/Memory touch state.
@@ -41,8 +44,11 @@ Also emits `AGENTS_RUNS_TOTAL` / `AGENTS_FALLBACK_TOTAL` metrics.
 
 ## Tests
 `tests/test_supervisor.py`, `test_consensus.py`, `test_risk.py`, `test_quant.py`,
-`test_market_analyst.py`, `test_agents/*`, `test_improvement.py`, `test_memory_agent.py`.
+`test_market_analyst.py`, `test_agents/*`, `test_improvement.py`, `test_memory_agent.py`,
+`test_local_gate.py`, `test_client.py`, `test_router.py`.
 
 ## Known gaps
 LLM degradation is silent (rule fallback looks healthy) and there is no corrective
-schema retry. Catalog removals are not yet checked in CI.
+schema retry. Catalog removals are not yet checked in CI. The local provider is wired
+for chat only; pipeline-local use remains opt-in work until schema compliance and
+latency are measured.

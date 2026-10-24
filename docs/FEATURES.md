@@ -43,7 +43,7 @@
 | Kronos OHLCV forecasting | Optional | Downloads `NeoQuasar/Kronos-small` on first use; not required by the core pipeline |
 | Improvement engine | Partial | Suggestions/metrics exist; history persistence and naming cleanup are Phase 3 |
 | Strategy builder | Working | Drafts persist through `/api/v1/strategies`; only draft/paused rows are editable and live/promotion fields stay server-owned |
-| Chat interface | Working | Read-only multi-turn `POST /api/v1/chat` with a free-tier fallback chain; no tools or execution path |
+| Chat interface | Working | Read-only multi-turn `POST /api/v1/chat` with a free-tier fallback chain plus an opt-in local fallback; no tools or execution path |
 
 ## Dashboard
 
@@ -57,7 +57,7 @@
 | Backtests | Working | Calls the backtest endpoint |
 | Settings | Working | Loads/saves `app_settings` through authenticated GET/PUT; safety limits (including the 2% cap) are read-only; default symbol and live refresh are wired into the pages |
 | Strategy builder | Working | Real load/save against `strategies`; unsupported backtest types fail honestly |
-| Chat | Working | Multi-turn read-only assistant; history is client-held and sent per request; model/fallback metadata is shown |
+| Chat | Working | Multi-turn read-only assistant; history is client-held and sent per request; model/fallback metadata is shown; opt-in local `local_chat` fallback |
 
 ## Platform and operations
 

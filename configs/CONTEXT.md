@@ -7,12 +7,15 @@
 - `settings.py` — `Settings` (pydantic-settings), env overrides, `live_trading_enabled`
   (default false), production secret validator.
 - `models.yaml` — per-agent primary + fallback chain, timeouts, retry/breaker defaults,
-  and `defaults.universal_fallback`.
+  `defaults.universal_fallback`, and the separate opt-in `local_chat` entry.
 
 ## Rules
 - Model IDs live **only** in `models.yaml` (hard rule #1).
 - Secrets come from env; never commit `.env`; keep `.env.example` current.
 - Add a setting → `Settings` field + `.env.example` + compose env + a config test.
+- `local_llm_enabled` is opt-in (`false`) and chat-first. `local_llm_base_url` points at
+  the local OpenAI-compatible server; `local_llm_max_concurrent` gates the single-request
+  model process-wide. Model IDs still live only in `models.yaml`.
 - Paper fills use `paper_trading_commission_pct` and `paper_trading_slippage_pct`
   (decimal fractions, default 0.001 = 10 bps per side).
 - Position sizing is **not** an environment setting. `agents.risk.MAX_POSITION_SIZE_PCT`
@@ -32,7 +35,7 @@ Environment variables / `.env`, YAML.
 An immutable `settings` object imported across the app; `load_model_roster()` for agents.
 
 ## Human check
-`python -c "from configs.settings import settings; print(settings.environment, settings.live_trading_enabled)"`.
+`python -c "from configs.settings import settings; print(settings.environment, settings.live_trading_enabled, settings.local_llm_enabled)"`.
 `pytest tests/test_config.py tests/test_models.py -q`.
 
 ## Known gaps
