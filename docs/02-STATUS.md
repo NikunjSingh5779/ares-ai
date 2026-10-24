@@ -2,9 +2,9 @@
 # Status — verified state
 
 **Last verified:** 2026-10-24
-**Branch:** `fix/orchestration-reliability-frontend` — 21 commits ahead / 4 behind `master`
-at verification time. This slice adds the real-PostgreSQL strategy route module and
-the opt-in local chat fallback.
+**Branch:** `fix/orchestration-reliability-frontend` — 22 commits ahead / 4 behind `master`
+at verification time. This slice adds the real-PostgreSQL strategy route module, the
+opt-in local chat fallback, and the accessibility audit.
 The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
 strategy data`) passed GitHub Actions run **39780873063** on all five jobs: `lint`,
 `test`, `postgres-integration`, `frontend`, and `docker`.
@@ -287,6 +287,16 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Live smoke (2026-10-24) | Strata on `127.0.0.1:8080` exposed `qwen3.6-35b-a3b-ud-q4_k_m`. With remote keys blanked in the smoke process, a direct `LLMClient` call returned `LOCAL OK` in **0.49 s**, `ChatService` used the local-only chain and returned `LOCAL CHAT OK` in **0.99 s**, and `POST /api/v1/chat` returned **200** with `LOCAL ROUTE OK`, `model=local/qwen3.6-35b-a3b-ud-q4_k_m`, and `fallback_used=false`. No remote request was made and no API key was sent. |
 | Not in CI | The live smoke is manual because CI has no model server; pipeline-local routing remains disabled. |
 
+## Phase 2 — eighth slice: accessibility audit (verified 2026-10-24)
+
+| Piece | Evidence |
+|---|---|
+| Method | Production build (`pnpm build`) served at `127.0.0.1:3000`. Lighthouse 13.5.0 ran its accessibility category on `/login`; axe-core 4.14.0 ran through Chrome DevTools Protocol on all 16 authenticated routes. The audit set a dummy tab-scoped `ares_api_key` and stubbed `/api/v1/*` with **503**, so no real key was read or sent and no 401 redirect cleared the session. |
+| Result | Lighthouse `/login`: **100** with no failing audits. axe-core: **0 violations across 16 routes** (`/`, `/markets`, `/portfolio`, `/risk`, `/live`, `/paper-trading`, `/strategy-builder`, `/backtests`, `/signals`, `/journal`, `/agents`, `/memory`, `/logs`, `/analytics`, `/chat`, `/settings`). |
+| Fixes | Login submit contrast raised from **4.46:1** to about **6.3:1** (`#6366f1` → `#4f46e5`, hover `#4338ca`); active-nav text raised to `#818cf8`; the market chart uses `role="figure"` instead of `role="img"` so its focusable attribution link is valid; `/live` loading and error states include an `h1`; `/backtests` strategy, interval, days, and capital controls have associated labels; the chat log is focusable and named. |
+| Scope | The audit covers `/login` plus every route's rendered shell and loading/error states. Data-populated tables, charts, and dialogs were not exercised because the API was stubbed to 503; a pass with real data remains optional follow-up. |
+| Verification | `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass after the fixes. No safety gate, API behavior, or test assertion changed. |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
@@ -298,7 +308,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 5 | `/analyze` concurrency/cost control absent | global `_last_state`, unbounded `BackgroundTasks`; auth is required, but runs are still not isolated. `/api/v1/metrics` no longer reads `_last_state`; `/agents/status` and `/risk` still do. | P1 |
 | 6 | Kill-switch latch is process-local | a Redis outage latches each process; `/live/arm` clears the API process, but a runner that also latched stays blocked until restarted (fail-closed, never auto-trades) | P1 operational |
 | 7 | ~~No automated PostgreSQL integration test in CI~~ | Closed by P1.4/P1.4b: `postgres-integration` runs hydrate → fill → restart → close, duplicate IDs, concurrent fills, and the busy lock, plus the strategy route → service → JSONB round-trip on `postgres:16-alpine`; the local default suite skips both modules without `ARES_TEST_POSTGRES_URL`. | ~~P2~~ fixed |
-| 8 | ~~Remaining UI polling and accessibility gaps~~ | Closed 2026-10-22: `/live` fetches status/audit concurrently, pauses when hidden, guards in-flight refreshes, aborts on unmount, and force-refreshes after controls; `usePipelinePolling` single-polls with abort/backoff; `api.ts` has bounded timeouts and typed errors; skip link, navigation/dialog ARIA, labelled controls, and stronger muted-text contrast are in place. | ~~P2~~ fixed |
+| 8 | ~~Remaining UI polling and accessibility gaps~~ | Closed 2026-10-22: `/live` fetches status/audit concurrently, pauses when hidden, guards in-flight refreshes, aborts on unmount, and force-refreshes after controls; `usePipelinePolling` single-polls with abort/backoff; `api.ts` has bounded timeouts and typed errors; skip link, navigation/dialog ARIA, labelled controls, and stronger muted-text contrast are in place. The 2026-10-24 audit (Lighthouse 13.5.0, axe-core 4.14.0) found and closed five more issues across the route shells. | ~~P2~~ fixed |
 | 9 | Model catalog removals are not checked in CI | manual check only; `scripts/test_free_models.py` exists but is not a CI job | P2 |
 | 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency`, `0004_role_hierarchy`, and `0005_app_settings` (plus P1-A columns). `0004` rewrites legacy `user` → `operator` and makes `viewer` the default; `0005` creates the singleton `app_settings` row and its trigger, so `/api/v1/settings` returns **503** until it is applied. `init.sql` only runs on first container start; the backend entrypoint stamps `0001` when `init.sql` initialized the schema, then applies the later idempotent revisions. Old short **positions** still cannot be inferred and default to long. | Operational |
 | 11 | ~~Local `.env` API key is the default placeholder~~ | Closed locally: a unique `API_SECRET_KEY` is set in `.env` (never committed), and authenticated `/api/v1/*` returns 200. Other environments must set their own key. | ~~Operational~~ fixed locally |
@@ -306,6 +316,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 13 | ~~Chat is a pipeline trigger, not a conversational agent~~ | Closed 2026-10-22: `POST /api/v1/chat` sends the bounded history through a free-tier fallback chain and returns a model reply with fallback metadata. The page keeps multi-turn state and the new test proves prior turns are sent. Chat remains read-only: it has no tools and cannot place orders, change modes, promote strategies, or bypass safety gates. | ~~P2~~ fixed |
 | 14 | Local chat is chat-only and process-gated | Live smoke passed 2026-10-24 against Strata `qwen3.6-35b-a3b-ud-q4_k_m` (direct 0.49 s, ChatService 0.99 s, local-only). Pipeline agents still use remote models; a local pipeline needs schema-compliance and latency evidence before it can be proposed. The gate is process-local, so multiple backend processes are not serialized against each other. | P2 |
 | 15 | Updated PostgreSQL CI command has not run on GitHub Actions | `.github/workflows/ci.yml::postgres-integration` now runs both PostgreSQL modules, but the last green run (39742069953) predates the strategy module edit. The next push exercises it. | P2 |
+| 16 | Accessibility audit did not exercise data-populated states | The 2026-10-24 pass used a 503 API stub, so tables, charts, and dialogs with real data were not audited. The route shells, login, and loading/error states are clean. | P3 |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 

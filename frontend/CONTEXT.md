@@ -58,8 +58,10 @@ Enter sends, and the page never presents a trade action.
 - `/chat` has no streaming and no conversation persistence: history lives in React
   state for the current page session and the last 20 turns are sent per request. It is
   read-only and cannot place trades or change safety settings.
-- A manual axe/Lighthouse pass has not been run; lint and Vitest are now automated
-  (`eslint . --max-warnings=0`, `tsc --noEmit`, `vitest run`) but no browser-based
-  accessibility audit is configured.
+- A manual Lighthouse/axe pass ran on 2026-10-24: Lighthouse 13.5.0 scored **100**
+  on `/login` and axe-core 4.14.0 reported **0 violations across 16 authenticated
+  route shells**. The audit stubbed `/api/v1/*` with 503, so data-populated tables,
+  charts, and dialogs remain unexercised; re-run with a real session before claiming
+  those states.
 - The style guide still uses a small number of direct hex colors; the muted-text values
   were raised for contrast, but a full design-token sweep remains optional polish.

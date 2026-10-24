@@ -98,6 +98,16 @@ and `src/app/chat/page.test.tsx` (empty state, prior-turn history, retry, clear)
 `react-hooks/set-state-in-effect` is disabled in `eslint.config.mjs` for the existing
 fetch-on-mount pages; the remaining React Compiler rules stay on.
 
+## Accessibility
+
+The manual pass uses a production build served locally. Lighthouse 13.5.0 audits
+`/login` with `--only-categories=accessibility`; axe-core 4.14.0 runs over the
+authenticated routes through Chrome DevTools Protocol with a dummy tab-scoped key
+and `/api/v1/*` stubbed to **503** so no real credential is used. On 2026-10-24
+Lighthouse scored **100** and axe reported **0 violations across 16 routes**. The
+stub means data-populated tables, charts, and dialogs are not exercised; re-run
+with a real session before claiming those states.
+
 ## Docker / Compose
 
 ```powershell

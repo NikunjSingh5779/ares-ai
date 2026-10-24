@@ -121,11 +121,13 @@ export default function ChatPage() {
       </div>
 
       <div
-        className="mb-4 flex-1 space-y-3 overflow-y-auto"
+        className="mb-4 flex-1 space-y-3 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#818cf8]"
         role="log"
+        aria-label="Conversation"
         aria-live="polite"
         aria-relevant="additions text"
         aria-busy={loading}
+        tabIndex={0}
       >
         {messages.length === 0 && !loading && (
           <div className="card-glass rounded-xl px-5 py-6">

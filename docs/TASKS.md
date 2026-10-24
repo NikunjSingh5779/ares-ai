@@ -34,7 +34,7 @@
 - [x] `api.ts`: request timeout/abort and typed errors. (2026-10-22)
 - [x] Accessibility: skip link, `aria-current`, labelled live controls, dialog ARIA,
       strategy-builder labels/`aria-pressed`, and stronger small-text contrast.
-      (2026-10-22; manual axe/Lighthouse still pending)
+      (2026-10-22; axe/Lighthouse pass 2026-10-24)
 - [x] Strategy builder: persist drafts through `/api/v1/strategies`; keep status,
       live enablement, and promotion fields server-owned. (2026-10-22)
 - [x] Chat: real multi-turn, read-only workflow through `POST /api/v1/chat`;
@@ -43,7 +43,7 @@
 - [x] Frontend lint/typecheck/test job in CI. (2026-10-22)
 
 **Phase 2 exit:** no page renders invented data; settings round-trip through the
-API; chat is multi-turn and read-only; axe/Lighthouse pass.
+API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
 
 ## Next — P1 gaps
 
@@ -69,7 +69,8 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass.
 ## Later — Phase 3 hygiene
 
 - [ ] Keep `mypy .` green.
-- [ ] Re-verify README numbers and roadmap status.
+- [x] Re-verify README numbers and roadmap status. (2026-10-24: README no longer
+      carries counts; it points at `02-STATUS.md`. `05-NEXT.md` refreshed.)
 - [ ] Improvement engine: persist history, rename “win rate”, remove the 75%
       consensus suggestion.
 - [ ] Add Prometheus alert rules; remove duplicate monitoring configs.

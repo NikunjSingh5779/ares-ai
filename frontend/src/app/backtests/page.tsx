@@ -165,8 +165,9 @@ export default function BacktestPage() {
 
             {/* Strategy */}
             <div>
-              <label className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Strategy</label>
+              <label htmlFor="backtest-strategy" className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Strategy</label>
               <select
+                id="backtest-strategy"
                 value={strategy}
                 onChange={(e) => setStrategy(e.target.value)}
                 className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-3 py-2 font-mono text-xs text-white outline-none focus:border-[#6366f1]"
@@ -181,8 +182,9 @@ export default function BacktestPage() {
 
             {/* Interval */}
             <div>
-              <label className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Interval</label>
+              <label htmlFor="backtest-interval" className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Interval</label>
               <select
+                id="backtest-interval"
                 value={interval}
                 onChange={(e) => setInterval(e.target.value)}
                 className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-3 py-2 font-mono text-xs text-white outline-none focus:border-[#6366f1]"
@@ -195,8 +197,9 @@ export default function BacktestPage() {
 
             {/* Days Back */}
             <div>
-              <label className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Days Back</label>
+              <label htmlFor="backtest-days" className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Days Back</label>
               <input
+                id="backtest-days"
                 type="number"
                 value={daysBack}
                 onChange={(e) => setDaysBack(Number(e.target.value))}
@@ -208,8 +211,9 @@ export default function BacktestPage() {
 
             {/* Initial Capital */}
             <div>
-              <label className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Initial Capital ($)</label>
+              <label htmlFor="backtest-capital" className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Initial Capital ($)</label>
               <input
+                id="backtest-capital"
                 type="number"
                 value={initialCapital}
                 onChange={(e) => setInitialCapital(Number(e.target.value))}

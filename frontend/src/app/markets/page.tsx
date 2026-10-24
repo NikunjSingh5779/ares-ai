@@ -259,7 +259,7 @@ export default function MarketsPage() {
         </div>
         <div
           ref={chartContainerRef}
-          role="img"
+          role="figure"
           aria-label={`Daily candlestick chart for ${symbol}`}
           className="w-full overflow-hidden rounded-xl"
           style={{ height: CHART_HEIGHT }}

@@ -102,16 +102,19 @@ Python client.
 - `api.ts`: **done 2026-10-22** — bounded request timeouts, caller `AbortSignal`
   support, and typed `ApiError`/`ApiTimeoutError`; the auth header and 401 redirect
   remain in place.
-- Accessibility: **largely done 2026-10-22** — skip link to `#main-content`, sidebar
+- Accessibility: **done 2026-10-24** — skip link to `#main-content`, sidebar
   `aria-label`/`aria-current`, labelled live controls, dialog roles/labels/Escape/
   initial focus, strategy-builder labels and `aria-pressed`, and muted-text contrast
-  raised to `#8b8b93`/`#a1a1aa`. A manual axe/Lighthouse pass remains.
+  raised to `#8b8b93`/`#a1a1aa`. Lighthouse 13.5.0 scored **100** on `/login` and
+  axe-core 4.14.0 reported **0 violations across 16 authenticated route shells**;
+  the audit also fixed active-nav contrast, the market chart role, `/live`
+  loading/error headings, `/backtests` labels, and chat-log keyboard access.
 - Strategy builder: **done 2026-10-22** — drafts persist through
   `GET/POST/PUT /api/v1/strategies`; status, live enablement, and promotion fields
   stay server-owned; the form loads saved drafts and hands supported types to the
   backtest page. A mock-session test suite covers create/list/get/update and the
   404/409/422/503 boundaries.
-- Chat: **done 2026-10-22; local fallback 2026-10-23** — `POST /api/v1/chat` sends a
+- Chat: **done 2026-10-22; local fallback 2026-10-24** — `POST /api/v1/chat` sends a
   bounded (1–20 turn) history through a free-tier fallback chain and returns the reply
   plus the model/fallback metadata. The page keeps multi-turn state and sends prior
   turns; the service has no tools and cannot place orders, change modes, promote
@@ -125,12 +128,16 @@ Python client.
 2026-10-22); live/pipeline polling is bounded and pause-aware (met 2026-10-22);
 strategy drafts round-trip through the API (met 2026-10-22); chat is multi-turn and
 read-only (met 2026-10-22); frontend lint, typecheck, and tests run in CI (met
-2026-10-22); axe/Lighthouse pass remains.
+2026-10-22); axe/Lighthouse pass met 2026-10-24 for the login page and the
+authenticated route shells; data-populated states remain an optional follow-up.
+
+**Phase 2 is closed as of 2026-10-24.**
 
 ## Phase 3 — hygiene
 
-- Keep `mypy .` green (clean on 203 files as of 2026-10-22).
-- Re-verify README numbers (current suite: 1214 passed / 81.31%) and roadmap status.
+- Keep `mypy .` green (clean on 206 files as of 2026-10-24).
+- Keep verified numbers out of README; it points at `02-STATUS.md` as the single
+  source of truth. Re-check roadmap status when a slice lands.
 - Improvement engine: persist history, rename “win rate”, remove the 75% consensus suggestion.
 - Add Prometheus alert rules; remove duplicate monitoring configs.
 - Prune stale branches and land Dependabot PRs.

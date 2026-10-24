@@ -198,6 +198,7 @@ export default function LivePage() {
         role="status"
         aria-live="polite"
       >
+        <h1 className="sr-only">Live Trading</h1>
         <Loader2 className="h-8 w-8 animate-spin text-[#6366f1]" aria-hidden="true" />
         <span className="sr-only">Loading live trading status</span>
       </div>
@@ -209,6 +210,7 @@ export default function LivePage() {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center" role="alert">
+          <h1 className="sr-only">Live Trading</h1>
           <p className="text-[#ef4444] font-medium">Failed to load live trading status</p>
           <p className="mt-2 font-mono text-xs text-[#a1a1aa]">{error}</p>
           <button

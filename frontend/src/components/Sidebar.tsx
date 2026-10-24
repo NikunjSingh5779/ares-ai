@@ -80,7 +80,7 @@ export function Sidebar() {
               aria-current={isActive ? "page" : undefined}
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200 ${
                 isActive
-                  ? "bg-[rgba(99,102,241,0.12)] text-[#6366f1] font-semibold shadow-sm"
+                  ? "bg-[rgba(99,102,241,0.12)] text-[#818cf8] font-semibold shadow-sm"
                   : "text-[#a1a1aa] hover:bg-[rgba(255,255,255,0.04)] hover:text-white"
               }`}
             >
