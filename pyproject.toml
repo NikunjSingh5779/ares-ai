@@ -8,7 +8,7 @@ authors = [{ name = "ARES AI Team" }]
 dependencies = [
     # Core API
     "fastapi>=0.138.0",
-    "uvicorn[standard]>=0.49.0",
+    "uvicorn[standard]>=0.51.0",
     "python-multipart>=0.0.18",
     "passlib[bcrypt]>=1.7.4",
     "python-jose[cryptography]>=3.3.0",
