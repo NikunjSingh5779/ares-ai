@@ -28,7 +28,7 @@ dependencies = [
 
     # Cache & Vector
     "redis>=5.2.0",
-    "chromadb>=0.5.0",
+    "chromadb>=1.5.9",
 
     # HTTP & Data
     "httpx>=0.28.1",
