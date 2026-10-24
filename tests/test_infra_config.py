@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -202,3 +203,103 @@ def test_dependabot_ignores_typescript_major() -> None:
         '    - dependency-name: "typescript"\n'
         '      update-types: ["version-update:semver-major"]'
     )
+
+
+# ── Prometheus alerting ─────────────────────────────────────────────────
+
+
+MONITORING_DIR = PROJECT_ROOT / "docker" / "monitoring"
+ALERT_RULES = MONITORING_DIR / "alert-rules.yml"
+
+
+def _alert_rules() -> list[dict[str, Any]]:
+    """Load and return every rule in the tracked alert-rules file."""
+    data = yaml.safe_load(ALERT_RULES.read_text(encoding="utf-8"))
+    return [rule for group in data["groups"] for rule in group["rules"]]
+
+
+def test_alert_rules_have_required_fields() -> None:
+    """Every rule needs an expression, a severity, and a human summary."""
+    rules = _alert_rules()
+
+    assert rules, "alert-rules.yml must define at least one rule"
+    for rule in rules:
+        assert rule.get("alert"), f"rule without alert name: {rule}"
+        assert rule.get("expr"), f"{rule['alert']} has no expression"
+        assert rule["labels"]["severity"] in {"warning", "critical"}, (
+            f"{rule['alert']} must set labels.severity to warning or critical"
+        )
+        assert rule["annotations"]["summary"], f"{rule['alert']} has no summary"
+
+
+def test_alert_rules_cover_availability_agents_and_live_trading() -> None:
+    """The rules must keep the core failure modes covered."""
+    names = {rule["alert"] for rule in _alert_rules()}
+
+    assert {
+        "AresBackendDown",
+        "AresBackendHighErrorRate",
+        "AresBackendSlowRequests",
+        "AresAgentErrorRateHigh",
+        "AresModelFallbackSpike",
+        "AresLiveOrderFailures",
+        "AresKillSwitchActive",
+    } <= names
+
+
+def test_alert_rules_reference_emitted_metrics() -> None:
+    """A rule that names a metric the backend never emits can never fire."""
+    metrics_source = (PROJECT_ROOT / "backend" / "core" / "metrics.py").read_text(encoding="utf-8")
+    emitted = set(re.findall(r'"(ares_[a-z0-9_]+)"', metrics_source))
+    referenced = {metric for rule in _alert_rules() for metric in re.findall(r"\b(ares_[a-z0-9_]+)", rule["expr"])}
+
+    def base_metric(name: str) -> str:
+        """Histograms expose _bucket/_sum/_count series from one registration."""
+        for suffix in ("_bucket", "_sum", "_count"):
+            if name.endswith(suffix):
+                return name[: -len(suffix)]
+        return name
+
+    unknown = {name for name in referenced if name not in emitted and base_metric(name) not in emitted}
+
+    assert referenced, "alert rules must reference at least one ARES metric"
+    assert not unknown, f"rules reference metrics the backend does not emit: {unknown}"
+
+
+def test_prometheus_loads_the_tracked_alert_rules() -> None:
+    """Prometheus only evaluates a rule file that is listed and mounted."""
+    config = yaml.safe_load((MONITORING_DIR / "prometheus.yml").read_text(encoding="utf-8"))
+
+    assert "/etc/prometheus/alert-rules.yml" in config["rule_files"]
+
+    root_compose = (PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    full_compose = (PROJECT_ROOT / "docker" / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "docker/monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro" in root_compose
+    assert "./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro" in full_compose
+
+
+def test_compose_uses_one_tracked_monitoring_set() -> None:
+    """Both compose files must use docker/monitoring, not the gitignored copies."""
+    root_compose = (PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    full_compose = (PROJECT_ROOT / "docker" / "docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "docker/prometheus/" not in root_compose
+    assert "docker/grafana/" not in root_compose
+    assert "docker/monitoring/prometheus.yml" in root_compose
+    assert "docker/monitoring/grafana-datasources.yml" in root_compose
+    assert "docker/monitoring/grafana-dashboards.yml" in root_compose
+
+    assert "./monitoring/prometheus.yml" in full_compose
+    assert "./monitoring/grafana-datasources.yml" in full_compose
+
+
+def test_grafana_dashboards_are_valid_and_mounted() -> None:
+    """Both tracked dashboards must parse and be mounted by both compose files."""
+    root_compose = (PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    full_compose = (PROJECT_ROOT / "docker" / "docker-compose.yml").read_text(encoding="utf-8")
+
+    for name in ("grafana-dashboard.json", "grafana-overview.json"):
+        data = json.loads((MONITORING_DIR / name).read_text(encoding="utf-8"))
+        assert data["panels"], f"{name} must define at least one panel"
+        assert f"monitoring/{name}:/var/lib/grafana/dashboards/" in root_compose
+        assert f"./monitoring/{name}:/var/lib/grafana/dashboards/" in full_compose

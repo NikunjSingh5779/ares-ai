@@ -29,6 +29,7 @@ python -m pytest tests/test_paper_trading_ledger.py -q
 python -m pytest tests/test_trading_router.py -q
 python -m pytest tests/test_chat_router.py tests/test_chat_service.py -q
 python -m pytest tests/test_improvement.py tests/test_improvement_service.py tests/test_agents_router.py -q
+python -m pytest tests/test_infra_config.py -q
 python -m pytest tests/test_local_gate.py tests/test_client.py tests/test_router.py -q
 python -m pytest tests/test_security/test_role_auth.py -q
 
@@ -38,7 +39,7 @@ python -m pytest tests/ -q
 
 The default `addopts` in `pyproject.toml` enables coverage over `backend`,
 `agents`, `database`, `backtesting`, `paper_trading`, and `live_trading`, and
-fails under 78%. The last verified run was **1253 passed, 3 skipped, 82.17%**
+fails under 78%. The last verified run was **1259 passed, 3 skipped, 82.17%**
 (2026-10-24). Do not copy that number into a new claim without re-running.
 
 ## Real PostgreSQL tests

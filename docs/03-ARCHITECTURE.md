@@ -20,7 +20,7 @@ Execution      paper_trading/    live_trading/    backtesting/
      │
 Data           backend/data/     database/        configs/
      │
-Monitoring     backend/core/metrics.py   docker/prometheus   docker/grafana
+Monitoring     backend/core/metrics.py   docker/monitoring/ (Prometheus + Grafana)
 ```
 
 ## 2. Request flows

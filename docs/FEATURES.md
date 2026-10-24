@@ -72,7 +72,7 @@
 | CI | Working | lint, test, postgres-integration, frontend lint/typecheck/test/build, docker validation |
 | Frontend lint/typecheck/test in CI | Working | ESLint 9 flat config, `tsc --noEmit`, and 18 Vitest tests run before `pnpm build` |
 | Automated deployment | Not present | CI validates; deployment is manual |
-| Grafana / Prometheus dashboards | Working | `docker/monitoring/`; alert rules are Phase 3 |
+| Grafana / Prometheus dashboards | Working | Single tracked set in `docker/monitoring/`; Prometheus evaluates 7 alert rules. No Alertmanager target yet, so alerts are visible on `/alerts` but not delivered. |
 
 ## Known gaps that affect feature claims
 

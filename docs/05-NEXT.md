@@ -146,7 +146,11 @@ authenticated route shells; data-populated states remain an optional follow-up.
   `improvement_records` (migration `0006`) persist history; a best-effort post-run
   hook analyzes it after every `/analyze` and live-runner pipeline pass. Remaining:
   suggestions are not linked to the exact config field they would change.
-- Add Prometheus alert rules; remove duplicate monitoring configs.
+- Prometheus alert rules and one monitoring set: **done 2026-10-24** — 7 rules in
+  `docker/monitoring/alert-rules.yml` (availability, 5xx rate, p95 latency, agent
+  errors, fallback spike, live-order failure, kill switch), validated with
+  `promtool`; both compose files mount the tracked set. Remaining: an Alertmanager
+  target for delivery.
 - Prune stale branches and land Dependabot PRs.
 
 ## Guardrails

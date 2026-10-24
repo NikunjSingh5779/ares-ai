@@ -15,8 +15,8 @@
 - **Phase 2 — product realism and UI:** closed on 2026-10-24. Real candles,
   persisted settings, strategy drafts, bounded polling, read-only chat, frontend CI,
   and the accessibility audit are complete.
-- **Phase 3 — hygiene:** in progress. Typing, README numbers, and improvement history
-  are done; Prometheus alert rules and branch/Dependabot cleanup remain.
+- **Phase 3 — hygiene:** in progress. Typing, README numbers, improvement history,
+  and Prometheus alert rules are done; branch/Dependabot cleanup remains.
 
 ## Milestone history (verified)
 
@@ -54,7 +54,8 @@
 - README and roadmap numbers match verified state.
 - Improvement history is persisted and naming is consistent. (met 2026-10-24:
   `reflection_runs`/`improvement_records`, migration `0006`, post-run hook)
-- Prometheus alert rules exist without duplicate configs.
+- Prometheus alert rules exist without duplicate configs. (met 2026-10-24: 7 rules,
+  one tracked `docker/monitoring/` set mounted by both compose files)
 - Stale branches and Dependabot PRs are handled.
 
 ## Open product decisions

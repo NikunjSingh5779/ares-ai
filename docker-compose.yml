@@ -192,7 +192,8 @@ services:
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
-      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -217,8 +218,10 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
       - GF_INSTALL_PLUGINS=
     volumes:
-      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources
-      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./docker/monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./docker/monitoring/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./docker/monitoring/grafana-dashboard.json:/var/lib/grafana/dashboards/ares-ai.json:ro
+      - ./docker/monitoring/grafana-overview.json:/var/lib/grafana/dashboards/ares-overview.json:ro
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus

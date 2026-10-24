@@ -1,0 +1,102 @@
+# =============================================================================
+# ARES AI — Prometheus alert rules
+# =============================================================================
+# Evaluated by the `prometheus` service. The dev stack has no Alertmanager, so
+# these rules surface on Prometheus' /alerts page and via `ALERTS`; wiring an
+# Alertmanager target is the delivery step for paging.
+#
+# Every expression uses a metric emitted by backend/core/metrics.py.
+
+groups:
+  - name: ares-availability
+    rules:
+      - alert: AresBackendDown
+        expr: up{job="ares-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ARES backend is not being scraped"
+          description: >-
+            Prometheus has failed to scrape the backend for 2 minutes. Check the
+            backend container and its /health endpoint.
+
+      - alert: AresBackendHighErrorRate
+        expr: |
+          sum(rate(ares_requests_total{status=~"5.."}[5m]))
+            /
+          sum(rate(ares_requests_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ARES backend 5xx rate is above 5%"
+          description: >-
+            More than 5% of HTTP requests returned 5xx over the last 5 minutes.
+            Inspect the error logs and the affected endpoint.
+
+      - alert: AresBackendSlowRequests
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(ares_request_duration_seconds_bucket[5m]))
+          ) > 2.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ARES backend p95 latency is above 2.5s"
+          description: >-
+            The p95 HTTP request latency has exceeded 2.5 seconds for 10
+            minutes. Check downstream dependencies and model calls.
+
+  - name: ares-agents
+    rules:
+      - alert: AresAgentErrorRateHigh
+        expr: |
+          sum(rate(ares_agents_runs_total{status="error"}[10m]))
+            /
+          sum(rate(ares_agents_runs_total[10m])) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ARES agent error rate is above 20%"
+          description: >-
+            More than 20% of agent runs failed over the last 10 minutes. Check
+            the model fallback chain and free-tier availability.
+
+      - alert: AresModelFallbackSpike
+        expr: sum(rate(ares_agents_fallback_total[10m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ARES model fallbacks are elevated"
+          description: >-
+            More than 0.1 fallback events per second over 10 minutes. A
+            free-tier model is likely rate-limited or unavailable.
+
+  - name: ares-live-trading
+    rules:
+      - alert: AresLiveOrderFailures
+        expr: increase(ares_live_orders_total{status="error"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ARES live order placement failed"
+          description: >-
+            At least one live order raised an error in the last 15 minutes.
+            Verify the kill switch and the live audit log before retrying.
+
+      - alert: AresKillSwitchActive
+        expr: ares_live_kill_switch_active == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ARES live kill switch is active"
+          description: >-
+            Live order placement is halted until an operator re-arms the kill
+            switch. This is a safety state, not an automatic recovery.

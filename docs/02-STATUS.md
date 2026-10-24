@@ -2,10 +2,11 @@
 # Status — verified state
 
 **Last verified:** 2026-10-24
-**Branch:** `fix/orchestration-reliability-frontend` — 24 commits ahead / 4 behind `master`
+**Branch:** `fix/orchestration-reliability-frontend` — 26 commits ahead / 4 behind `master`
 at verification time. Recent verified work adds the real-PostgreSQL strategy route
 module, the opt-in local chat fallback, the accessibility audit, the improvement
-metric correction, and durable improvement history wired into the pipeline.
+metric correction, durable improvement history wired into the pipeline, and Prometheus
+alert rules with one tracked monitoring set.
 The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
 strategy data`) passed GitHub Actions run **39780873063** on all five jobs: `lint`,
 `test`, `postgres-integration`, `frontend`, and `docker`.
@@ -30,10 +31,11 @@ five jobs, including `postgres-integration` with all three PostgreSQL modules. T
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1253 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`) |
+| Test suite | `pytest tests/ -q` | **1259 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`) |
 | Coverage | `pytest tests/ -q` | **82.17%** default (gate 78%); the ledger module adds 5 tests, the strategy module adds 12, and the improvement module adds 6 when the URL is set |
 | Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
 | Health and metrics | `pytest tests/test_monitoring -q` | **34 passed** — 503 on each degraded dependency, 200 only when all answer, Prometheus-backed JSON snapshot, `/metrics` exposition mount |
+| Infra config | `pytest tests/test_infra_config.py -q` | **18 passed** — build args, container service hosts, Chroma pin, LF entrypoint, alert rules, single monitoring set, dashboard JSON |
 | Type check | `mypy .` | **clean, 211 source files** |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
 | Market candles | `pytest tests/test_market_router.py -q` | **13 passed** — validation, ordering, deduplication, 404/502/504, source selection |
@@ -325,6 +327,16 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Safety | Suggestions remain advisory: apply marks a record, never mutates `configs/`, a threshold, a position cap, a promotion gate, or the kill switch. The execution-rate decline record still proposes only `max_drawdown_pct: 15.0`. No safety gate or test assertion changed. |
 | Tests | Engine **20 passed**, service **11 passed**, agents router **7 passed**, supervisor **30 passed**; the real-PostgreSQL module adds **6 passed**. Combined PostgreSQL run: **23 passed** (5 ledger + 12 strategy + 6 improvement). Full suite **1253 passed, 3 skipped / 82.17%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **211 source files**. |
 | CI | `.github/workflows/ci.yml::postgres-integration` runs all three PostgreSQL modules. GitHub Actions run **40097868595** passed it (46 s, 23 tests) along with `lint`, `test`, `frontend`, and `docker`; gap #15 is closed. |
+
+## Phase 3 — third slice: Prometheus alert rules and one monitoring set (verified 2026-10-24)
+
+| Piece | Evidence |
+|---|---|
+| Alert rules | `docker/monitoring/alert-rules.yml` defines **7 rules** in three groups: availability (`AresBackendDown`, `AresBackendHighErrorRate`, `AresBackendSlowRequests`), agents (`AresAgentErrorRateHigh`, `AresModelFallbackSpike`), and live trading (`AresLiveOrderFailures`, `AresKillSwitchActive`). Every expression references a metric emitted by `backend/core/metrics.py`. |
+| Delivery gap | The dev stack has no Alertmanager target. Rules evaluate and appear on Prometheus `/alerts` and in the `ALERTS` series, but nothing pages. That is an operational follow-up, not a safety gate. |
+| Single config set | Both `docker-compose.yml` and `docker/docker-compose.yml` mount `docker/monitoring/prometheus.yml`, `alert-rules.yml`, and the Grafana provisioning files. The stale gitignored `docker/prometheus/` and `docker/grafana/` copies were removed and their ignore rules dropped; the richer 10-panel overview dashboard was preserved as `docker/monitoring/grafana-overview.json` and is mounted alongside the trading dashboard. |
+| Validation | `promtool check config` reports 1 rule file and valid syntax; `promtool check rules` reports **7 rules**. `docker compose ... config --quiet` passes for both compose files. `pytest tests/test_infra_config.py -q` — **18 passed**, including rule fields, emitted-metric coverage, compose mounts, and dashboard JSON. Full suite **1259 passed, 3 skipped / 82.17%**; `ruff` and `mypy` clean on **211 files**. |
+| Safety | Alerting is read-only observability. No rule, dashboard, or compose change touches the kill switch, approval mode, promotion gate, or a trading threshold. |
 
 ## Red / known gaps
 

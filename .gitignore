@@ -31,10 +31,6 @@ Thumbs.db
 .docker/
 docker-compose.override.yml
 
-# Monitoring
-prometheus/
-grafana/
-
 # Testing
 .coverage
 coverage.xml

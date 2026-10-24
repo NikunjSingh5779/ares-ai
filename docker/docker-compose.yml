@@ -134,6 +134,7 @@ services:
         condition: service_healthy
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus-data:/prometheus
     ports:
       - "9090:9090"
@@ -155,6 +156,7 @@ services:
       - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
       - ./monitoring/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
       - ./monitoring/grafana-dashboard.json:/var/lib/grafana/dashboards/ares-ai.json:ro
+      - ./monitoring/grafana-overview.json:/var/lib/grafana/dashboards/ares-overview.json:ro
       - grafana-data:/var/lib/grafana
     ports:
       - "3001:3000"

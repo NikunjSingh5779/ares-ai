@@ -7,11 +7,14 @@ global:
   evaluation_interval: 15s
 
 alerting:
+  # No Alertmanager is part of the dev stack. Rules still evaluate and appear
+  # on /alerts; add an Alertmanager target to page on them.
   alertmanagers:
     - static_configs:
         - targets: []
 
-rule_files: []
+rule_files:
+  - /etc/prometheus/alert-rules.yml
 
 scrape_configs:
   # ── Backend metrics ────────────────────────────────────────────────────

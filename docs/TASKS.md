@@ -77,7 +77,9 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
       and invoke analysis after the reflection node. (2026-10-24: migration `0006`,
       `improvement_service`, best-effort supervisor hook in `/analyze` and the live
       runner; backtests intentionally do not record history.)
-- [ ] Add Prometheus alert rules; remove duplicate monitoring configs.
+- [x] Add Prometheus alert rules; remove duplicate monitoring configs. (2026-10-24:
+      7 rules in `docker/monitoring/alert-rules.yml`, `promtool` clean; both compose
+      files mount the tracked set. No Alertmanager delivery yet.)
 - [ ] Prune stale branches and land Dependabot PRs.
 
 ## Documentation
