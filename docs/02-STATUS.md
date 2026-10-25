@@ -1,10 +1,10 @@
 <!-- docs/02-STATUS.md -->
 # Status — verified state
 
-**Last verified:** 2026-10-24
-**Branch:** `fix/orchestration-reliability-frontend` — 26 commits ahead / 4 behind `master`
-at verification time. Recent verified work adds the real-PostgreSQL strategy route
-module, the opt-in local chat fallback, the accessibility audit, the improvement
+**Last verified:** 2026-10-25
+**Branch:** `fix/orchestration-reliability-frontend` — 29 commits ahead / 0 behind
+`origin/master` after merge `67c5222`. Recent verified work adds the real-PostgreSQL
+strategy route module, the opt-in local chat fallback, the accessibility audit, the improvement
 metric correction, durable improvement history wired into the pipeline, and Prometheus
 alert rules with one tracked monitoring set.
 The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
