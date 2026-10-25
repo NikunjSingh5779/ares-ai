@@ -2,7 +2,7 @@
 # Status — verified state
 
 **Last verified:** 2026-10-25
-**Branch:** `fix/orchestration-reliability-frontend` — 34 commits ahead / 0 behind
+**Branch:** `fix/orchestration-reliability-frontend` — 35 commits ahead / 0 behind
 `origin/master` after merge `c466fd3`. Recent verified work adds the real-PostgreSQL
 strategy route module, the opt-in local chat fallback, the accessibility audit, the
 improvement metric correction, durable improvement history wired into the pipeline,
@@ -349,6 +349,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Dependabot | Merged green PRs **#57** (`actions/setup-node` 7), **#56** (`docker/setup-buildx-action` 4), and **#67** (`tailwindcss` 4.3.3). The branch's own `postgres-integration` job now uses `actions/checkout@v7` too. Remaining Dependabot PRs fail or conflict against old bases (including #65) and are left open for rebase. |
 | Feature PRs | #104, #105, #106, and #75 remain open. They are not safely closable as superseded: #104/#105 contain error-handler and engine opt-in changes absent from this branch, #106 is a deferred local-first design, and #75 is an older partial runtime. |
 | Verification | `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass locally. GitHub Actions run **40214589411** passed all five jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`. |
+| Pull request | **PR #113** (`fix/orchestration-reliability-frontend` → `master`) opened 2026-10-25 and left unmerged. PR CI run **40215564861** passed all five jobs. `master` stays red on the pre-existing Ruff `N999` for `scripts/load-test.py` until this PR lands, because this branch renames it to `scripts/load_test.py`. |
 | Safety | Dependency and CI cleanup only; no trading, safety, auth, or API behavior changed. |
 
 ## Red / known gaps
