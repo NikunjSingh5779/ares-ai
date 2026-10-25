@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from scripts.test_free_models import flatten_agent_models, load_model_roster
 
 
 @pytest.fixture
-def sample_roster() -> dict:
+def sample_roster() -> dict[str, Any]:
     """A minimal model roster resembling configs/models.yaml."""
     return {
         "defaults": {"rate_limit_rpm": 4},
@@ -33,16 +35,24 @@ def sample_roster() -> dict:
 
 
 class TestFlattenAgentModels:
-    def test_flatten_returns_all_entries(self, sample_roster: dict) -> None:
+    def test_flatten_returns_all_entries(self, sample_roster: dict[str, Any]) -> None:
         entries = flatten_agent_models(sample_roster)
         assert len(entries) == 6  # 3 primaries + 2 fallbacks + 1 with 0 fallbacks
         assert sum(1 for e in entries if e["role"] == "primary") == 3
         assert sum(1 for e in entries if e["role"] == "fallback") == 3
 
-    def test_flatten_includes_agent_names(self, sample_roster: dict) -> None:
+    def test_flatten_includes_agent_names(self, sample_roster: dict[str, Any]) -> None:
         entries = flatten_agent_models(sample_roster)
         agents = {e["agent"] for e in entries}
         assert agents == {"market_analyst", "vision", "consensus"}
+
+    def test_flatten_skips_local_entries(self, sample_roster: dict[str, Any]) -> None:
+        sample_roster["agents"]["local_chat"] = {"primary": "local/model", "fallbacks": []}
+
+        entries = flatten_agent_models(sample_roster)
+
+        assert len(entries) == 6
+        assert all(not e["model"].startswith("local/") for e in entries)
 
     def test_flatten_empty_roster(self) -> None:
         entries = flatten_agent_models({"agents": {}})
@@ -76,7 +86,7 @@ class TestFreePriceFilter:
     """Test the OpenRouter free-model filtering logic in isolation."""
 
     @pytest.fixture
-    def sample_api_response(self) -> dict:
+    def sample_api_response(self) -> dict[str, Any]:
         """Simulate OpenRouter /api/v1/models response."""
         return {
             "data": [
@@ -88,7 +98,7 @@ class TestFreePriceFilter:
             ],
         }
 
-    def test_parse_free_models(self, sample_api_response: dict) -> None:
+    def test_parse_free_models(self, sample_api_response: dict[str, Any]) -> None:
         """Free model IDs should include only zero-priced entries."""
 
         # Can't test the async function directly without mocking httpx,
@@ -102,7 +112,7 @@ class TestFreePriceFilter:
                 free_ids.add(model["id"])
         assert free_ids == {"model-a:free", "model-b:free", "model-d:free"}
 
-    def test_not_free_models_excluded(self, sample_api_response: dict) -> None:
+    def test_not_free_models_excluded(self, sample_api_response: dict[str, Any]) -> None:
         """Paid models should not be included in free IDs."""
         free_ids = set()
         for model in sample_api_response["data"]:

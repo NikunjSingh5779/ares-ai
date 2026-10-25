@@ -77,9 +77,13 @@ def flatten_agent_models(roster: dict[str, Any]) -> list[dict[str, Any]]:
     agents = roster.get("agents", {})
     for agent_name, cfg in agents.items():
         primary = cfg.get("primary")
-        if primary:
+        # The free-tier probe only understands remote providers; local entries
+        # are opt-in and are validated by the local chat tests instead.
+        if primary and not str(primary).startswith("local/"):
             entries.append({"agent": agent_name, "role": "primary", "model": primary})
         for fb in cfg.get("fallbacks", []):
+            if str(fb).startswith("local/"):
+                continue
             entries.append({"agent": agent_name, "role": "fallback", "model": fb})
     return entries
 
@@ -256,8 +260,8 @@ async def main() -> int:  # noqa: PLR0915
     if args.dry_run:
         print(f"\n{'Agent':<20} {'Role':<10} {'Model':<55}")
         print("-" * 85)
-        for e in all_entries:
-            print(f"{e['agent']:<20} {e['role']:<10} {e['model']:<55}")
+        for entry in all_entries:
+            print(f"{entry['agent']:<20} {entry['role']:<10} {entry['model']:<55}")
         return 0
 
     # Create single LLMClient (auto-populates all provider credentials from env)

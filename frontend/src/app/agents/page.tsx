@@ -124,7 +124,7 @@ export default function AgentsPage() {
                       {agentLabels[agent] ?? agent}
                     </span>
                   </div>
-                  <span className="font-mono text-xs text-[#52525b] tracking-wider">
+                  <span className="font-mono text-xs text-[#8b8b93] tracking-wider">
                     {isExpanded ? "▲" : "▼"}
                   </span>
                 </button>

@@ -286,6 +286,46 @@ class TestSupervisorWithMockedRouter:
         # At minimum the pipeline should execute without raising
         assert result.pipeline_status is not None
 
+    @pytest.mark.asyncio
+    async def test_post_run_hook_receives_the_final_state(
+        self, mock_registry: AgentRegistry, mock_router: ModelRouter
+    ) -> None:
+        seen: list[AgentState] = []
+
+        async def hook(state: AgentState) -> None:
+            seen.append(state)
+
+        sup = Supervisor(
+            registry=mock_registry,
+            router=mock_router,
+            logger=AsyncMock(spec=AgentLogger),
+            post_run_hook=hook,
+        )
+        sup.build_graph()
+        result = await sup.run(symbol="BTC-USD", request="analyze")
+
+        assert seen == [result]
+        assert seen[0] is result
+
+    @pytest.mark.asyncio
+    async def test_post_run_hook_failure_does_not_fail_the_pipeline(
+        self, mock_registry: AgentRegistry, mock_router: ModelRouter
+    ) -> None:
+        async def hook(state: AgentState) -> None:
+            raise RuntimeError("history database down")
+
+        sup = Supervisor(
+            registry=mock_registry,
+            router=mock_router,
+            logger=AsyncMock(spec=AgentLogger),
+            post_run_hook=hook,
+        )
+        sup.build_graph()
+        result = await sup.run(symbol="BTC-USD", request="analyze")
+
+        assert isinstance(result, AgentState)
+        assert result.symbol == "BTC-USD"
+
 
 # ---------------------------------------------------------------------------
 # Log execution
@@ -390,7 +430,8 @@ class TestSupervisorGraphStructure:
         """Vision analysis runs in parallel via analysis_and_vision combined node."""
         from langgraph.graph import StateGraph
 
-        from agents.supervisor import AgentState, _build_pipeline_nodes
+        from agents.state import AgentState
+        from agents.supervisor import _build_pipeline_nodes
 
         builder = StateGraph(AgentState)
         _build_pipeline_nodes(builder)
@@ -408,7 +449,8 @@ class TestSupervisorGraphStructure:
         """Consensus receives input from both news and vision."""
         from langgraph.graph import StateGraph
 
-        from agents.supervisor import AgentState, _build_pipeline_nodes
+        from agents.state import AgentState
+        from agents.supervisor import _build_pipeline_nodes
 
         builder = StateGraph(AgentState)
         _build_pipeline_nodes(builder)

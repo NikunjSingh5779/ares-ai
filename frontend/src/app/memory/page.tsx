@@ -50,7 +50,7 @@ export default function MemoryPage() {
   const getImportanceBadge = (importance: number) => {
     if (importance >= 8) return { label: "HIGH", color: "text-[#ef4444]" };
     if (importance >= 5) return { label: "MEDIUM", color: "text-[#f59e0b]" };
-    return { label: "LOW", color: "text-[#52525b]" };
+    return { label: "LOW", color: "text-[#8b8b93]" };
   };
 
   return (
@@ -110,9 +110,9 @@ export default function MemoryPage() {
         <div className="space-y-3">
           {memory.relevant_memories.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Brain size={32} className="text-[#52525b] mb-3" />
-              <p className="font-mono text-xs text-[#52525b]">No memories stored yet</p>
-              <p className="font-mono text-[10px] text-[#3f3f46] mt-1">
+              <Brain size={32} className="text-[#8b8b93] mb-3" />
+              <p className="font-mono text-xs text-[#8b8b93]">No memories stored yet</p>
+              <p className="font-mono text-[10px] text-[#8b8b93] mt-1">
                 Memories are created after pipeline runs
               </p>
             </div>
@@ -149,7 +149,7 @@ export default function MemoryPage() {
                       {mem.content}
                     </p>
                   </div>
-                  <span className="font-mono text-[10px] text-[#52525b] shrink-0 mt-1">
+                  <span className="font-mono text-[10px] text-[#8b8b93] shrink-0 mt-1">
                     {isExpanded ? "▲" : "▼"}
                   </span>
                 </button>

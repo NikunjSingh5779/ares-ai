@@ -7,9 +7,6 @@ and feeds it into the agent pipeline when a new candle closes.
 import asyncio
 import logging
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.client import create_llm_client
 from agents.execution import ExecutionAgent
@@ -30,68 +27,12 @@ from agents.supervisor import Supervisor
 from backend.data.ingestor import MarketDataIngestor
 from backend.data.models import MarketDataRequest
 from backend.routers.live import _get_engine as _get_live_engine
-from backend.routers.trading import _get_engine
+from backend.routers.trading import get_paper_trading_ledger
+from backend.services.improvement_service import record_reflection_improvement
 from database.connection import async_session_factory
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("ares.live")
-
-
-async def _get_default_ids(session: AsyncSession) -> tuple[str, str] | None:
-    """Get default paper trading account and portfolio IDs."""
-    account_id = (await session.execute(text("SELECT id FROM accounts WHERE exchange='paper' LIMIT 1"))).scalar()
-    if not account_id:
-        return None
-    portfolio_id = (
-        await session.execute(
-            text("SELECT id FROM portfolio WHERE account_id=:account_id LIMIT 1"), {"account_id": account_id}
-        )
-    ).scalar()
-    if portfolio_id:
-        return str(account_id), str(portfolio_id)
-    return None
-
-
-async def persist_closed_trade(session: AsyncSession, trade, account_id: str, portfolio_id: str):
-    """Update positions and insert into trade_history when an SL/TP is hit."""
-    # Mark position closed
-    await session.execute(
-        text("""
-        UPDATE positions
-        SET is_open = false, closed_at = NOW()
-        WHERE symbol = :symbol AND is_open = true AND portfolio_id = :portfolio_id
-    """),
-        {"symbol": trade.symbol, "portfolio_id": portfolio_id},
-    )
-
-    # Insert trade history
-    await session.execute(
-        text("""
-        INSERT INTO trade_history
-        (
-            account_id, symbol, side, quantity, entry_price, exit_price,
-            entry_at, exit_at, pnl, pnl_pct, is_closed, strategy_name
-        )
-        VALUES
-        (
-            :account_id, :symbol, :side, :quantity, :entry_price, :exit_price,
-            :entry_at, :exit_at, :pnl, :pnl_pct, true, :strategy_name
-        )
-    """),
-        {
-            "account_id": account_id,
-            "symbol": trade.symbol,
-            "side": trade.side,
-            "quantity": trade.quantity,
-            "entry_price": trade.entry_price,
-            "exit_price": trade.exit_price,
-            "entry_at": trade.entry_at,
-            "exit_at": trade.exit_at,
-            "pnl": trade.pnl,
-            "pnl_pct": trade.pnl_pct,
-            "strategy_name": trade.strategy_name,
-        },
-    )
 
 
 async def main():
@@ -100,7 +41,9 @@ async def main():
     from backend.data.repository import MarketDataRepository
 
     ingestor = MarketDataIngestor(repository=MarketDataRepository(session_factory=async_session_factory))
-    engine = _get_engine()
+    paper_ledger = get_paper_trading_ledger()
+    await paper_ledger.initialize()
+    engine = paper_ledger.engine
     live_engine = _get_live_engine()
 
     # Resolve dependencies for Supervisor
@@ -128,7 +71,13 @@ async def main():
     registry.register("quant", agent=QuantAgent(router=router_model, ingestor=ingestor))
     registry.register("risk", agent=RiskAgent(router=router_model, ingestor=ingestor))
     registry.register(
-        "execution", agent=ExecutionAgent(engine=engine, session_factory=async_session_factory, live_engine=live_engine)
+        "execution",
+        agent=ExecutionAgent(
+            engine=engine,
+            session_factory=async_session_factory,
+            live_engine=live_engine,
+            ledger=paper_ledger,
+        ),
     )
     registry.register("journal", agent=JournalAgent(session_factory=async_session_factory))
     registry.register("reflection", agent=ReflectionAgent())
@@ -161,27 +110,29 @@ async def main():
             high_price = float(latest_candle.high)
             low_price = float(latest_candle.low)
 
-            # 2. Check SL/TP and Drawdown
+            # 2. Check SL/TP and Drawdown against the durable ledger.
+            closed_trades = await paper_ledger.process_candle(
+                symbol=symbol,
+                high=high_price,
+                low=low_price,
+                close=float(latest_candle.close),
+            )
             if live_engine:
-                # We can approximate current drawdown based on paper engine for now or live portfolio
                 summary = engine.get_summary()
                 await live_engine.evaluate_drawdown(summary.max_drawdown_pct, symbol)
-
-            closed_trades = engine.check_sl_tp(symbol=symbol, high=high_price, low=low_price)
-            if closed_trades:
-                async with async_session_factory() as session:
-                    ids = await _get_default_ids(session)
-                    if ids:
-                        for trade in closed_trades:
-                            logger.info(f"SL/TP Hit: Closed {trade.side} on {trade.symbol}. PnL: ${trade.pnl:.2f}")
-                            await persist_closed_trade(session, trade, ids[0], ids[1])
-                        await session.commit()
+            for trade in closed_trades:
+                logger.info(f"SL/TP Hit: Closed {trade.side} on {trade.symbol}. PnL: ${trade.pnl:.2f}")
 
             # 3. Trigger pipeline on new candle
             if last_candle_timestamp is None or current_timestamp > last_candle_timestamp:
                 logger.info(f"New candle closed at {current_timestamp}. Triggering analysis pipeline...")
 
-                pipeline = Supervisor(registry=registry, router=router_model, logger=logger_instance)
+                pipeline = Supervisor(
+                    registry=registry,
+                    router=router_model,
+                    logger=logger_instance,
+                    post_run_hook=record_reflection_improvement,
+                )
                 pipeline.build_graph()
 
                 async for state in pipeline.stream_analysis(symbol=symbol, request="Live analysis run"):

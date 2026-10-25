@@ -228,6 +228,12 @@ class TestSetKillSwitchActiveIntegration:
 class TestRecordLiveOrderIntegration:
     """record_live_order fires during LiveTradingEngine.execute_signal()."""
 
+    @pytest.fixture(autouse=True)
+    def _enable_live_trading(self, monkeypatch):
+        from configs.settings import settings
+
+        monkeypatch.setattr(settings, "live_trading_enabled", True)
+
     @pytest.fixture
     def engine(self):
         exchange = AsyncMock(spec=ExchangeConnector)

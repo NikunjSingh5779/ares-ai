@@ -7,10 +7,23 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 class UserBase(BaseModel):
     email: EmailStr
     display_name: str
-    role: str = "user"
+    role: str = "viewer"
 
 
 class UserCreate(UserBase):
+    password: str = Field(min_length=8)
+
+
+class UserRegister(BaseModel):
+    """Public registration payload — deliberately excludes ``role``.
+
+    The first registered account becomes the local operator (admin); later
+    registrations are rejected. A client must never be able to choose its own
+    role.
+    """
+
+    email: EmailStr
+    display_name: str
     password: str = Field(min_length=8)
 
 

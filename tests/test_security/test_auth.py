@@ -30,15 +30,15 @@ def _patch_settings(app: FastAPI, **kwargs) -> None:
 class TestVerifyAuth:
     """Tests for the verify_auth dependency."""
 
-    def test_debug_mode_no_auth(self, monkeypatch) -> None:
-        """In debug mode with default key, requests without auth get a dev user."""
+    def test_debug_mode_does_not_bypass_auth(self, monkeypatch) -> None:
+        """API_DEBUG must never turn missing credentials into a dev user."""
         from fastapi import Depends, FastAPI
 
         from backend.core.dependencies import verify_auth
         from configs.settings import settings
 
         monkeypatch.setattr(settings, "api_debug", True)
-        monkeypatch.setattr(settings, "api_secret_key", "changeme_in_production")
+        monkeypatch.setattr(settings, "api_secret_key", "prod-secret-key")
 
         app = FastAPI()
 
@@ -48,18 +48,17 @@ class TestVerifyAuth:
 
         with TestClient(app) as client:
             resp = client.get("/protected")
-            assert resp.status_code == 200
-            assert resp.json()["user"] == "dev-user-id"
+            assert resp.status_code == 401
 
-    def test_debug_mode_with_bearer_token(self, monkeypatch) -> None:
-        """In debug mode, a bearer token is accepted."""
+    def test_debug_mode_rejects_arbitrary_bearer_token(self, monkeypatch) -> None:
+        """A random bearer token is not accepted just because debug is on."""
         from fastapi import Depends, FastAPI
 
         from backend.core.dependencies import verify_auth
         from configs.settings import settings
 
         monkeypatch.setattr(settings, "api_debug", True)
-        monkeypatch.setattr(settings, "api_secret_key", "changeme_in_production")
+        monkeypatch.setattr(settings, "api_secret_key", "prod-secret-key")
 
         app = FastAPI()
 
@@ -69,18 +68,17 @@ class TestVerifyAuth:
 
         with TestClient(app) as client:
             resp = client.get("/protected", headers={"Authorization": "Bearer my-token"})
-            assert resp.status_code == 200
-            assert resp.json()["user"] == "my-token"
+            assert resp.status_code == 401
 
-    def test_debug_mode_with_api_key(self, monkeypatch) -> None:
-        """In debug mode, an X-API-Key header is accepted."""
+    def test_debug_mode_rejects_arbitrary_api_key(self, monkeypatch) -> None:
+        """A random X-API-Key is not accepted just because debug is on."""
         from fastapi import Depends, FastAPI
 
         from backend.core.dependencies import verify_auth
         from configs.settings import settings
 
         monkeypatch.setattr(settings, "api_debug", True)
-        monkeypatch.setattr(settings, "api_secret_key", "changeme_in_production")
+        monkeypatch.setattr(settings, "api_secret_key", "prod-secret-key")
 
         app = FastAPI()
 
@@ -90,8 +88,46 @@ class TestVerifyAuth:
 
         with TestClient(app) as client:
             resp = client.get("/protected", headers={"X-API-Key": "my-api-key"})
-            assert resp.status_code == 200
-            assert resp.json()["user"] == "my-api-key"
+            assert resp.status_code == 401
+
+    def test_default_key_fails_closed(self, monkeypatch) -> None:
+        """The shipped placeholder is treated as unconfigured (503)."""
+        from fastapi import Depends, FastAPI
+
+        from backend.core.dependencies import verify_auth
+        from configs.settings import settings
+
+        monkeypatch.setattr(settings, "api_debug", False)
+        monkeypatch.setattr(settings, "api_secret_key", "changeme_in_production")
+
+        app = FastAPI()
+
+        @app.get("/protected")
+        async def protected(user: str = Depends(verify_auth)):
+            return {"user": user}
+
+        with TestClient(app) as client:
+            assert client.get("/protected").status_code == 503
+            assert client.get("/protected", headers={"X-API-Key": "changeme_in_production"}).status_code == 503
+
+    def test_empty_key_fails_closed(self, monkeypatch) -> None:
+        """An empty API key rejects every request instead of matching empty input."""
+        from fastapi import Depends, FastAPI
+
+        from backend.core.dependencies import verify_auth
+        from configs.settings import settings
+
+        monkeypatch.setattr(settings, "api_secret_key", "")
+
+        app = FastAPI()
+
+        @app.get("/protected")
+        async def protected(user: str = Depends(verify_auth)):
+            return {"user": user}
+
+        with TestClient(app) as client:
+            assert client.get("/protected").status_code == 503
+            assert client.get("/protected", headers={"X-API-Key": ""}).status_code == 503
 
     def test_production_requires_auth(self, monkeypatch) -> None:
         """In production mode, requests without auth return 401."""
@@ -206,6 +242,51 @@ class TestVerifyAuth:
                 headers={"X-API-Key": "wrong-key"},
             )
             assert resp.status_code == 401
+
+    def test_jwt_signed_with_default_secret_is_rejected(self, monkeypatch) -> None:
+        """A JWT signed with the public placeholder must never authenticate."""
+        from fastapi import Depends, FastAPI
+
+        from backend.core.dependencies import verify_auth
+        from backend.core.security import create_access_token
+        from configs.settings import settings
+
+        monkeypatch.setattr(settings, "api_secret_key", "prod-secret-key")
+        monkeypatch.setattr(settings, "jwt_secret_key", "changeme_in_production")
+        token = create_access_token({"sub": "attacker@example.com"})
+
+        app = FastAPI()
+
+        @app.get("/protected")
+        async def protected(user: str = Depends(verify_auth)):
+            return {"user": user}
+
+        with TestClient(app) as client:
+            resp = client.get("/protected", headers={"Authorization": f"Bearer {token}"})
+            assert resp.status_code == 401
+
+    def test_jwt_is_accepted_when_jwt_secret_is_configured(self, monkeypatch) -> None:
+        """A JWT signed with a configured secret resolves to its subject."""
+        from fastapi import Depends, FastAPI
+
+        from backend.core.dependencies import verify_auth
+        from backend.core.security import create_access_token
+        from configs.settings import settings
+
+        monkeypatch.setattr(settings, "api_secret_key", "prod-secret-key")
+        monkeypatch.setattr(settings, "jwt_secret_key", "real-jwt-secret")
+        token = create_access_token({"sub": "operator@example.com"})
+
+        app = FastAPI()
+
+        @app.get("/protected")
+        async def protected(user: str = Depends(verify_auth)):
+            return {"user": user}
+
+        with TestClient(app) as client:
+            resp = client.get("/protected", headers={"Authorization": f"Bearer {token}"})
+            assert resp.status_code == 200
+            assert resp.json()["user"] == "operator@example.com"
 
     def test_get_current_user_id(self, monkeypatch) -> None:
         """Verify get_current_user_id extracts the credential."""

@@ -54,17 +54,15 @@ services:
 
   # ---- Vector Database ----
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.5.9
     container_name: ares-chromadb
     restart: unless-stopped
     ports:
       - "${CHROMA_PORT:-8001}:8000"
     environment:
-      - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma-data
       - ANONYMIZED_TELEMETRY=FALSE
     volumes:
-      - chromadb_data:/chroma/chroma-data
+      - chromadb_data:/data
     healthcheck:
       disable: true
     logging: *default-logging
@@ -87,6 +85,10 @@ services:
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - API_DEBUG=false
+      # The container must bind all interfaces; compose publishes it on the
+      # host. API_HOST in .env is for bare-metal local runs (127.0.0.1).
+      - API_HOST=0.0.0.0
+      - API_SECRET_KEY=${API_SECRET_KEY:?Set API_SECRET_KEY in .env (generate a unique value)}
       - LOG_LEVEL=INFO
     env_file:
       - .env
@@ -190,7 +192,8 @@ services:
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
-      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -215,8 +218,10 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
       - GF_INSTALL_PLUGINS=
     volumes:
-      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources
-      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./docker/monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./docker/monitoring/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./docker/monitoring/grafana-dashboard.json:/var/lib/grafana/dashboards/ares-ai.json:ro
+      - ./docker/monitoring/grafana-overview.json:/var/lib/grafana/dashboards/ares-overview.json:ro
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus

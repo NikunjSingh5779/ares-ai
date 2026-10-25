@@ -1,0 +1,22 @@
+# =============================================================================
+# ARES AI — production overlay
+# =============================================================================
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This turns on the application's production-safety validator. Startup fails
+# unless API_SECRET_KEY, JWT_SECRET_KEY, and the password embedded in
+# DATABASE_URL are all non-default. It does not enable live trading.
+# -----------------------------------------------------------------------------
+
+services:
+  backend:
+    environment:
+      ENVIRONMENT: production
+      API_DEBUG: "false"
+  run-live:
+    environment:
+      ENVIRONMENT: production
+  daily-reporter:
+    environment:
+      ENVIRONMENT: production

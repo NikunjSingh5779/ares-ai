@@ -49,7 +49,10 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-56 flex-col border-r border-r-[rgba(255,255,255,0.08)] bg-[#0a0a0a]">
+    <aside
+      aria-label="Sidebar"
+      className="flex w-56 flex-col border-r border-r-[rgba(255,255,255,0.08)] bg-[#0a0a0a]"
+    >
       {/* Brand */}
       <div className="flex items-center gap-2.5 border-b border-b-[rgba(255,255,255,0.08)] px-4 py-4">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6366f1] text-xs font-bold text-black shadow-lg shadow-[rgba(99,102,241,0.25)]">
@@ -59,14 +62,14 @@ export function Sidebar() {
           <span className="font-sans text-sm font-bold tracking-tight text-white">
             ARES AI
           </span>
-          <span className="text-[10px] font-medium tracking-wider text-[#52525b]">
+          <span className="text-[10px] font-medium tracking-wider text-[#8b8b93]">
             TRADING SYSTEM
           </span>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-0.5 px-2 py-4">
+      <nav aria-label="Primary" className="flex-1 space-y-0.5 px-2 py-4">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
@@ -74,9 +77,10 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              aria-current={isActive ? "page" : undefined}
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200 ${
                 isActive
-                  ? "bg-[rgba(99,102,241,0.12)] text-[#6366f1] font-semibold shadow-sm"
+                  ? "bg-[rgba(99,102,241,0.12)] text-[#818cf8] font-semibold shadow-sm"
                   : "text-[#a1a1aa] hover:bg-[rgba(255,255,255,0.04)] hover:text-white"
               }`}
             >
@@ -91,7 +95,7 @@ export function Sidebar() {
       <div className="border-t border-t-[rgba(255,255,255,0.08)] px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e] pulse-glow" />
-          <p className="font-mono text-[10px] text-[#52525b]">
+          <p className="font-mono text-[10px] text-[#8b8b93]">
             v0.1.0 · Paper Trading
           </p>
         </div>

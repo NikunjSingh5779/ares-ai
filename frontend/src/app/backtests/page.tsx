@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RefreshCw, Play, AlertCircle, BarChart3, TrendingUp, Activity } from "lucide-react";
 import { runBacktest } from "@/lib/api";
 import type { BacktestResult, ClosedTrade } from "@/types/api";
@@ -9,6 +9,12 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { EquityCurveChart } from "@/components/EquityCurveChart";
 
 const SYMBOLS = ["BTC-USD", "ETH-USD", "SOL-USD", "AAPL", "TSLA", "MSFT"];
+const BACKTEST_STRATEGIES = [
+  { value: "momentum", label: "Momentum" },
+  { value: "mean_reversion", label: "Mean Reversion" },
+  { value: "trend_following", label: "Trend Following" },
+  { value: "breakout", label: "Breakout" },
+] as const;
 
 export default function BacktestPage() {
   const [loading, setLoading] = useState(false);
@@ -21,6 +27,13 @@ export default function BacktestPage() {
   const [strategy, setStrategy] = useState("momentum");
   const [daysBack, setDaysBack] = useState(365);
   const [initialCapital, setInitialCapital] = useState(100000);
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("strategy");
+    if (requested && BACKTEST_STRATEGIES.some((option) => option.value === requested)) {
+      setStrategy(requested);
+    }
+  }, []);
 
   const handleRun = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +129,7 @@ export default function BacktestPage() {
         </div>
         {result && (
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] text-[#52525b]">
+            <span className="font-mono text-[10px] text-[#8b8b93]">
               {result.symbol} · {result.trades.length} trades · {result.signals_generated} signals
             </span>
           </div>
@@ -131,7 +144,7 @@ export default function BacktestPage() {
 
             {/* Symbol */}
             <div>
-              <label className="font-mono text-[10px] text-[#52525b] uppercase tracking-wider">Symbol</label>
+              <label className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Symbol</label>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {SYMBOLS.map((sym) => (
                   <button
@@ -152,22 +165,26 @@ export default function BacktestPage() {
 
             {/* Strategy */}
             <div>
-              <label className="font-mono text-[10px] text-[#52525b] uppercase tracking-wider">Strategy</label>
+              <label htmlFor="backtest-strategy" className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Strategy</label>
               <select
+                id="backtest-strategy"
                 value={strategy}
                 onChange={(e) => setStrategy(e.target.value)}
                 className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-3 py-2 font-mono text-xs text-white outline-none focus:border-[#6366f1]"
               >
-                <option value="momentum" className="bg-[#1a1a1a]">Momentum</option>
-                <option value="mean_reversion" className="bg-[#1a1a1a]">Mean Reversion</option>
-                <option value="breakout" className="bg-[#1a1a1a]">Breakout</option>
+                {BACKTEST_STRATEGIES.map((option) => (
+                  <option key={option.value} value={option.value} className="bg-[#1a1a1a]">
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 
             {/* Interval */}
             <div>
-              <label className="font-mono text-[10px] text-[#52525b] uppercase tracking-wider">Interval</label>
+              <label htmlFor="backtest-interval" className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Interval</label>
               <select
+                id="backtest-interval"
                 value={interval}
                 onChange={(e) => setInterval(e.target.value)}
                 className="mt-1.5 w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-3 py-2 font-mono text-xs text-white outline-none focus:border-[#6366f1]"
@@ -180,8 +197,9 @@ export default function BacktestPage() {
 
             {/* Days Back */}
             <div>
-              <label className="font-mono text-[10px] text-[#52525b] uppercase tracking-wider">Days Back</label>
+              <label htmlFor="backtest-days" className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Days Back</label>
               <input
+                id="backtest-days"
                 type="number"
                 value={daysBack}
                 onChange={(e) => setDaysBack(Number(e.target.value))}
@@ -193,8 +211,9 @@ export default function BacktestPage() {
 
             {/* Initial Capital */}
             <div>
-              <label className="font-mono text-[10px] text-[#52525b] uppercase tracking-wider">Initial Capital ($)</label>
+              <label htmlFor="backtest-capital" className="font-mono text-[10px] text-[#8b8b93] uppercase tracking-wider">Initial Capital ($)</label>
               <input
+                id="backtest-capital"
                 type="number"
                 value={initialCapital}
                 onChange={(e) => setInitialCapital(Number(e.target.value))}
@@ -230,12 +249,12 @@ export default function BacktestPage() {
             <>
               {/* Period */}
               <div className="flex items-center gap-2 rounded-xl border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] px-4 py-2.5">
-                <Activity size={12} className="text-[#52525b]" />
-                <span className="font-mono text-[10px] text-[#52525b]">
+                <Activity size={12} className="text-[#8b8b93]" />
+                <span className="font-mono text-[10px] text-[#8b8b93]">
                   {result.start_date ? new Date(result.start_date).toLocaleDateString() : "N/A"} → {result.end_date ? new Date(result.end_date).toLocaleDateString() : "N/A"}
                 </span>
-                <span className="font-mono text-[10px] text-[#3f3f46]">·</span>
-                <span className="font-mono text-[10px] text-[#52525b]">
+                <span className="font-mono text-[10px] text-[#8b8b93]">·</span>
+                <span className="font-mono text-[10px] text-[#8b8b93]">
                   Initial: ${m.initial_capital.toLocaleString()} → Final: ${m.final_value.toLocaleString()}
                 </span>
               </div>
@@ -326,7 +345,7 @@ export default function BacktestPage() {
                 <div className="border-b border-[rgba(255,255,255,0.06)] px-5 py-4">
                   <div className="flex items-center justify-between">
                     <p className="text-label">Trade History</p>
-                    <span className="font-mono text-xs text-[#52525b]">{result.trades.length} trades</span>
+                    <span className="font-mono text-xs text-[#8b8b93]">{result.trades.length} trades</span>
                   </div>
                 </div>
                 <DataTable
@@ -338,7 +357,7 @@ export default function BacktestPage() {
             </>
           ) : (
             <div className="flex h-full min-h-[400px] flex-col items-center justify-center rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)]">
-              <TrendingUp size={48} className="mb-4 text-[#52525b]" />
+              <TrendingUp size={48} className="mb-4 text-[#8b8b93]" />
               <p className="font-mono text-sm text-[#a1a1aa]">
                 Configure parameters and run a backtest to see results
               </p>

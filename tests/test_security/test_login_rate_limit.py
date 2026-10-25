@@ -324,7 +324,8 @@ class TestGetClientIP:
 def app_with_mock_user(monkeypatch) -> FastAPI:
     """Build a minimal FastAPI app with the auth router, mocking the DB layer.
 
-    Returns a (app, mock_user_service) tuple.
+    The mock app-level settings provide a test API key and JWT secret so the
+    auth endpoints can be exercised without the real environment.
     """
     from backend.routers import auth as auth_router
 
@@ -336,6 +337,7 @@ def app_with_mock_user(monkeypatch) -> FastAPI:
             user = MagicMock()
             user.email = "existing@example.com"
             user.password_hash = "mock_hash_that_wont_be_checked"
+            user.role = "admin"
             user.is_active = True
             return user
         return None
@@ -349,12 +351,21 @@ def app_with_mock_user(monkeypatch) -> FastAPI:
         user.is_active = True
         return user
 
+    async def count_users(db):
+        return 0
+
     mock_service.get_by_email = get_by_email
     mock_service.create_user = create_user
+    mock_service.count_users = count_users
 
     monkeypatch.setattr(auth_router, "user_service", mock_service)
     # Mock verify_password so test doesn't depend on bcrypt/passlib compatibility
     monkeypatch.setattr(auth_router, "verify_password", lambda pw, _h: pw == "correct-password")
+    # Login issues JWTs only when the JWT secret is configured.
+    from configs.settings import settings
+
+    monkeypatch.setattr(settings, "jwt_secret_key", "test-jwt-secret")
+    monkeypatch.setattr(settings, "api_secret_key", "test-api-key")
 
     app = FastAPI()
     app.include_router(auth_router.router)
@@ -391,8 +402,33 @@ class TestLoginEndpointRateLimit:
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             # Without a real password hash match, we expect 401 — not 429
-            assert resp.status_code in (200, 401)
+            assert resp.status_code == 200
             assert "Retry-After" not in resp.headers
+            from jose import jwt
+
+            from configs.settings import settings
+
+            payload = jwt.decode(
+                resp.json()["access_token"],
+                settings.jwt_secret_key,
+                algorithms=[settings.jwt_algorithm],
+            )
+            assert payload["role"] == "admin"
+
+    def test_login_requires_configured_jwt_secret(self, app_with_mock_user, monkeypatch) -> None:
+        """A login must never return a token that verify_auth will reject."""
+        from configs.settings import settings
+
+        monkeypatch.setattr(settings, "jwt_secret_key", "changeme_in_production")
+        app = app_with_mock_user
+        with TestClient(app) as client:
+            resp = client.post(
+                "/auth/login",
+                data={"username": "existing@example.com", "password": "correct-password"},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            assert resp.status_code == 503
+            assert "JWT login is not configured" in resp.json()["detail"]
 
     def test_login_returns_429_after_exceeding_limit(self, monkeypatch, app_with_mock_user) -> None:
         """Exceed the narrow limit and verify 429."""
@@ -577,7 +613,18 @@ class TestLoginEndpointRateLimit:
 
 
 class TestRegisterEndpoint:
-    """Verify /auth/register is NOT rate-limited by this feature."""
+    """Verify /auth/register is a one-time, role-safe, operator-key bootstrap."""
+
+    auth_headers = {"X-API-Key": "test-api-key"}
+
+    def test_register_requires_api_key(self, app_with_mock_user) -> None:
+        app = app_with_mock_user
+        with TestClient(app) as client:
+            resp = client.post(
+                "/auth/register",
+                json={"email": "new@example.com", "display_name": "New User", "password": "pass1234"},
+            )
+            assert resp.status_code == 401
 
     def test_register_works(self, app_with_mock_user) -> None:
         app = app_with_mock_user
@@ -585,8 +632,45 @@ class TestRegisterEndpoint:
             resp = client.post(
                 "/auth/register",
                 json={"email": "new@example.com", "display_name": "New User", "password": "pass1234"},
+                headers=self.auth_headers,
             )
             assert resp.status_code == 201
+            # The server assigns the role; it is not accepted from the client.
+            assert resp.json()["role"] == "admin"
+
+    def test_register_ignores_client_supplied_role(self, app_with_mock_user) -> None:
+        app = app_with_mock_user
+        with TestClient(app) as client:
+            resp = client.post(
+                "/auth/register",
+                json={
+                    "email": "attacker@example.com",
+                    "display_name": "Attacker",
+                    "password": "pass1234",
+                    "role": "admin",
+                },
+                headers=self.auth_headers,
+            )
+            assert resp.status_code == 201
+            assert resp.json()["role"] == "admin"
+
+    def test_register_closed_after_first_user(self, app_with_mock_user, monkeypatch) -> None:
+        app = app_with_mock_user
+        from backend.routers import auth as auth_router
+
+        async def count_one(db):
+            return 1
+
+        monkeypatch.setattr(auth_router.user_service, "count_users", count_one)  # type: ignore[attr-defined]
+
+        with TestClient(app) as client:
+            resp = client.post(
+                "/auth/register",
+                json={"email": "second@example.com", "display_name": "Second", "password": "pass1234"},
+                headers=self.auth_headers,
+            )
+            assert resp.status_code == 403
+            assert "registration is closed" in resp.json()["detail"].lower()
 
 
 # ======================================================================

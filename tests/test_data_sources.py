@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -57,6 +58,7 @@ class TestYahooFinanceSource:
 
         assert len(candles) == 3
         assert candles[0].symbol == "AAPL"
+        assert candles[0].timestamp == datetime(2024, 1, 1, tzinfo=UTC)
         assert candles[0].open == 100.0
         assert candles[0].close == 104.0
         assert candles[2].close == 106.0
@@ -136,6 +138,7 @@ class TestCoinGeckoSource:
 
         assert len(candles) == 3
         assert candles[0].symbol == "BTC-USD"
+        assert candles[0].timestamp == datetime(2024, 1, 1, tzinfo=UTC)
         assert candles[0].open == 42000.0
         assert candles[0].close == 42200.0
         assert candles[0].volume == 0.0  # CoinGecko OHLC doesn't include volume

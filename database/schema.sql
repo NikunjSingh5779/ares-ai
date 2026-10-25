@@ -1,7 +1,7 @@
 -- =============================================================================
 -- ARES AI — Database Schema (PostgreSQL 16+)
 -- =============================================================================
--- All 17 tables for the ARES AI trading platform.
+-- All 21 tables for the ARES AI trading platform.
 -- Run this against a fresh PostgreSQL 16+ database to initialize.
 -- =============================================================================
 
@@ -18,8 +18,8 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     display_name VARCHAR(100) NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'user'
-        CHECK (role IN ('user', 'admin', 'super_admin')),
+    role VARCHAR(20) NOT NULL DEFAULT 'viewer'
+        CHECK (role IN ('viewer', 'operator', 'admin', 'super_admin')),
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -41,19 +41,36 @@ CREATE TABLE accounts (
 );
 
 -- ===========================================================================
+-- APPLICATION SETTINGS
+-- ===========================================================================
+-- One row of non-safety dashboard preferences. Trading limits stay in code
+-- and configuration; they are never stored or raised through this table.
+
+CREATE TABLE app_settings (
+    id SMALLINT PRIMARY KEY CHECK (id = 1),
+    preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO app_settings (id) VALUES (1);
+
+-- ===========================================================================
 -- PORTFOLIO & POSITIONS
 -- ===========================================================================
 
 CREATE TABLE portfolio (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    initial_capital NUMERIC(20, 8) NOT NULL DEFAULT 100000,
     total_value NUMERIC(20, 8) NOT NULL DEFAULT 0,
     cash_balance NUMERIC(20, 8) NOT NULL DEFAULT 0,
     invested_amount NUMERIC(20, 8) NOT NULL DEFAULT 0,
     unrealized_pnl NUMERIC(20, 8) NOT NULL DEFAULT 0,
     realized_pnl NUMERIC(20, 8) NOT NULL DEFAULT 0,
+    margin_used NUMERIC(20, 8) NOT NULL DEFAULT 0,
     roi_pct NUMERIC(10, 4) NOT NULL DEFAULT 0,
     max_drawdown_pct NUMERIC(10, 4) NOT NULL DEFAULT 0,
+    equity_curve JSONB NOT NULL DEFAULT '[]'::jsonb,
     currency VARCHAR(10) NOT NULL DEFAULT 'USD',
     last_rebalanced_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -66,8 +83,12 @@ CREATE TABLE positions (
     symbol VARCHAR(20) NOT NULL,
     asset_type VARCHAR(20) NOT NULL
         CHECK (asset_type IN ('crypto', 'stock', 'forex', 'commodity', 'etf', 'option')),
+    side VARCHAR(10) NOT NULL DEFAULT 'long'
+        CHECK (side IN ('long', 'short')),
     quantity NUMERIC(20, 8) NOT NULL DEFAULT 0,
     entry_price NUMERIC(20, 8) NOT NULL DEFAULT 0,
+    entry_commission NUMERIC(20, 8) NOT NULL DEFAULT 0,
+    margin NUMERIC(20, 8) NOT NULL DEFAULT 0,
     current_price NUMERIC(20, 8) NOT NULL DEFAULT 0,
     market_value NUMERIC(20, 8) NOT NULL DEFAULT 0,
     unrealized_pnl NUMERIC(20, 8) NOT NULL DEFAULT 0,
@@ -105,6 +126,7 @@ CREATE TABLE orders (
     avg_fill_price NUMERIC(20, 8),
     status VARCHAR(20) NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'open', 'filled', 'partially_filled', 'cancelled', 'rejected', 'expired')),
+    client_order_id VARCHAR(100),
     exchange_order_id VARCHAR(100),
     failure_reason TEXT,
     agent_rationale JSONB,
@@ -115,6 +137,9 @@ CREATE TABLE orders (
 CREATE INDEX idx_orders_account_id ON orders(account_id);
 CREATE INDEX idx_orders_status ON orders(status);
 CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
+CREATE UNIQUE INDEX uq_orders_client_order_id
+    ON orders(account_id, client_order_id)
+    WHERE client_order_id IS NOT NULL;
 
 -- ===========================================================================
 -- SIGNALS
@@ -152,15 +177,20 @@ CREATE TABLE trade_history (
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     signal_id UUID REFERENCES signals(id),
     symbol VARCHAR(20) NOT NULL,
+    position_side VARCHAR(10) NOT NULL DEFAULT 'long'
+        CHECK (position_side IN ('long', 'short')),
     side VARCHAR(10) NOT NULL CHECK (side IN ('buy', 'sell')),
     quantity NUMERIC(20, 8) NOT NULL,
     entry_price NUMERIC(20, 8) NOT NULL,
     exit_price NUMERIC(20, 8),
+    entry_commission NUMERIC(20, 8) NOT NULL DEFAULT 0,
+    exit_commission NUMERIC(20, 8) NOT NULL DEFAULT 0,
     entry_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     exit_at TIMESTAMPTZ,
     pnl NUMERIC(20, 8),
     pnl_pct NUMERIC(10, 4),
     roi_pct NUMERIC(10, 4),
+    exit_reason VARCHAR(30) NOT NULL DEFAULT 'signal',
     is_closed BOOLEAN NOT NULL DEFAULT false,
     strategy_name VARCHAR(100),
     agent_rationale JSONB,
@@ -194,6 +224,53 @@ CREATE TABLE journal (
 CREATE INDEX idx_journal_trade_id ON journal(trade_id);
 CREATE INDEX idx_journal_entry_type ON journal(entry_type);
 CREATE INDEX idx_journal_created_at ON journal(created_at DESC);
+
+-- ===========================================================================
+-- REFLECTION RUNS AND IMPROVEMENT RECORDS
+-- ===========================================================================
+
+-- Structured reflection output. The journal stores a human-readable summary;
+-- this table keeps the fields the improvement engine aggregates across runs.
+CREATE TABLE reflection_runs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id UUID,
+    request_id UUID,
+    symbol VARCHAR(30) NOT NULL DEFAULT '',
+    evaluation TEXT NOT NULL,
+    confidence_accuracy NUMERIC(5, 2) NOT NULL
+        CHECK (confidence_accuracy >= 0 AND confidence_accuracy <= 100),
+    improvement_suggestions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    knowledge_updates JSONB NOT NULL DEFAULT '[]'::jsonb,
+    errors JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_reflection_runs_created_at ON reflection_runs(created_at DESC);
+CREATE INDEX idx_reflection_runs_symbol ON reflection_runs(symbol);
+
+-- Generated suggestions are advisory. Applying one records operator review;
+-- it never mutates configuration or a safety threshold.
+CREATE TABLE improvement_records (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    reflection_run_id UUID REFERENCES reflection_runs(id) ON DELETE SET NULL,
+    category VARCHAR(30) NOT NULL
+        CHECK (category IN ('parameter_tuning', 'agent_config', 'risk_calibration', 'data_quality')),
+    description TEXT NOT NULL,
+    severity VARCHAR(10) NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+    metric_before DOUBLE PRECISION,
+    metric_after DOUBLE PRECISION,
+    rationale TEXT NOT NULL DEFAULT '',
+    suggested_params JSONB NOT NULL DEFAULT '{}'::jsonb,
+    applied BOOLEAN NOT NULL DEFAULT false,
+    applied_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_improvement_records_run_unique
+    ON improvement_records(reflection_run_id, category, description);
+CREATE INDEX idx_improvement_records_created_at ON improvement_records(created_at DESC);
+CREATE INDEX idx_improvement_records_category ON improvement_records(category);
+CREATE INDEX idx_improvement_records_unapplied ON improvement_records(applied) WHERE applied = false;
 
 -- ===========================================================================
 -- STRATEGIES
@@ -495,6 +572,10 @@ CREATE TRIGGER trg_users_updated_at
 
 CREATE TRIGGER trg_accounts_updated_at
     BEFORE UPDATE ON accounts
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_app_settings_updated_at
+    BEFORE UPDATE ON app_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER trg_portfolio_updated_at

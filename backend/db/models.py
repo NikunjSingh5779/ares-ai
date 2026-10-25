@@ -25,7 +25,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
+    role: Mapped[str] = mapped_column(String(20), default="viewer", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -126,6 +126,13 @@ class Order(Base):
         Index("idx_orders_account_id", "account_id"),
         Index("idx_orders_status", "status"),
         Index("idx_orders_created_at", "created_at", postgresql_ops={"created_at": "DESC"}),
+        Index(
+            "uq_orders_client_order_id",
+            "account_id",
+            "client_order_id",
+            unique=True,
+            postgresql_where="client_order_id IS NOT NULL",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -138,6 +145,7 @@ class Order(Base):
     price: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)
     stop_price: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    client_order_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     exchange_order_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     filled_quantity: Mapped[float] = mapped_column(Numeric(20, 8), default=0, nullable=False)
     avg_fill_price: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)

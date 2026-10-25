@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.dependencies import get_current_user, get_db
+from backend.core.roles import ADMIN_ROLES
 from backend.db.models import User
 from backend.schemas.user import UserResponse
 from backend.services import user_service
@@ -26,7 +27,7 @@ async def get_user(
     user_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
 ) -> UserResponse:
     """Get a specific user by ID. Only admins can fetch arbitrary users."""
-    if current_user.role != "admin" and current_user.id != user_id:
+    if current_user.role not in ADMIN_ROLES and current_user.id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
     user = await user_service.get_by_id(db, user_id)

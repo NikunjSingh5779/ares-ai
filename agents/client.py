@@ -1,6 +1,6 @@
 """Generic async HTTP client for LLM API calls.
 
-Supports OpenRouter and OpenCode-compatible APIs.
+Supports OpenRouter, OpenCode, and opt-in local OpenAI-compatible servers.
 Handles timeouts, retryable errors, and graceful degradation.
 """
 
@@ -28,7 +28,7 @@ class LLMClient:
         self,
         api_key: str | None = None,
         base_url: str | None = None,
-        providers: dict[str, dict[str, str]] | None = None,
+        providers: dict[str, dict[str, Any]] | None = None,
         default_timeout: int = 60,
     ) -> None:
         self.default_timeout = default_timeout
@@ -39,7 +39,7 @@ class LLMClient:
             if "open_router" not in self.providers:
                 self.providers["open_router"] = {
                     "api_key": api_key or "",
-                    "base_url": base_url or os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1"),  # type: ignore[dict-item]
+                    "base_url": base_url or os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1"),
                 }
             if "default" not in self.providers:
                 self.providers["default"] = self.providers["open_router"]
@@ -97,7 +97,7 @@ class LLMClient:
                 # Fallback to OpenRouter default if no config found
                 config = {"api_key": "", "base_url": "https://openrouter.ai/api/v1"}
 
-            api_key = config.get("api_key", "").strip()
+            api_key = str(config.get("api_key", "")).strip()
             headers = {
                 "Content-Type": "application/json",
             }
@@ -107,10 +107,12 @@ class LLMClient:
                 headers["HTTP-Referer"] = "https://localhost:3000"
                 headers["X-Title"] = "BacktestEngine"
 
+            base_url = str(config.get("base_url", "")).rstrip("/")
+            timeout = float(config.get("timeout", self.default_timeout))
             self._clients[provider] = httpx.AsyncClient(
-                base_url=config.get("base_url", ""),
+                base_url=base_url,
                 headers=headers,
-                timeout=self.default_timeout,
+                timeout=timeout,
             )
         return self._clients[provider]
 
@@ -120,7 +122,7 @@ class LLMClient:
         messages: list[dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        timeout: int | None = None,
+        timeout: float | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Send a chat completion request.
@@ -157,6 +159,9 @@ class LLMClient:
         elif clean_model.startswith("mistral/"):
             clean_model = clean_model.replace("mistral/", "", 1)
             provider = "mistral"
+        elif clean_model.startswith("local/"):
+            clean_model = clean_model.replace("local/", "", 1)
+            provider = "local"
 
         self._check_circuit_breaker(model)
         client = self._get_client(provider)
@@ -168,12 +173,21 @@ class LLMClient:
             "max_tokens": max_tokens,
             **kwargs,
         }
+        if provider == "local":
+            # Local reasoning tokens otherwise consume a small max_tokens budget
+            # and can leave message.content null. Chat fails closed on empty text.
+            payload.setdefault("reasoning_effort", "off")
+
+        provider_config = self.providers.get(provider) or {}
+        request_timeout = (
+            float(timeout) if timeout is not None else float(provider_config.get("timeout", self.default_timeout))
+        )
 
         try:
             response = await client.post(
                 "/chat/completions",
                 json=payload,
-                timeout=timeout or self.default_timeout,
+                timeout=request_timeout,
             )
             response.raise_for_status()
 
@@ -325,7 +339,7 @@ def create_llm_client() -> LLMClient | NoOpLLMClient:
     """Create the appropriate LLM client based on available configuration."""
     from backend.core.config import settings
 
-    providers = {}
+    providers: dict[str, dict[str, Any]] = {}
     if _is_valid_key(settings.openrouter_api_key):
         providers["open_router"] = {
             "api_key": settings.openrouter_api_key.strip(),
@@ -342,6 +356,13 @@ def create_llm_client() -> LLMClient | NoOpLLMClient:
         providers["mistral"] = {
             "api_key": getattr(settings, "mistral_api_key").strip(),
             "base_url": settings.mistral_base_url,
+        }
+    if getattr(settings, "local_llm_enabled", False):
+        # No API key: the local server is bound to the operator's machine.
+        providers["local"] = {
+            "api_key": "",
+            "base_url": settings.local_llm_base_url.rstrip("/"),
+            "timeout": settings.local_llm_timeout_seconds,
         }
 
     if providers:

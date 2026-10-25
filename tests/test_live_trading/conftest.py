@@ -1,6 +1,18 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _enable_live_trading_for_engine_tests(monkeypatch):
+    """Engine unit tests exercise live mechanics, not the paper-only default.
+
+    The paper-only gate itself is covered by test_engine_paper_only.py and
+    the route tests that explicitly disable it.
+    """
+    from configs.settings import settings
+
+    monkeypatch.setattr(settings, "live_trading_enabled", True)
+
+
 @pytest.fixture
 def clear_kill_switch_redis():
     """Clear Redis-backed kill switch state between tests.

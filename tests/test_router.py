@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from agents.circuit_breaker import CircuitBreakerRegistry
-from agents.client import NoOpLLMClient
+from agents.client import LLMClient, NoOpLLMClient
+from agents.local_gate import LocalModelBusyError
 from agents.queue import QueueRegistry
 from agents.retry import RetryConfig
 from agents.router import ModelRouter, RouterResult
@@ -235,3 +236,41 @@ class TestModelRouterMocked:
         assert result.degraded is False
         assert "model-a" in called_models
         assert "model-b" in called_models
+
+    @pytest.mark.asyncio
+    async def test_local_busy_is_not_a_model_failure(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class BusyGate:
+            def __init__(self) -> None:
+                self.released = False
+
+            async def acquire(self) -> None:
+                raise LocalModelBusyError("local model is busy")
+
+            def release(self) -> None:
+                self.released = True
+
+        gate = BusyGate()
+        monkeypatch.setattr("agents.router.get_local_model_gate", lambda: gate)
+        mock_client = AsyncMock(spec=LLMClient)
+
+        router = ModelRouter(
+            llm_client=mock_client,
+            breaker_registry=CircuitBreakerRegistry(),
+            queue_registry=QueueRegistry(),
+            retry_config=RetryConfig(max_retries=2, base_delay=0.01),
+        )
+
+        result = await router.execute(
+            model_chain=["local/qwen3.6-35b-a3b-ud-q4_k_m"],
+            messages=[{"role": "user", "content": "test"}],
+        )
+
+        assert result.success is False
+        assert result.degraded is True
+        assert result.errors[0]["error_type"] == "local_model_busy"
+        mock_client.chat_completion.assert_not_awaited()
+        assert gate.released is False
+        assert router.breakers.get("local/qwen3.6-35b-a3b-ud-q4_k_m").failure_count == 0

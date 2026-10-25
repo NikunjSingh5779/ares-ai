@@ -25,6 +25,7 @@ from agents.retry import RetryConfig
 from agents.router import ModelRouter
 from agents.state import AgentState
 from agents.supervisor import Supervisor
+from backend.services.improvement_service import record_reflection_improvement
 from database.connection import async_session_factory
 
 router = APIRouter(prefix="/api/v1", tags=["trading"])
@@ -88,10 +89,11 @@ def _get_supervisor() -> Supervisor:
     from backend.data.ingestor import MarketDataIngestor
     from backend.data.repository import MarketDataRepository
     from backend.routers.live import _get_engine as get_live_engine
-    from backend.routers.trading import _get_engine
+    from backend.routers.trading import get_paper_trading_ledger
     from database.connection import async_session_factory
 
-    shared_paper_engine = _get_engine()
+    paper_ledger = get_paper_trading_ledger()
+    shared_paper_engine = paper_ledger.engine
     live_engine = get_live_engine()
     shared_ingestor = MarketDataIngestor(repository=MarketDataRepository(session_factory=async_session_factory))
 
@@ -101,7 +103,10 @@ def _get_supervisor() -> Supervisor:
     registry.register(
         "execution",
         agent=ExecutionAgent(
-            engine=shared_paper_engine, live_engine=live_engine, session_factory=async_session_factory
+            engine=shared_paper_engine,
+            live_engine=live_engine,
+            session_factory=async_session_factory,
+            ledger=paper_ledger,
         ),
     )
     registry.register("journal", agent=JournalAgent(session_factory=async_session_factory))
@@ -126,6 +131,7 @@ def _get_supervisor() -> Supervisor:
         registry=registry,
         router=router_model,
         logger=logger,
+        post_run_hook=record_reflection_improvement,
     )
     supervisor.build_graph()
 

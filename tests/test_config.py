@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
+from agents.risk import MAX_POSITION_SIZE_PCT
 from configs.settings import Settings, settings
 
 MODELS_YAML_PATH = Path(__file__).resolve().parent.parent / "configs" / "models.yaml"
@@ -26,6 +28,42 @@ def test_settings_defaults() -> None:
     assert settings.paper_trading_initial_capital == 100000.0
     assert settings.default_trading_mode == "human_approval"
     assert settings.max_drawdown_pct == 20.0
+
+
+def test_position_cap_is_code_enforced_not_environment_configurable() -> None:
+    """The 2% exposure cap must not be weakened by an environment override."""
+    assert "max_position_size_pct" not in Settings.model_fields
+    assert MAX_POSITION_SIZE_PCT == 2.0
+
+
+def test_paper_accounting_defaults_are_realistic() -> None:
+    """The application should not run paper trades with frictionless fills."""
+    fields = Settings.model_fields
+    assert fields["paper_trading_commission_pct"].default == 0.001
+    assert fields["paper_trading_slippage_pct"].default == 0.001
+
+
+def test_paper_writer_lock_timeout_is_positive() -> None:
+    """A non-positive lock timeout would make every paper write fail busy."""
+    assert Settings.model_fields["paper_trading_writer_lock_timeout_seconds"].default == 10.0
+    with pytest.raises(ValidationError):
+        Settings(paper_trading_writer_lock_timeout_seconds=0)
+
+
+def test_production_compose_overlays_enable_production() -> None:
+    """Production overlays must actually flip ENVIRONMENT=production."""
+    root = Path(__file__).resolve().parent.parent
+    overlays = {
+        root / "docker-compose.prod.yml": {"backend", "run-live", "daily-reporter"},
+        root / "docker" / "docker-compose.prod.yml": {"backend"},
+    }
+    for path, required_services in overlays.items():
+        data = yaml.safe_load(path.read_text())
+        services = data["services"]
+        for service in required_services:
+            assert services[service]["environment"]["ENVIRONMENT"] == "production", (
+                f"{path.name} must set ENVIRONMENT=production for {service}"
+            )
 
 
 def test_models_yaml_exists() -> None:
@@ -63,18 +101,17 @@ def test_all_agents_have_models() -> None:
         assert agents[agent_name]["primary"], f"{agent_name} agent missing primary model"
 
 
-def test_vision_agent_fallback_count() -> None:
-    """Vision agent fallback count should match expected."""
+def test_vision_agent_fallbacks_are_configured_and_free() -> None:
+    """Vision fallbacks must exist and stay on the free tier.
+
+    The roster now has validated image-capable free models; a text-only
+    fallback would fail at runtime, so every entry must be a free ID.
+    """
     data = yaml.safe_load(MODELS_YAML_PATH.read_text())
     vision = data["agents"].get("vision", {})
     fallbacks = vision.get("fallbacks", [])
-    # The Vision Agent requires VL (Vision-Language) capabilities.
-    # Currently, there are no reliable free-tier VL fallbacks. If the primary
-    # VL model is down, it is intentional that it degrades gracefully (skips)
-    # without trying an incompatible text-only model.
-    assert len(fallbacks) == 0, (
-        f"Vision agent should have exactly 0 fallbacks intentionally configured. Got: {fallbacks}"
-    )
+    assert len(fallbacks) >= 1, "Vision agent should have at least one fallback"
+    assert all(fallback.endswith(":free") or fallback.endswith("/free") for fallback in fallbacks)
 
 
 def test_circuit_breaker_defaults() -> None:
@@ -167,3 +204,29 @@ def test_production_allows_custom_secrets() -> None:
     )
     assert s.environment == "production"
     assert s.api_secret_key == "a1b2c3d4e5-production-secret"
+
+
+def test_local_llm_defaults_are_opt_in_and_single_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in (
+        "LOCAL_LLM_ENABLED",
+        "LOCAL_LLM_BASE_URL",
+        "LOCAL_LLM_TIMEOUT_SECONDS",
+        "LOCAL_LLM_MAX_CONCURRENT",
+        "LOCAL_LLM_QUEUE_TIMEOUT_SECONDS",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    s = Settings()
+
+    assert s.local_llm_enabled is False
+    assert s.local_llm_base_url == "http://127.0.0.1:8080/v1"
+    assert s.local_llm_timeout_seconds == 90.0
+    assert s.local_llm_max_concurrent == 1
+    assert s.local_llm_queue_timeout_seconds == 20.0
+
+
+def test_local_llm_rejects_invalid_gate_limits() -> None:
+    with pytest.raises(ValidationError):
+        Settings(local_llm_max_concurrent=0)
+    with pytest.raises(ValidationError):
+        Settings(local_llm_queue_timeout_seconds=0)

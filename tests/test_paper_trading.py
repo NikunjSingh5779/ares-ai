@@ -92,8 +92,12 @@ class TestOpenPositions:
 
         summary = engine.get_summary()
         assert summary.open_positions == 1
-        # 10 ETH at $3k should cost $30k
-        assert summary.cash == pytest.approx(70000.0)
+        # Short proceeds are credited to cash ($130k) while the $30k notional
+        # is tracked as margin. Equity stays at the initial $100k.
+        assert summary.cash == pytest.approx(130000.0)
+        assert summary.margin_used == pytest.approx(30000.0)
+        assert summary.equity == pytest.approx(100000.0)
+        assert summary.total_pnl == pytest.approx(0.0)
 
     def test_quantity_scaled_to_cash(self, engine: PaperTradingEngine) -> None:
         """Requesting more than available cash should scale down."""
@@ -219,20 +223,20 @@ class TestStopLossTakeProfit:
         closed = engine.check_sl_tp("BTC-USD", high=52000.0, low=49000.0)
         assert len(closed) == 0
 
-    def test_sl_and_tp_both_reached_long_tp_checked_first(self, engine: PaperTradingEngine) -> None:
-        """For long, take_profit is checked before stop_loss."""
+    def test_sl_and_tp_both_reached_long_assumes_stop_first(self, engine: PaperTradingEngine) -> None:
+        """When a candle spans both levels, assume the adverse long exit."""
         engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=49000.0, take_profit=51000.0)
         # Both TP and SL levels breached
         closed = engine.check_sl_tp("BTC-USD", high=51500.0, low=48500.0)
         assert len(closed) == 1
-        assert closed[0].exit_reason == "take_profit"  # TP checked first
+        assert closed[0].exit_reason == "stop_loss"
 
-    def test_sl_and_tp_both_reached_short_tp_checked_first(self, engine: PaperTradingEngine) -> None:
-        """For short, take_profit is checked before stop_loss."""
+    def test_sl_and_tp_both_reached_short_assumes_stop_first(self, engine: PaperTradingEngine) -> None:
+        """When a candle spans both levels, assume the adverse short exit."""
         engine.execute_signal("ETH-USD", "short", 10.0, 3000.0, stop_loss=3100.0, take_profit=2900.0)
         closed = engine.check_sl_tp("ETH-USD", high=3150.0, low=2850.0)
         assert len(closed) == 1
-        assert closed[0].exit_reason == "take_profit"
+        assert closed[0].exit_reason == "stop_loss"
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +267,22 @@ class TestReversals:
 
         summary = engine.get_summary()
         assert summary.open_positions == 1  # Still just the original
+
+    def test_rejected_reversal_keeps_existing_position(self) -> None:
+        """A reversal that cannot fund the new side must not close the old one."""
+        engine = PaperTradingEngine(initial_capital=1000.0)
+        assert engine.execute_signal("BTC-USD", "short", 1.0, 900.0)["accepted"] is True
+        assert engine.execute_signal("ETH-USD", "long", 1.0, 100.0)["accepted"] is True
+
+        # The BTC short is now underwater enough to consume all free margin.
+        engine.mark_to_market("BTC-USD", 1001.0)
+        before = engine.snapshot()
+
+        result = engine.execute_signal("ETH-USD", "short", 1.0, 100.0)
+
+        assert result["accepted"] is False
+        assert result["reason"] == "Insufficient cash"
+        assert engine.snapshot() == before
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +342,88 @@ class TestPortfolioSummary:
         # 100k → 105k → 45k after loss
         # Drawdown from peak 105k to 45k = 60/105 ≈ 57.14%
         assert summary.max_drawdown_pct > 0
+
+
+class TestRealisticAccounting:
+    """P0-4: fees, adverse slippage, marks, and short cash accounting."""
+
+    def test_entry_applies_slippage_and_commission(self) -> None:
+        engine = PaperTradingEngine(
+            initial_capital=100000.0,
+            commission_pct=0.001,
+            slippage_pct=0.001,
+        )
+        result = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+
+        assert result["accepted"] is True
+        assert result["fill_price"] == pytest.approx(50050.0)
+        assert result["commission"] == pytest.approx(50.05)
+
+        summary = engine.get_summary()
+        assert summary.cash == pytest.approx(49899.95)
+        assert summary.equity == pytest.approx(99949.95)
+        assert summary.total_pnl == pytest.approx(-50.05)
+
+    def test_exit_applies_slippage_and_commission(self) -> None:
+        engine = PaperTradingEngine(
+            initial_capital=100000.0,
+            commission_pct=0.001,
+            slippage_pct=0.001,
+        )
+        result = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+        trade = engine.close_position(result["position_id"], 55000.0)
+
+        assert trade is not None
+        assert trade.exit_price == pytest.approx(54945.0)
+        assert trade.entry_commission == pytest.approx(50.05)
+        assert trade.exit_commission == pytest.approx(54.945)
+        # Gross 4,895 minus both commissions.
+        assert trade.pnl == pytest.approx(4790.005, abs=0.01)
+
+        summary = engine.get_summary()
+        assert summary.cash == pytest.approx(104790.005, abs=0.01)
+        assert summary.total_pnl == pytest.approx(4790.005, abs=0.01)
+        assert summary.equity == pytest.approx(summary.cash)
+
+    def test_intra_trade_marks_create_drawdown(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+
+        engine.mark_to_market("BTC-USD", 45000.0)
+        summary = engine.get_summary()
+        assert summary.equity == pytest.approx(95000.0)
+        assert summary.total_pnl == pytest.approx(-5000.0)
+        assert summary.max_drawdown_pct == pytest.approx(5.0)
+
+        # A recovery does not erase the earlier peak-to-trough drawdown.
+        engine.mark_to_market("BTC-USD", 48000.0)
+        assert engine.get_summary().max_drawdown_pct == pytest.approx(5.0)
+
+    def test_profitable_short_cash_margin_and_pnl_reconcile(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        result = engine.execute_signal("ETH-USD", "short", 10.0, 3000.0)
+
+        summary = engine.get_summary()
+        assert summary.cash == pytest.approx(130000.0)
+        assert summary.margin_used == pytest.approx(30000.0)
+        assert summary.equity == pytest.approx(100000.0)
+        assert summary.total_pnl == pytest.approx(0.0)
+
+        engine.mark_to_market("ETH-USD", 2700.0)
+        summary = engine.get_summary()
+        assert summary.cash == pytest.approx(130000.0)
+        assert summary.equity == pytest.approx(103000.0)
+        assert summary.total_pnl == pytest.approx(3000.0)
+
+        trade = engine.close_position(result["position_id"], 2700.0)
+        assert trade is not None
+        assert trade.pnl == pytest.approx(3000.0)
+
+        summary = engine.get_summary()
+        assert summary.cash == pytest.approx(103000.0)
+        assert summary.margin_used == pytest.approx(0.0)
+        assert summary.equity == pytest.approx(103000.0)
+        assert summary.total_pnl == pytest.approx(3000.0)
 
 
 # ---------------------------------------------------------------------------

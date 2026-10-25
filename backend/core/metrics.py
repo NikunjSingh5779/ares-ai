@@ -19,6 +19,7 @@ from collections.abc import Callable
 from typing import Any
 
 from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
+from prometheus_client.metrics import MetricWrapperBase
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -122,3 +123,33 @@ def set_kill_switch_active(active: bool) -> None:
 def record_live_order(status: str) -> None:
     """Increment the live order counter."""
     LIVE_ORDERS_TOTAL.labels(status=status).inc()
+
+
+def _sum_samples(metric: MetricWrapperBase, sample_name: str, **labels: str) -> float:
+    """Sum one sample across every label set, optionally filtering labels."""
+    total = 0.0
+    for family in metric.collect():
+        for sample in family.samples:
+            if sample.name != sample_name:
+                continue
+            if any(sample.labels.get(key) != value for key, value in labels.items()):
+                continue
+            total += sample.value
+    return total
+
+
+def get_metrics_snapshot() -> dict[str, int | bool]:
+    """Return a JSON-safe summary of the process-local Prometheus metrics.
+
+    This is a convenience view over the same registry that ``/metrics`` serves.
+    Values are cumulative since process start. The endpoint itself is not
+    included in ``http_requests_total`` until its response has been sent.
+    """
+    return {
+        "http_requests_total": int(_sum_samples(REQUESTS_TOTAL, "ares_requests_total")),
+        "agent_runs_total": int(_sum_samples(AGENTS_RUNS_TOTAL, "ares_agents_runs_total")),
+        "agent_errors_total": int(_sum_samples(AGENTS_RUNS_TOTAL, "ares_agents_runs_total", status="error")),
+        "agent_fallbacks_total": int(_sum_samples(AGENTS_FALLBACK_TOTAL, "ares_agents_fallback_total")),
+        "live_orders_total": int(_sum_samples(LIVE_ORDERS_TOTAL, "ares_live_orders_total")),
+        "kill_switch_active": bool(_sum_samples(LIVE_KILL_SWITCH_ACTIVE, "ares_live_kill_switch_active")),
+    }

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.roles import normalize_role
 from backend.core.security import hash_password
 from backend.db.models import User
 from backend.schemas.user import UserCreate
@@ -24,13 +25,19 @@ async def get_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     return result.scalars().first()
 
 
+async def count_users(db: AsyncSession) -> int:
+    """Return the number of user rows (used for single-user bootstrap)."""
+    result = await db.execute(select(func.count()).select_from(User))
+    return int(result.scalar_one())
+
+
 async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
     """Create a new user with hashed password."""
     db_user = User(
         email=user_in.email,
         display_name=user_in.display_name,
         password_hash=hash_password(user_in.password),
-        role=user_in.role,
+        role=normalize_role(user_in.role),
         is_active=True,
     )
     db.add(db_user)

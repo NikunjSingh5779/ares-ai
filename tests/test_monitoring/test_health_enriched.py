@@ -11,8 +11,15 @@ from starlette.testclient import TestClient
 
 
 @pytest.mark.asyncio
-async def test_health_endpoint_returns_ok_structure() -> None:
-    """Verify the health endpoint returns the expected response shape."""
+async def test_health_endpoint_returns_ok_structure(monkeypatch) -> None:
+    """Verify the health endpoint returns 200 and the expected shape when healthy."""
+    monkeypatch.setattr(
+        "database.connection.check_connection",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr("backend.main._check_redis", AsyncMock(return_value=True))
+    monkeypatch.setattr("backend.main._check_chromadb", AsyncMock(return_value=True))
+
     from backend.main import app
 
     with TestClient(app) as client:
@@ -24,6 +31,8 @@ async def test_health_endpoint_returns_ok_structure() -> None:
         assert "service" in data
         assert "checks" in data
         assert data["service"] == "ares-ai"
+        assert data["status"] == "ok"
+        assert data["checks"] == {"database": "ok", "redis": "ok", "chromadb": "ok"}
 
 
 @pytest.mark.asyncio
@@ -42,14 +51,9 @@ async def test_root_endpoint() -> None:
         assert "health" in data
 
 
-def _fake_all_ok() -> bool:
-    """Synchronous stand-in — not an async function, so it will fail under await."""
-    return True
-
-
 @pytest.mark.asyncio
 async def test_health_database_unreachable(monkeypatch) -> None:
-    """Verify health reports degraded when DB is down."""
+    """Verify health returns 503 when DB is down."""
     monkeypatch.setattr(
         "database.connection.check_connection",
         AsyncMock(return_value=False),
@@ -59,13 +63,14 @@ async def test_health_database_unreachable(monkeypatch) -> None:
     with TestClient(app) as client:
         response = client.get("/health")
         data = response.json()
+        assert response.status_code == 503
         assert data["checks"]["database"] == "unreachable"
         assert data["status"] == "degraded"
 
 
 @pytest.mark.asyncio
 async def test_health_redis_unreachable(monkeypatch) -> None:
-    """Verify health reports degraded when Redis is down."""
+    """Verify health returns 503 when Redis is down."""
     monkeypatch.setattr(
         "backend.main._check_redis",
         AsyncMock(return_value=False),
@@ -75,13 +80,14 @@ async def test_health_redis_unreachable(monkeypatch) -> None:
     with TestClient(app) as client:
         response = client.get("/health")
         data = response.json()
+        assert response.status_code == 503
         assert data["checks"]["redis"] == "unreachable"
         assert data["status"] == "degraded"
 
 
 @pytest.mark.asyncio
 async def test_health_chromadb_unreachable(monkeypatch) -> None:
-    """Verify health reports degraded when ChromaDB is down."""
+    """Verify health returns 503 when ChromaDB is down."""
     monkeypatch.setattr(
         "backend.main._check_chromadb",
         AsyncMock(return_value=False),
@@ -91,13 +97,14 @@ async def test_health_chromadb_unreachable(monkeypatch) -> None:
     with TestClient(app) as client:
         response = client.get("/health")
         data = response.json()
+        assert response.status_code == 503
         assert data["checks"]["chromadb"] == "unreachable"
         assert data["status"] == "degraded"
 
 
 @pytest.mark.asyncio
 async def test_health_all_down(monkeypatch) -> None:
-    """Verify health reports degraded when all services are down."""
+    """Verify health returns 503 when all services are down."""
     monkeypatch.setattr("database.connection.check_connection", AsyncMock(return_value=False))
     monkeypatch.setattr("backend.main._check_redis", AsyncMock(return_value=False))
     monkeypatch.setattr("backend.main._check_chromadb", AsyncMock(return_value=False))
@@ -106,6 +113,7 @@ async def test_health_all_down(monkeypatch) -> None:
     with TestClient(app) as client:
         response = client.get("/health")
         data = response.json()
+        assert response.status_code == 503
         assert data["checks"]["database"] == "unreachable"
         assert data["checks"]["redis"] == "unreachable"
         assert data["checks"]["chromadb"] == "unreachable"

@@ -9,17 +9,18 @@ across multiple runs rather than just a single session.
 
 from __future__ import annotations
 
-import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-WIN_RATE_DECLINE_THRESHOLD: float = 0.15
-"""Win rate decline (over 10 runs) that triggers a degradation alert."""
+EXECUTION_RATE_DECLINE_THRESHOLD: float = 0.15
+"""Execution rate decline (over 10 runs) that triggers a degradation alert."""
 
 CONFIDENCE_ACCURACY_DECLINE_THRESHOLD: float = 10.0
 """Confidence accuracy decline (in percentage points) that triggers an alert."""
@@ -50,6 +51,21 @@ class ImprovementRecord:
     applied: bool = False
     rationale: str = ""
     suggested_params: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the record for the API and the persistence service."""
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp,
+            "category": self.category,
+            "description": self.description,
+            "severity": self.severity,
+            "metric_before": self.metric_before,
+            "metric_after": self.metric_after,
+            "applied": self.applied,
+            "rationale": self.rationale,
+            "suggested_params": self.suggested_params,
+        }
 
 
 @dataclass
@@ -86,7 +102,7 @@ class StrategyImprovementEngine:
     """Cross-session strategy improvement analyzer.
 
     Examines reflection outputs across multiple runs to detect:
-    - Declining win rate or confidence accuracy
+    - Declining execution rate or confidence accuracy
     - Increasing error rates
     - Pattern of risk-approval changes
     - Agent-specific reliability degradation
@@ -95,13 +111,22 @@ class StrategyImprovementEngine:
     def __init__(self, history_size: int = IMPROVEMENT_MAX_HISTORY) -> None:
         self.history_size = history_size
 
-    def analyze(self, reflection_output: dict[str, Any]) -> ImprovementRunResult:
+    def analyze(
+        self,
+        reflection_output: dict[str, Any],
+        history: Sequence[dict[str, Any]] | None = None,
+    ) -> ImprovementRunResult:
         """Run improvement analysis on the latest reflection output.
 
         Args:
             reflection_output: The output dict from a ReflectionAgent run,
                                containing evaluation, confidence_accuracy,
                                improvement_suggestions, and knowledge_updates.
+            history: Optional prior reflection outputs, oldest first. When
+                     supplied, the engine analyzes only this window and leaves
+                     the process-local history untouched. The persistence
+                     service uses this so a restart or a second worker cannot
+                     lose trend context.
 
         Returns:
             ImprovementRunResult with any new improvement records, metrics,
@@ -109,41 +134,47 @@ class StrategyImprovementEngine:
         """
         global _reflection_history, _improvement_history
 
-        # Store reflection output
-        _reflection_history.append(
-            {
-                **reflection_output,
-                "_timestamp": datetime.now(UTC).isoformat(),
-            }
-        )
-        # Trim history
-        if len(_reflection_history) > self.history_size:
-            _reflection_history = _reflection_history[-self.history_size :]
+        entry = {
+            **reflection_output,
+            "_timestamp": datetime.now(UTC).isoformat(),
+        }
+        uses_external_history = history is not None
+        if history is not None:
+            window = [*history, entry]
+            if len(window) > self.history_size:
+                window = window[-self.history_size :]
+        else:
+            _reflection_history.append(entry)
+            if len(_reflection_history) > self.history_size:
+                _reflection_history = _reflection_history[-self.history_size :]
+            window = list(_reflection_history)
 
+        prior = window[:-1]
         warnings: list[str] = []
         records: list[ImprovementRecord] = []
 
         # Compute aggregate metrics
-        metrics = self._compute_metrics()
+        metrics = self._compute_metrics(window)
 
         # Check if we have enough data for trend analysis
-        if len(_reflection_history) < MIN_RUNS_FOR_ANALYSIS:
-            warnings.append(
-                f"Only {len(_reflection_history)}/{MIN_RUNS_FOR_ANALYSIS} runs collected for trend analysis"
-            )
+        if len(window) < MIN_RUNS_FOR_ANALYSIS:
+            warnings.append(f"Only {len(window)}/{MIN_RUNS_FOR_ANALYSIS} runs collected for trend analysis")
             return ImprovementRunResult(
                 records=records, metrics=metrics, warnings=warnings, run_timestamp=datetime.now(UTC).isoformat()
             )
 
         # Trend checks
-        records.extend(self._check_win_rate_trend(metrics))
-        records.extend(self._check_confidence_accuracy_trend(metrics))
-        records.extend(self._check_error_rate(reflection_output))
-        records.extend(self._check_suggestion_overlap(reflection_output))
+        records.extend(self._check_execution_rate_trend(window))
+        records.extend(self._check_confidence_accuracy_trend(window))
+        records.extend(self._check_error_rate(entry, prior))
+        records.extend(self._check_suggestion_overlap(entry, prior))
 
-        # Trim improvement history
-        if len(_improvement_history) > self.history_size:
-            _improvement_history = _improvement_history[-self.history_size :]
+        # The in-memory mode keeps its own suggestion store. Database mode
+        # persists the returned records and must not mutate process globals.
+        if not uses_external_history:
+            _improvement_history.extend(records)
+            if len(_improvement_history) > self.history_size:
+                _improvement_history = _improvement_history[-self.history_size :]
 
         return ImprovementRunResult(
             records=records,
@@ -152,18 +183,18 @@ class StrategyImprovementEngine:
             run_timestamp=datetime.now(UTC).isoformat(),
         )
 
-    def _compute_metrics(self) -> dict[str, float]:
+    def metrics_for(self, history: Sequence[dict[str, Any]]) -> dict[str, float]:
+        """Compute aggregate metrics for an explicit history window."""
+        return self._compute_metrics(history)
+
+    def _compute_metrics(self, history: Sequence[dict[str, Any]]) -> dict[str, float]:
         """Compute aggregate metrics across recent reflection history."""
-        recent = (
-            _reflection_history[-MIN_RUNS_FOR_ANALYSIS:]
-            if len(_reflection_history) >= MIN_RUNS_FOR_ANALYSIS
-            else _reflection_history
-        )
+        recent = history[-MIN_RUNS_FOR_ANALYSIS:] if len(history) >= MIN_RUNS_FOR_ANALYSIS else history
         total = len(recent)
         if total == 0:
             return {
                 "avg_confidence_accuracy": 0.0,
-                "win_rate": 0.0,
+                "execution_rate": 0.0,
                 "error_rate": 0.0,
                 "total_runs": 0.0,
             }
@@ -172,9 +203,9 @@ class StrategyImprovementEngine:
         accuracies = [r.get("confidence_accuracy", 0) for r in recent]
         avg_accuracy = sum(accuracies) / len(accuracies) if accuracies else 0.0
 
-        # Win rate: how many evaluations mention "executed" favorably
+        # Execution rate: how many evaluations mention "executed" favorably
         executed_count = sum(1 for r in recent if "Trade executed" in r.get("evaluation", ""))
-        win_rate = executed_count / total if total > 0 else 0.0
+        execution_rate = executed_count / total if total > 0 else 0.0
 
         # Error rate from suggestion overlap
         suggestions_with_errors = sum(
@@ -184,21 +215,17 @@ class StrategyImprovementEngine:
 
         return {
             "avg_confidence_accuracy": round(avg_accuracy, 2),
-            "win_rate": round(win_rate * 100, 2),
+            "execution_rate": round(execution_rate * 100, 2),
             "error_rate": round(error_rate * 100, 2),
             "total_runs": float(total),
         }
 
-    def _check_win_rate_trend(self, metrics: dict[str, float]) -> list[ImprovementRecord]:
-        """Check if win rate has declined significantly."""
+    def _check_execution_rate_trend(self, history: Sequence[dict[str, Any]]) -> list[ImprovementRecord]:
+        """Check if execution rate has declined significantly."""
         records: list[ImprovementRecord] = []
 
         # Compare recent half vs older half of the window
-        recent = (
-            _reflection_history[-MIN_RUNS_FOR_ANALYSIS:]
-            if len(_reflection_history) >= MIN_RUNS_FOR_ANALYSIS * 2
-            else []
-        )
+        recent = history[-MIN_RUNS_FOR_ANALYSIS:] if len(history) >= MIN_RUNS_FOR_ANALYSIS * 2 else []
         if len(recent) < MIN_RUNS_FOR_ANALYSIS:
             return records
 
@@ -219,34 +246,33 @@ class StrategyImprovementEngine:
         )
 
         decline = older_rate - newer_rate
-        if decline > WIN_RATE_DECLINE_THRESHOLD:
+        if decline > EXECUTION_RATE_DECLINE_THRESHOLD:
             record = ImprovementRecord(
                 id=_next_id(),
                 timestamp=datetime.now(UTC).isoformat(),
                 category="risk_calibration",
                 severity="high",
-                description=f"Win rate declined by {decline:.1%} over recent runs",
+                description=f"Execution rate declined by {decline:.1%} over recent runs",
                 metric_before=round(older_rate * 100, 2),
                 metric_after=round(newer_rate * 100, 2),
                 rationale=f"Execution rate dropped from {older_rate:.1%} to {newer_rate:.1%}. "
                 f"Consider reviewing risk thresholds and consensus confidence criteria.",
-                suggested_params={"max_drawdown_pct": 15.0, "min_consensus_confidence": 75.0},
+                suggested_params={"max_drawdown_pct": 15.0},
             )
             records.append(record)
-            _improvement_history.append(record)
 
         return records
 
-    def _check_confidence_accuracy_trend(self, metrics: dict[str, float]) -> list[ImprovementRecord]:
+    def _check_confidence_accuracy_trend(self, history: Sequence[dict[str, Any]]) -> list[ImprovementRecord]:
         """Check if confidence accuracy has declined."""
         records: list[ImprovementRecord] = []
 
-        if len(_reflection_history) < MIN_RUNS_FOR_ANALYSIS * 2:
+        if len(history) < MIN_RUNS_FOR_ANALYSIS * 2:
             return records
 
-        mid = len(_reflection_history) // 2
-        older = [r.get("confidence_accuracy", 0) for r in _reflection_history[:mid]]
-        newer = [r.get("confidence_accuracy", 0) for r in _reflection_history[mid:]]
+        mid = len(history) // 2
+        older = [r.get("confidence_accuracy", 0) for r in history[:mid]]
+        newer = [r.get("confidence_accuracy", 0) for r in history[mid:]]
 
         older_avg = sum(older) / len(older) if older else 0
         newer_avg = sum(newer) / len(newer) if newer else 0
@@ -266,11 +292,14 @@ class StrategyImprovementEngine:
                 suggested_params={"market_analyst_confidence_threshold": 85.0},
             )
             records.append(record)
-            _improvement_history.append(record)
 
         return records
 
-    def _check_error_rate(self, reflection_output: dict[str, Any]) -> list[ImprovementRecord]:
+    def _check_error_rate(
+        self,
+        reflection_output: dict[str, Any],
+        prior: Sequence[dict[str, Any]],
+    ) -> list[ImprovementRecord]:
         """Check for rising error rates in suggestions."""
         records: list[ImprovementRecord] = []
 
@@ -278,8 +307,8 @@ class StrategyImprovementEngine:
         error_suggestions = [s for s in suggestions if "error" in s.lower()]
 
         if error_suggestions:
-            # Check if errors are persistent across recent runs
-            recent = _reflection_history[-3:] if len(_reflection_history) >= 3 else _reflection_history
+            # Check if errors are persistent across recent runs, including this one.
+            recent = [*prior, reflection_output][-3:]
             persistent_errors = all(
                 any("error" in s.lower() for s in r.get("improvement_suggestions", [])) for r in recent
             )
@@ -295,11 +324,14 @@ class StrategyImprovementEngine:
                     suggested_params={"circuit_breaker_threshold": 2},
                 )
                 records.append(record)
-                _improvement_history.append(record)
 
         return records
 
-    def _check_suggestion_overlap(self, reflection_output: dict[str, Any]) -> list[ImprovementRecord]:
+    def _check_suggestion_overlap(
+        self,
+        reflection_output: dict[str, Any],
+        prior: Sequence[dict[str, Any]],
+    ) -> list[ImprovementRecord]:
         """Check if the same improvement suggestions keep appearing without resolution."""
         records: list[ImprovementRecord] = []
 
@@ -307,9 +339,9 @@ class StrategyImprovementEngine:
         if not current_suggestions:
             return records
 
-        # Compare with recent past suggestions
+        # Compare with the four runs before this one.
         past_suggestions: list[set[str]] = []
-        for r in _reflection_history[-5:-1]:  # last 4 runs (excluding current)
+        for r in prior[-4:]:
             past_suggestions.append(set(s.lower().strip() for s in r.get("improvement_suggestions", [])))
 
         repeated = current_suggestions
@@ -327,7 +359,6 @@ class StrategyImprovementEngine:
                 "Consider addressing the root cause or adjusting pipeline configuration.",
             )
             records.append(record)
-            _improvement_history.append(record)
 
         return records
 
@@ -336,24 +367,11 @@ class StrategyImprovementEngine:
     def get_recent_improvements(self, limit: int = 20) -> list[dict[str, Any]]:
         """Get recent improvement records."""
         recent = _improvement_history[-limit:] if _improvement_history else []
-        return [
-            {
-                "id": r.id,
-                "timestamp": r.timestamp,
-                "category": r.category,
-                "description": r.description,
-                "severity": r.severity,
-                "metric_before": r.metric_before,
-                "metric_after": r.metric_after,
-                "applied": r.applied,
-                "rationale": r.rationale,
-            }
-            for r in recent
-        ]
+        return [record.to_dict() for record in recent]
 
     def get_metrics_summary(self) -> dict[str, float]:
         """Get current aggregate metrics summary."""
-        return self._compute_metrics()
+        return self._compute_metrics(_reflection_history)
 
     def apply_improvement(self, record_id: str) -> bool:
         """Mark an improvement record as applied."""
@@ -374,9 +392,13 @@ def get_improvement_engine() -> StrategyImprovementEngine:
 
 
 def _next_id() -> str:
-    """Generate a unique improvement record ID."""
-    ts = int(time.time() * 1000)
-    return f"imp_{ts}"
+    """Generate a unique improvement record ID.
+
+    UUIDs keep the in-memory engine and the PostgreSQL UUID primary key
+    compatible, and they cannot collide when two runs finish in the same
+    millisecond.
+    """
+    return str(uuid4())
 
 
 def reset_engine() -> None:

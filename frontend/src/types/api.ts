@@ -148,6 +148,8 @@ export interface PortfolioSummary {
   losing_trades: number;
   open_positions: number;
   max_drawdown_pct: number;
+  equity?: number;
+  margin_used?: number;
 }
 
 export interface OpenPosition {
@@ -160,6 +162,8 @@ export interface OpenPosition {
   stop_loss?: number | null;
   take_profit?: number | null;
   strategy_name: string;
+  entry_commission?: number;
+  margin?: number;
 }
 
 export interface ClosedTrade {
@@ -174,6 +178,9 @@ export interface ClosedTrade {
   pnl_pct: number;
   exit_reason: string;
   strategy_name: string;
+  entry_commission?: number;
+  exit_commission?: number;
+  fees?: number;
 }
 
 // ─── Signal Response ────────────────────────────────────────────
@@ -214,6 +221,105 @@ export interface AnalyzeResponse {
   session_id: string;
 }
 
+// ─── Chat ───────────────────────────────────────────────────────
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatResponse {
+  reply: string;
+  model: string;
+  fallback_used: boolean;
+}
+
+// ─── Market data ────────────────────────────────────────────────
+
+export interface Candle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface CandlesResponse {
+  symbol: string;
+  interval: string;
+  source: string;
+  count: number;
+  candles: Candle[];
+}
+
+// ─── Settings ───────────────────────────────────────────────────
+
+export interface SafetyLimits {
+  max_position_size_pct: number;
+  max_risk_score: number;
+  min_consensus_confidence_pct: number;
+  live_max_drawdown_pct: number;
+  minimum_paper_trades: number;
+  minimum_paper_days: number;
+  live_trading_enabled: boolean;
+}
+
+export interface DashboardPreferences {
+  default_symbol: string;
+  live_refresh_seconds: number;
+}
+
+export interface SettingsResponse {
+  safety: SafetyLimits;
+  preferences: DashboardPreferences;
+}
+
+// Strategy drafts
+
+export type StrategyType =
+  | "momentum"
+  | "mean_reversion"
+  | "trend_following"
+  | "arbitrage"
+  | "grid"
+  | "dca"
+  | "ml"
+  | "custom";
+
+export interface StrategyConfig {
+  indicators: string[];
+}
+
+export interface StrategyParameters {
+  position_size_pct: number;
+  stop_loss_pct: number;
+  take_profit_pct: number;
+}
+
+export interface Strategy {
+  id: string;
+  name: string;
+  description: string;
+  strategy_type: StrategyType;
+  config: StrategyConfig;
+  parameters: StrategyParameters;
+  version: number;
+  status: string;
+  paper_trade_closed_trades: number;
+  live_trading_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StrategyInput {
+  name: string;
+  description: string;
+  strategy_type: StrategyType;
+  config: StrategyConfig;
+  parameters: StrategyParameters;
+}
+
 // ─── Agent Status ───────────────────────────────────────────────
 
 export interface AgentStatusResponse extends AgentState {
@@ -223,12 +329,12 @@ export interface AgentStatusResponse extends AgentState {
 // ─── Metrics & Risk ─────────────────────────────────────────────
 
 export interface MetricsResponse {
-  total_runs: number;
-  total_agents_executed: number;
-  total_errors: number;
-  total_failures: number;
-  degraded: boolean;
-  total_latency_ms: number;
+  http_requests_total: number;
+  agent_runs_total: number;
+  agent_errors_total: number;
+  agent_fallbacks_total: number;
+  live_orders_total: number;
+  kill_switch_active: boolean;
 }
 
 // ─── Journal & History ──────────────────────────────────────────

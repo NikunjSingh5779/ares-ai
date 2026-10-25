@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 # Root project directory (two levels up from this file)
@@ -63,6 +63,14 @@ class Settings(BaseSettings):
     mistral_api_key: str = ""
     mistral_base_url: str = "https://api.mistral.ai/v1"
 
+    # Local OpenAI-compatible LLM (opt-in, chat-first). No API key is required.
+    # The model ID lives in configs/models.yaml; this only points at the server.
+    local_llm_enabled: bool = False
+    local_llm_base_url: str = "http://127.0.0.1:8080/v1"
+    local_llm_timeout_seconds: float = Field(default=90.0, gt=0.0, le=300.0)
+    local_llm_max_concurrent: int = Field(default=1, ge=1, le=8)
+    local_llm_queue_timeout_seconds: float = Field(default=20.0, gt=0.0, le=300.0)
+
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -76,9 +84,21 @@ class Settings(BaseSettings):
 
     # Trading defaults
     paper_trading_initial_capital: float = 100000.0
+    # Application defaults for simulated fills (decimals, not percentages).
+    # 0.001 = 10 bps. Direct engine construction defaults to zero for unit tests.
+    paper_trading_commission_pct: float = Field(default=0.001, ge=0.0, lt=1.0)
+    paper_trading_slippage_pct: float = Field(default=0.001, ge=0.0, lt=1.0)
+    # How long a paper-ledger writer waits for the cross-process advisory lock
+    # before the operation fails with 503 instead of mutating stale state.
+    paper_trading_writer_lock_timeout_seconds: float = Field(default=10.0, gt=0.0)
     kill_switch_enabled: bool = True
+    # Paper-only by default. Live start/execution must be explicitly enabled
+    # *and* still pass every live safety gate. Keep false for local runs.
+    live_trading_enabled: bool = False
     default_trading_mode: str = "human_approval"
-    max_position_size_pct: float = 5.0
+    # Position sizing is enforced in agents/risk.py (2% of paper equity) and is
+    # deliberately not environment-configurable. A setting here could silently
+    # raise the cap without the rest of the risk gate noticing.
     max_drawdown_pct: float = 20.0
 
     # Live trading exchange

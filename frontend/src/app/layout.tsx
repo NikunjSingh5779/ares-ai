@@ -7,7 +7,7 @@ import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/600.css";
 import "@fontsource/jetbrains-mono/700.css";
-import { Sidebar } from "@/components/Sidebar";
+import { AuthGate } from "@/components/AuthGate";
 import "./globals.css";
 
 const style = {
@@ -34,8 +34,10 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="flex h-screen overflow-hidden bg-[var(--color-bg)]" suppressHydrationWarning>
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <a href="#main-content" className="skip-link">
+          Skip to main content
+        </a>
+        <AuthGate>{children}</AuthGate>
       </body>
     </html>
   );

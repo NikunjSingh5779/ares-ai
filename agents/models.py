@@ -26,6 +26,7 @@ class AgentModelConfig:
         rpm: int = 20,
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        universal_fallback: str | None = None,
     ) -> None:
         self.agent_name = agent_name
         self.primary = primary
@@ -34,11 +35,18 @@ class AgentModelConfig:
         self.rpm = rpm
         self.temperature = temperature
         self.max_tokens = max_tokens
+        # Configured in configs/models.yaml (defaults.universal_fallback).
+        # Appended after every explicit fallback so a dead roster still has
+        # one validated free model to try. Not hardcoded here.
+        self.universal_fallback = universal_fallback
 
     @property
     def model_chain(self) -> list[str]:
-        """Full ordered chain: primary + fallbacks."""
-        return [self.primary, *self.fallbacks]
+        """Full ordered chain: primary + fallbacks + universal fallback."""
+        chain = [self.primary, *self.fallbacks]
+        if self.universal_fallback and self.universal_fallback not in chain:
+            chain.append(self.universal_fallback)
+        return chain
 
     def has_fallbacks(self) -> bool:
         return len(self.fallbacks) > 0
@@ -53,7 +61,12 @@ class AgentModelConfig:
         }
 
     @classmethod
-    def from_dict(cls, agent_name: str, data: dict[str, Any]) -> AgentModelConfig:
+    def from_dict(
+        cls,
+        agent_name: str,
+        data: dict[str, Any],
+        universal_fallback: str | None = None,
+    ) -> AgentModelConfig:
         return cls(
             agent_name=agent_name,
             primary=data["primary"],
@@ -62,6 +75,7 @@ class AgentModelConfig:
             rpm=data.get("rpm", 20),
             temperature=data.get("temperature", 0.7),
             max_tokens=data.get("max_tokens", 4096),
+            universal_fallback=universal_fallback,
         )
 
 
@@ -85,10 +99,18 @@ class ModelRoster:
         return {name: cfg.to_dict() for name, cfg in self._agents.items()}
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> ModelRoster:
+    def from_config(
+        cls,
+        config: dict[str, Any],
+        universal_fallback: str | None = None,
+    ) -> ModelRoster:
         agents: dict[str, AgentModelConfig] = {}
         for agent_name, data in config.items():
-            agents[agent_name] = AgentModelConfig.from_dict(agent_name, data)
+            agents[agent_name] = AgentModelConfig.from_dict(
+                agent_name,
+                data,
+                universal_fallback=universal_fallback,
+            )
         return cls(agents)
 
 
@@ -113,4 +135,6 @@ def load_model_roster(path: str | None = None) -> ModelRoster:
     if not raw or "agents" not in raw:
         raise ValueError("Invalid model roster: missing 'agents' key")
 
-    return ModelRoster.from_config(raw["agents"])
+    defaults = raw.get("defaults") or {}
+    universal_fallback = defaults.get("universal_fallback")
+    return ModelRoster.from_config(raw["agents"], universal_fallback=universal_fallback)

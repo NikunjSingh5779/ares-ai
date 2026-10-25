@@ -23,7 +23,7 @@ export function DataTable<T extends object>({
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] p-8 bg-[rgba(255,255,255,0.02)]">
-        <p className="font-mono text-sm text-[#52525b]">
+        <p className="font-mono text-sm text-[#8b8b93]">
           {emptyMessage}
         </p>
       </div>

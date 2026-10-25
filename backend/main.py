@@ -6,10 +6,12 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 
+from backend.core.dependencies import verify_auth
 from backend.core.error_handlers import setup_exception_handlers
 from backend.core.logging import setup_logging
 from backend.core.metrics import MetricsMiddleware
@@ -19,15 +21,19 @@ from backend.data.ingestor import MarketDataIngestor
 from backend.routers import (
     agents_router,
     analysis_router,
+    chat_router,
     journal_router,
     live_router,
+    market_router,
     monitoring_router,
+    settings_router,
+    strategies_router,
     trading_router,
 )
 from backend.routers.auth import router as auth_router
 from backend.routers.backtest import router as backtest_router
 from backend.routers.predictions import router as predictions_router
-from backend.routers.trading import _get_engine as get_paper_trading_engine
+from backend.routers.trading import get_paper_trading_ledger
 from backend.routers.users import router as users_router
 from configs.settings import settings
 from database.connection import async_session_factory
@@ -49,14 +55,22 @@ async def lifespan(app: FastAPI):
         },
     )
 
-    # Start Paper Trading background worker
-    engine = get_paper_trading_engine()
+    # Hydrate the durable paper ledger, then start its background worker.
+    ledger = get_paper_trading_ledger()
+    try:
+        await ledger.initialize()
+    except Exception:
+        # Keep the API reachable when PostgreSQL is temporarily down; the
+        # ledger refresh will retry, and /health reports the dependency gap.
+        logger.error("Could not hydrate the paper ledger at startup", exc_info=True)
+
     ingestor = MarketDataIngestor()
     worker = PaperTradingWorker(
-        engine=engine,
+        engine=ledger.engine,
         ingestor=ingestor,
         session_factory=async_session_factory,
         poll_interval_seconds=60,
+        ledger=ledger,
     )
     worker.start()
     app.state.paper_trading_worker = worker
@@ -109,17 +123,28 @@ app.add_middleware(
 )
 
 # ── Domain routers ─────────────────────────────────────────────────────
+#
+# Every domain router is mounted behind verify_auth. The auth router is public
+# for /auth/login only; /auth/register and /auth/verify declare their own
+# dependency.
+# This is the single choke point — do not add a router without the dependency.
+
+_auth = [Depends(verify_auth)]
 
 app.include_router(auth_router)
-app.include_router(users_router)
-app.include_router(analysis_router)
-app.include_router(trading_router)
-app.include_router(journal_router)
-app.include_router(agents_router)
-app.include_router(monitoring_router)
-app.include_router(live_router)
-app.include_router(backtest_router)
-app.include_router(predictions_router)
+app.include_router(users_router, dependencies=_auth)
+app.include_router(analysis_router, dependencies=_auth)
+app.include_router(trading_router, dependencies=_auth)
+app.include_router(journal_router, dependencies=_auth)
+app.include_router(agents_router, dependencies=_auth)
+app.include_router(monitoring_router, dependencies=_auth)
+app.include_router(live_router, dependencies=_auth)
+app.include_router(backtest_router, dependencies=_auth)
+app.include_router(predictions_router, dependencies=_auth)
+app.include_router(market_router, dependencies=_auth)
+app.include_router(settings_router, dependencies=_auth)
+app.include_router(strategies_router, dependencies=_auth)
+app.include_router(chat_router, dependencies=_auth)
 
 # ── Prometheus /metrics endpoint (ASGI mount) ─────────────────────────
 
@@ -131,8 +156,13 @@ app.mount("/metrics", metrics_app)
 
 
 @app.get("/health", tags=["system"])
-async def health_check():
-    """Enhanced health check. Reports reachability of DB, Redis, and ChromaDB."""
+async def health_check() -> JSONResponse:
+    """Enhanced health check. Reports reachability of DB, Redis, and ChromaDB.
+
+    Returns 200 only when every dependency answers. A degraded dependency
+    returns 503 so Compose healthchecks and load balancers stop routing to a
+    partially broken instance instead of treating it as ready.
+    """
     from database.connection import check_connection as check_db
 
     db_ok = await check_db()
@@ -141,16 +171,19 @@ async def health_check():
 
     all_ok = db_ok and redis_ok and chroma_ok
 
-    return {
-        "status": "ok" if all_ok else "degraded",
-        "version": "0.1.0",
-        "service": "ares-ai",
-        "checks": {
-            "database": "ok" if db_ok else "unreachable",
-            "redis": "ok" if redis_ok else "unreachable",
-            "chromadb": "ok" if chroma_ok else "unreachable",
+    return JSONResponse(
+        status_code=200 if all_ok else 503,
+        content={
+            "status": "ok" if all_ok else "degraded",
+            "version": "0.1.0",
+            "service": "ares-ai",
+            "checks": {
+                "database": "ok" if db_ok else "unreachable",
+                "redis": "ok" if redis_ok else "unreachable",
+                "chromadb": "ok" if chroma_ok else "unreachable",
+            },
         },
-    }
+    )
 
 
 @app.get("/", tags=["system"])

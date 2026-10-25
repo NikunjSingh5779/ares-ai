@@ -1,8 +1,52 @@
 # ARES AI — Autonomous Research Execution System
 
-ARES AI is an institutional-grade, fully autonomous multi-agent AI trading platform. It orchestrates a roster of 10 specialized AI agents in a directed graph (using LangGraph) to analyze financial markets, manage portfolio risk, execute trades, and continuously learn from historical outcomes.
+ARES AI is an institutional-grade, fully autonomous multi-agent AI trading platform. A supervisor routes a roster of specialized agents in a directed graph (using LangGraph) to analyze financial markets, manage portfolio risk, execute trades, and continuously learn from historical outcomes.
 
 Designed for resilience and offline-first/graceful degradation, ARES AI is configured to run entirely on **free-tier AI models** (via OpenRouter or OpenCode APIs) and uses a layered microservice architecture containerized with Docker.
+
+---
+
+## Repository map
+
+`AGENTS.md` is the entry catalog; it routes to the full mandate, verified status,
+architecture, decisions, and the next plan. Each code folder has a `CONTEXT.md`
+stating its inputs, process, outputs, and human check.
+
+| Start here | File |
+|---|---|
+| Full project mandate | `docs/01-SPEC.md` |
+| Verified current state | `docs/02-STATUS.md` |
+| Layers, flows, MVC map | `docs/03-ARCHITECTURE.md` |
+| Decisions (ADRs) | `docs/04-DECISIONS.md` |
+| Prioritized plan | `docs/05-NEXT.md` |
+| Object/process map | `docs/map/AGENTS.md` |
+
+### Standard reference docs
+
+These are concise, task-oriented companions to the ICM set above. The numbered
+docs remain the canonical source of truth.
+
+| Need | File |
+|---|---|
+| Product summary | `docs/PRD.md` |
+| Feature status map | `docs/FEATURES.md` |
+| Local setup | `docs/SETUP.md` |
+| API route map (live schema at `/docs`) | `docs/API.md` |
+| Database tables and migrations | `docs/DATABASE.md` |
+| Code placement and change map | `docs/IMPLEMENTATION.md` |
+| Deployment and production overlay | `docs/DEPLOYMENT.md` |
+| Auth, roles, and secrets | `docs/AUTH_SECURITY.md` |
+| MCP configuration | `docs/MCP.md` |
+| External systems | `docs/INTEGRATIONS.md` |
+| Testing and CI checks | `docs/TESTING.md` |
+| Troubleshooting | `docs/DEBUGGING.md` |
+| Current task queue | `docs/TASKS.md` |
+| Roadmap summary | `docs/ROADMAP.md` |
+| ADR index | `docs/DECISIONS.md` |
+| Engineering conventions | `docs/CONVENTIONS.md` |
+| Release history | `CHANGELOG.md` |
+| Visual identity system | `docs/design.md` |
+| Historical M1 architecture pointer | `docs/architecture.md` |
 
 ---
 
@@ -29,7 +73,7 @@ graph TD
     Reflection --> Memory[Memory Agent]
 ```
 
-### The 10 Specialized Agents
+### The pipeline: supervisor + 10 stages
 1. **Supervisor**: Coordinates the agent state flow and acts as the router.
 2. **Market Analyst**: Conducts technical analysis on price feeds.
 3. **Quant**: Assesses quantitative metrics and statistical models.
@@ -73,21 +117,30 @@ ARES AI is built with strict safety gates that cannot be bypassed:
 Make sure you have the following installed on your machine:
 * [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 * [Node.js & pnpm](https://nodejs.org/) (or npm/yarn)
-* [Python 3.12+](https://www.python.org/)
+* [Python 3.11+](https://www.python.org/) (CI installs 3.14) and [uv](https://docs.astral.sh/uv/)
 
 ### 1. Setup Environment Configuration
 Copy the template configuration file to `.env`:
 ```powershell
 cp .env.example .env
 ```
-Open `.env` and fill in **either** your `OPENROUTER_API_KEY` or `OPENCODE_API_KEY` (which you can generate for free). Both are supported, but at least one is required to enable agent reasoning.
+Open `.env` and fill in:
+* `API_SECRET_KEY` — **required**. Generate a unique value with
+  `python -c "import secrets; print(secrets.token_urlsafe(32))"`. The shipped
+  default is rejected and every non-public API route returns 503 until it is set.
+* **either** `OPENROUTER_API_KEY` or `OPENCODE_API_KEY` (both free) to enable
+  agent reasoning.
+
+`LIVE_TRADING_ENABLED` stays `false` for paper-only operation. Turning it on is
+not sufficient by itself: the kill switch, human-approval mode, promotion gate,
+and exchange connection must all pass.
 
 ### 2. Start the Stack
 Spin up the core services via Docker Compose:
 ```powershell
-docker compose -f docker/docker-compose.yml up -d
+docker compose --env-file .env -f docker/docker-compose.yml up -d
 ```
-This runs **7 services**: PostgreSQL, Redis, ChromaDB, the FastAPI backend, the Next.js frontend, Prometheus, and Grafana — see ``docker/docker-compose.yml`` for ports.
+This runs **7 services**: PostgreSQL, Redis, ChromaDB, the FastAPI backend, the Next.js frontend, Prometheus, and Grafana — see ``docker/docker-compose.yml`` for ports. The explicit `--env-file` makes the root `.env` available for Compose interpolation as well as the backend container.
 
 You can also use the root ``docker-compose.yml`` (11 services) for the full
 stack that includes nginx, automated Postgres backups, the live trading loop
@@ -95,6 +148,14 @@ stack that includes nginx, automated Postgres backups, the live trading loop
 ```powershell
 docker compose up -d
 ```
+
+Production is an explicit overlay. It sets `ENVIRONMENT=production`, so startup
+fails unless the API key, JWT secret, and database password are all non-default:
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+The Docker-stack variant is `docker/docker-compose.prod.yml`. The overlay does
+not enable live trading; the live gates still apply.
 
 ### 3. Run Pipeline Simulation
 Test that the entire Python agent graph is wired and executing successfully:
@@ -122,7 +183,9 @@ Requires PostgreSQL and ChromaDB to be running (``docker compose -f docker/docke
   pnpm install
   pnpm dev
   ```
-  Open the interactive dashboard at `http://localhost:3000`.
+  Open the interactive dashboard at `http://localhost:3000`. The login screen
+  asks for `API_SECRET_KEY`; it is kept in `sessionStorage` for the tab and sent
+  as `X-API-Key`. Opening a new tab asks again.
 
 ---
 
@@ -183,6 +246,16 @@ model-discovery mechanism.
 
 Run the full pytest suite to verify no regressions in the agent graph, endpoints, or DB layer:
 ```powershell
-python -m pytest tests/ -v
+python -m pytest tests/ -q
 ```
-Currently, all **871 tests** pass cleanly with **83.57% coverage** (verified 2026-07-26 via full local run with `uv sync --locked --all-extras --dev && uv run pytest tests/ -v`, matching CI).
+The configured coverage gate is 78%; the configured lint, format, type, and
+frontend checks are in `docs/TESTING.md`. Verified test counts, current
+coverage, and the health of every check live in `docs/02-STATUS.md` — that file
+is the single source of truth.
+
+---
+
+## 📄 License
+
+Proprietary; all rights reserved. See `LICENSE`. Third-party dependencies and
+model providers remain under their own terms.

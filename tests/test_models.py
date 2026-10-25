@@ -66,6 +66,25 @@ class TestAgentModelConfig:
         assert cfg.has_fallbacks() is False
         assert len(cfg.model_chain) == 1
 
+    def test_universal_fallback_is_appended_last(self) -> None:
+        cfg = AgentModelConfig.from_dict(
+            "supervisor",
+            SAMPLE_ROSTER["agents"]["supervisor"],
+            universal_fallback="open_router/openrouter/free",
+        )
+        assert cfg.model_chain[-1] == "open_router/openrouter/free"
+
+    def test_universal_fallback_is_deduplicated(self) -> None:
+        cfg = AgentModelConfig.from_dict(
+            "supervisor",
+            {
+                "primary": "primary-model",
+                "fallbacks": ["open_router/openrouter/free"],
+            },
+            universal_fallback="open_router/openrouter/free",
+        )
+        assert cfg.model_chain.count("open_router/openrouter/free") == 1
+
     def test_has_fallbacks(self) -> None:
         cfg = AgentModelConfig.from_dict("supervisor", SAMPLE_ROSTER["agents"]["supervisor"])
         assert cfg.has_fallbacks() is True

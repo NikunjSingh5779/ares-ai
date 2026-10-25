@@ -79,7 +79,7 @@ export default function AnalyticsPage() {
       render: (s) => (
         <span
           className={`font-mono text-xs ${
-            s.is_executed ? "text-[#22c55e]" : "text-[#52525b]"
+            s.is_executed ? "text-[#22c55e]" : "text-[#8b8b93]"
           }`}
         >
           {s.is_executed ? "YES" : "NO"}
@@ -119,17 +119,14 @@ export default function AnalyticsPage() {
       {/* Metrics Grid */}
       {metrics && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <MetricCard label="Total Runs" value={metrics.total_runs.toLocaleString()} />
-          <MetricCard label="Agent Executions" value={metrics.total_agents_executed.toLocaleString()} />
-          <MetricCard label="Total Errors" value={metrics.total_errors.toLocaleString()} change={metrics.total_errors > 0 ? -1 : 0} />
-          <MetricCard label="Total Failures" value={metrics.total_failures.toString()} change={metrics.total_failures > 0 ? -1 : 0} />
+          <MetricCard label="HTTP Requests" value={metrics.http_requests_total.toLocaleString()} />
+          <MetricCard label="Agent Runs" value={metrics.agent_runs_total.toLocaleString()} />
+          <MetricCard label="Agent Errors" value={metrics.agent_errors_total.toLocaleString()} />
+          <MetricCard label="Model Fallbacks" value={metrics.agent_fallbacks_total.toLocaleString()} />
+          <MetricCard label="Live Orders" value={metrics.live_orders_total.toLocaleString()} />
           <MetricCard
-            label="Degraded Mode"
-            value={metrics.degraded ? "YES" : "NO"}
-          />
-          <MetricCard
-            label="Total Latency"
-            value={`${metrics.total_latency_ms}ms`}
+            label="Kill Switch"
+            value={metrics.kill_switch_active ? "ACTIVE" : "CLEAR"}
           />
         </div>
       )}
@@ -145,7 +142,7 @@ export default function AnalyticsPage() {
         <div className="border-b border-[rgba(255,255,255,0.06)] px-5 py-4">
           <div className="flex items-center justify-between">
             <p className="text-label">Signal History</p>
-            <span className="font-mono text-xs text-[#52525b]">
+            <span className="font-mono text-xs text-[#8b8b93]">
               {signals.length} signals
             </span>
           </div>
@@ -154,9 +151,9 @@ export default function AnalyticsPage() {
           <DataTable columns={columns} data={signals} />
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <BarChart3 size={24} className="text-[#52525b] mb-3" />
-            <p className="font-mono text-xs text-[#52525b]">No signal data yet</p>
-            <p className="font-mono text-[10px] text-[#3f3f46] mt-1">
+            <BarChart3 size={24} className="text-[#8b8b93] mb-3" />
+            <p className="font-mono text-xs text-[#8b8b93]">No signal data yet</p>
+            <p className="font-mono text-[10px] text-[#8b8b93] mt-1">
               Signals appear after running analysis
             </p>
           </div>

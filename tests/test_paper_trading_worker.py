@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,6 +13,7 @@ import pytest
 from backend.data.ingestor import MarketDataIngestor
 from backend.data.models import MarketDataResult, OHLCVData
 from paper_trading.engine import ClosedTrade, PaperTradingEngine
+from paper_trading.ledger import PaperTradingLedger
 from paper_trading.worker import PaperTradingWorker
 
 
@@ -75,6 +78,68 @@ async def test_worker_tick_closes_trade_and_persists(engine, ingestor, session_f
     session = session_factory.return_value.__aenter__.return_value
     assert session.execute.call_count >= 5  # get acc, get port, update pos, update port, insert order
     session.commit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_worker_marks_open_position_on_every_tick(engine, ingestor, session_factory):
+    """A non-triggering candle still updates equity and drawdown marks."""
+    from datetime import datetime
+
+    candle = OHLCVData(
+        symbol="BTC-USD",
+        source="yahoo",
+        interval="1m",
+        timestamp=datetime.now(UTC),
+        open=50000.0,
+        high=51000.0,
+        low=49000.0,
+        close=50500.0,
+        volume=100.0,
+    )
+    ingestor.ingest_batch.return_value = [
+        MarketDataResult(symbol="BTC-USD", source="yahoo", interval="1m", candles=[candle])
+    ]
+    worker = PaperTradingWorker(engine, ingestor, session_factory, poll_interval_seconds=1)
+
+    await worker._tick()
+
+    assert len(engine._positions) == 1
+    summary = engine.get_summary()
+    assert summary.total_pnl == pytest.approx(500.0)
+    assert summary.equity == pytest.approx(100500.0)
+
+
+@pytest.mark.asyncio
+async def test_persist_closed_trade_writes_history_and_engine_snapshot(ingestor):
+    """SL/TP closures must be countable and use buy/sell in trade_history."""
+    engine = PaperTradingEngine(initial_capital=100000.0)
+    result = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+    trade = engine.close_position(result["position_id"], 55000.0)
+    assert trade is not None
+
+    session = _CapturingSession()
+    worker = PaperTradingWorker(engine, ingestor, _CapturingSessionFactory(session))  # type: ignore[arg-type]
+    await worker._persist_closed_trades([trade])
+
+    history = [params for sql, params in session.calls if "INSERT INTO trade_history" in sql]
+    assert len(history) == 1
+    assert history[0]["side"] == "buy"
+    assert history[0]["pnl"] == pytest.approx(5000.0)
+
+    portfolio = [params for sql, params in session.calls if "UPDATE portfolio" in sql]
+    assert len(portfolio) == 1
+    assert portfolio[0]["total_value"] == pytest.approx(105000.0)
+    assert portfolio[0]["realized_pnl"] == pytest.approx(5000.0)
+    assert portfolio[0]["max_drawdown_pct"] == pytest.approx(0.0)
+    assert session.committed is True
+
+    # Guard the exact schema mismatches found during review: positions has no
+    # realized_pnl column, and orders has no strategy_name/reason columns.
+    positions_sql = next(sql for sql, _ in session.calls if "UPDATE positions" in sql)
+    assert re.search(r"\brealized_pnl\b", positions_sql) is None
+    orders_sql = next(sql for sql, _ in session.calls if "INSERT INTO orders" in sql)
+    assert "agent_rationale" in orders_sql
+    assert "strategy_name" not in orders_sql
 
 
 @pytest.mark.asyncio
@@ -149,13 +214,15 @@ class TestWorkerEdgeCases:
         worker = PaperTradingWorker(engine, ingestor, session_factory, poll_interval_seconds=999)
         worker._tick = AsyncMock(side_effect=asyncio.CancelledError())  # type: ignore[method-assign]
         worker.start()
-        await asyncio.wait_for(worker._task, timeout=5)
-        assert worker._task.done()
+        task = worker._task
+        assert task is not None
+        await asyncio.wait_for(task, timeout=5)
+        assert task.done()
 
     @pytest.mark.asyncio
     async def test_loop_logs_exception(self, engine, ingestor, session_factory):
         """_loop catches generic exceptions and logs them (lines 76-77)."""
-        worker = PaperTradingWorker(engine, ingestor, session_factory, poll_interval_seconds=0.01)
+        worker = PaperTradingWorker(engine, ingestor, session_factory, poll_interval_seconds=1)
         worker._tick = AsyncMock(side_effect=ValueError("test error"))  # type: ignore[method-assign]
         worker.start()
         await asyncio.sleep(0.05)
@@ -255,3 +322,64 @@ class TestWorkerEdgeCases:
         )
         # Should not raise — exception is caught and logged
         await worker._persist_closed_trades([trade])
+
+
+class _CapturingResult:
+    def __init__(self, value: str = "fake-id") -> None:
+        self._value = value
+
+    def scalar(self) -> str:
+        return self._value
+
+
+class _CapturingSession:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.committed = False
+
+    async def execute(self, statement: Any, params: dict[str, Any] | None = None) -> _CapturingResult:
+        self.calls.append((str(statement), params or {}))
+        return _CapturingResult()
+
+    async def commit(self) -> None:
+        self.committed = True
+
+
+class _CapturingSessionContext:
+    def __init__(self, session: _CapturingSession) -> None:
+        self._session = session
+
+    async def __aenter__(self) -> _CapturingSession:
+        return self._session
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+class _CapturingSessionFactory:
+    def __init__(self, session: _CapturingSession) -> None:
+        self._session = session
+
+    def __call__(self) -> _CapturingSessionContext:
+        return _CapturingSessionContext(self._session)
+
+
+@pytest.mark.asyncio
+async def test_worker_delegates_candle_processing_to_ledger(engine, ingestor, session_factory):
+    """When a ledger is wired, the worker must not take the raw-SQL path twice."""
+    ledger = MagicMock(spec=PaperTradingLedger)
+    ledger.get_open_position_symbols = AsyncMock(return_value=["BTC-USD"])
+    ledger.process_candle = AsyncMock(return_value=[])
+    worker = PaperTradingWorker(engine, ingestor, session_factory, poll_interval_seconds=1, ledger=ledger)
+
+    await worker._tick()
+
+    ledger.get_open_position_symbols.assert_awaited_once()
+    ledger.process_candle.assert_awaited_once_with(
+        symbol="BTC-USD",
+        high=56000.0,
+        low=49000.0,
+        close=55000.0,
+    )
+    session = session_factory.return_value.__aenter__.return_value
+    session.execute.assert_not_called()

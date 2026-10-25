@@ -9,9 +9,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from backend.core.dependencies import require_live_control
+from configs.settings import settings
 from database.connection import async_session_factory
 from live_trading import (
     KillSwitch,
@@ -22,6 +24,7 @@ from live_trading import (
 )
 from live_trading.audit import OrderAuditor
 from live_trading.exchange import create_exchange
+from live_trading.safety import create_kill_switch_redis
 
 logger = logging.getLogger("ares")
 
@@ -42,6 +45,23 @@ class KillSwitchRequest(BaseModel):
 # ── Lazy singleton ──────────────────────────────────────────────────────────
 
 _engine: LiveTradingEngine | None = None
+_kill_switch: KillSwitch | None = None
+
+
+def _get_kill_switch() -> KillSwitch:
+    """Return the process-wide kill switch, backed by shared Redis state.
+
+    The switch is available even when no exchange is configured, so an
+    operator can always halt future live order placement.  Redis failures
+    latch it closed (see ``KillSwitch``).
+    """
+    global _kill_switch
+    if _kill_switch is None:
+        _kill_switch = KillSwitch(
+            max_drawdown_pct=settings.live_max_drawdown_pct,
+            redis_client=create_kill_switch_redis(),
+        )
+    return _kill_switch
 
 
 def _get_engine() -> LiveTradingEngine | None:
@@ -55,9 +75,7 @@ def _get_engine() -> LiveTradingEngine | None:
     if _engine is not None:
         return _engine
 
-    from configs.settings import settings
-
-    kill_switch = KillSwitch(max_drawdown_pct=settings.live_max_drawdown_pct)
+    kill_switch = _get_kill_switch()
     mode_manager = ModeManager()
     promotion_gate = PromotionGate(
         min_paper_trades=settings.minimum_paper_trades,
@@ -100,27 +118,36 @@ class _LiveStatusResponse(dict[str, Any]):
     """Response model for /status endpoint."""
 
 
-_NOT_CONFIGURED_STATUS: dict[str, Any] = {
-    "running": False,
-    "connected": False,
-    "mode": "paper",
-    "kill_switch": {
-        "active": False,
-        "triggered_by": None,
-        "triggered_at": None,
-        "max_drawdown_pct": 20.0,
-    },
-    "exchange": "not_configured",
-    "paper_record": {
-        "promotion": {
-            "passed": False,
-            "trades": {"current": 0, "required": 50},
-            "days": {"current": 0, "required": 30},
-        }
-    },
-    "message": "No exchange configured. Running in paper trading mode. "
-    "Set exchange API keys in .env to enable live trading.",
-}
+def _not_configured_status() -> dict[str, Any]:
+    """Status payload when no exchange connector can be created.
+
+    The kill switch is still real: it reads shared Redis state so the UI can
+    report an active trip even in paper-only mode.
+    """
+    ks = _get_kill_switch()
+    return {
+        "running": False,
+        "connected": False,
+        "mode": "paper",
+        "live_trading_enabled": settings.live_trading_enabled,
+        "kill_switch": {
+            "active": ks.is_active,
+            "triggered_by": ks.triggered_by,
+            "triggered_at": ks.triggered_at.isoformat() if ks.triggered_at else None,
+            "max_drawdown_pct": ks.max_drawdown_pct,
+            "storage_healthy": ks.storage_healthy,
+        },
+        "exchange": "not_configured",
+        "paper_record": {
+            "promotion": {
+                "passed": False,
+                "trades": {"current": 0, "required": 50},
+                "days": {"current": 0, "required": 30},
+            }
+        },
+        "message": "No exchange configured. Running in paper trading mode. "
+        "Set exchange API keys in .env and LIVE_TRADING_ENABLED=true to enable live trading.",
+    }
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────────
@@ -131,18 +158,20 @@ async def live_status() -> dict[str, Any]:
     """Return engine state: mode, kill switch, connection, paper record."""
     engine = _get_engine()
     if engine is None:
-        return _NOT_CONFIGURED_STATUS
+        return _not_configured_status()
     ks = engine.kill_switch
     pr = await engine.paper_record()
     return {
         "running": engine.is_running,
         "connected": engine.is_connected,
         "mode": engine.mode.value,
+        "live_trading_enabled": settings.live_trading_enabled,
         "kill_switch": {
             "active": ks.is_active,
             "triggered_by": ks.triggered_by,
             "triggered_at": ks.triggered_at.isoformat() if ks.triggered_at else None,
             "max_drawdown_pct": ks.max_drawdown_pct,
+            "storage_healthy": ks.storage_healthy,
         },
         "exchange": engine.exchange.exchange_name,
         "paper_record": pr,
@@ -152,7 +181,7 @@ async def live_status() -> dict[str, Any]:
 _NO_ENGINE_MSG = "Exchange not configured. Set API keys in .env first."
 
 
-@router.post("/mode")
+@router.post("/mode", dependencies=[Depends(require_live_control)])
 async def set_mode(body: SetModeRequest) -> dict[str, Any]:
     """Change the trading mode.
 
@@ -176,6 +205,16 @@ async def set_mode(body: SetModeRequest) -> dict[str, Any]:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid mode '{body.mode}'. Valid modes: {valid}",
+        )
+
+    if new_mode in (TradingMode.AUTO, TradingMode.SEMI) and not settings.live_trading_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Live trading is disabled (paper-only mode). Set "
+                "LIVE_TRADING_ENABLED=true explicitly before selecting "
+                f"{new_mode.value} mode."
+            ),
         )
 
     # Block AUTO and SEMI modes if promotion gate not passed
@@ -205,9 +244,17 @@ async def set_mode(body: SetModeRequest) -> dict[str, Any]:
     return {"mode": new_mode.value}
 
 
-@router.post("/start")
+@router.post("/start", dependencies=[Depends(require_live_control)])
 async def start_engine() -> dict[str, Any]:
     """Connect to the exchange and start the live engine."""
+    if not settings.live_trading_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Live trading is disabled (paper-only mode). Set "
+                "LIVE_TRADING_ENABLED=true explicitly to allow live execution."
+            ),
+        )
     engine = _get_engine()
     if engine is None:
         raise HTTPException(status_code=503, detail=_NO_ENGINE_MSG)
@@ -221,7 +268,7 @@ async def start_engine() -> dict[str, Any]:
     raise HTTPException(status_code=500, detail="Failed to connect to exchange")
 
 
-@router.post("/stop")
+@router.post("/stop", dependencies=[Depends(require_live_control)])
 async def stop_engine() -> dict[str, Any]:
     """Disconnect from the exchange and stop the engine."""
     engine = _get_engine()
@@ -234,26 +281,49 @@ async def stop_engine() -> dict[str, Any]:
     return {"status": "stopped"}
 
 
-@router.post("/kill")
+@router.post("/kill", dependencies=[Depends(require_live_control)])
 async def activate_kill_switch(body: KillSwitchRequest) -> dict[str, Any]:
-    """Activate the kill switch — halts all live order placement immediately."""
-    engine = _get_engine()
-    if engine is None:
-        raise HTTPException(status_code=503, detail=_NO_ENGINE_MSG)
-    engine.kill_switch.activate(reason=body.reason)
-    logger.warning("Kill switch activated: %s", body.reason)
-    return {"status": "kill_switch_active", "triggered_by": body.reason}
+    """Activate the kill switch — halts all live order placement immediately.
+
+    Works even when no exchange is configured. If the shared Redis store is
+    unavailable the switch still latches closed locally; ``shared`` reports
+    whether the trip was written to Redis.
+    """
+    ks = _get_kill_switch()
+    shared = ks.activate(reason=body.reason)
+    logger.warning("Kill switch activated: %s (shared=%s)", body.reason, shared)
+    response: dict[str, Any] = {
+        "status": "kill_switch_active",
+        "triggered_by": body.reason,
+        "active": ks.is_active,
+        "shared": shared,
+    }
+    if not shared:
+        response["warning"] = (
+            "Kill switch state store unavailable — the switch is latched closed "
+            "locally and every process fails closed until a human re-arms."
+        )
+    return response
 
 
-@router.post("/arm")
+@router.post("/arm", dependencies=[Depends(require_live_control)])
 async def arm_kill_switch() -> dict[str, Any]:
-    """Re-arm the kill switch — human confirmation required."""
-    engine = _get_engine()
-    if engine is None:
-        raise HTTPException(status_code=503, detail=_NO_ENGINE_MSG)
-    engine.kill_switch.arm()
+    """Re-arm the kill switch — human confirmation required.
+
+    Refuses to clear the latch when the shared store is unavailable, because
+    that would silently re-enable trading.
+    """
+    ks = _get_kill_switch()
+    if not ks.arm():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Cannot re-arm: kill switch state store is unavailable. "
+                "Live orders remain blocked until the store recovers."
+            ),
+        )
     logger.info("Kill switch re-armed")
-    return {"status": "kill_switch_armed"}
+    return {"status": "kill_switch_armed", "active": False}
 
 
 @router.get("/positions")
@@ -296,7 +366,7 @@ async def paper_record(
     """
     engine = _get_engine()
     if engine is None:
-        return _NOT_CONFIGURED_STATUS["paper_record"]  # type: ignore[no-any-return]
+        return _not_configured_status()["paper_record"]  # type: ignore[no-any-return]
 
     try:
         return await engine.paper_record(account_id=account_id, strategy_name=strategy_name)
