@@ -15,8 +15,10 @@
 - **Phase 2 — product realism and UI:** closed on 2026-10-24. Real candles,
   persisted settings, strategy drafts, bounded polling, read-only chat, frontend CI,
   and the accessibility audit are complete.
-- **Phase 3 — hygiene:** in progress. Typing, README numbers, improvement history,
-  and Prometheus alert rules are done; branch/Dependabot cleanup remains.
+- **Phase 3 — hygiene:** complete on 2026-10-25. Typing, README numbers,
+  improvement history, Prometheus alert rules, branch pruning, and the three green
+  Dependabot PRs are done. Remaining Dependabot PRs need a rebase; four feature PRs
+  remain open because their changes are not fully superseded.
 
 ## Milestone history (verified)
 
@@ -56,7 +58,9 @@
   `reflection_runs`/`improvement_records`, migration `0006`, post-run hook)
 - Prometheus alert rules exist without duplicate configs. (met 2026-10-24: 7 rules,
   one tracked `docker/monitoring/` set mounted by both compose files)
-- Stale branches and Dependabot PRs are handled.
+- Stale branches and Dependabot PRs are handled. (met 2026-10-25: nine merged
+  remote branches deleted; green #57/#56/#67 merged. Remaining Dependabot PRs need
+  a rebase; feature PRs #104/#105/#106/#75 stay open for separate review.)
 
 ## Open product decisions
 

@@ -151,7 +151,10 @@ authenticated route shells; data-populated states remain an optional follow-up.
   errors, fallback spike, live-order failure, kill switch), validated with
   `promtool`; both compose files mount the tracked set. Remaining: an Alertmanager
   target for delivery.
-- Prune stale branches and land Dependabot PRs.
+- Branch and Dependabot cleanup: **done 2026-10-25** — deleted nine merged remote
+  branches and merged the three green Dependabot PRs (#57, #56, #67). Remaining
+  Dependabot PRs fail or conflict against old bases and need a rebase; feature PRs
+  #104/#105/#106/#75 remain open because their changes are not fully superseded.
 
 ## Guardrails
 

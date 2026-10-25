@@ -80,7 +80,9 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
 - [x] Add Prometheus alert rules; remove duplicate monitoring configs. (2026-10-24:
       7 rules in `docker/monitoring/alert-rules.yml`, `promtool` clean; both compose
       files mount the tracked set. No Alertmanager delivery yet.)
-- [ ] Prune stale branches and land Dependabot PRs.
+- [x] Prune stale branches and land Dependabot PRs. (2026-10-25: deleted nine
+      merged remote branches; merged green #57, #56, #67. Remaining Dependabot PRs
+      need a rebase; #104/#105/#106/#75 remain open as not fully superseded.)
 
 ## Documentation
 

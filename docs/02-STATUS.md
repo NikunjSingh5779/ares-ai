@@ -2,11 +2,11 @@
 # Status — verified state
 
 **Last verified:** 2026-10-25
-**Branch:** `fix/orchestration-reliability-frontend` — 31 commits ahead / 0 behind
-`origin/master` after merge `67c5222`. Recent verified work adds the real-PostgreSQL
-strategy route module, the opt-in local chat fallback, the accessibility audit, the improvement
-metric correction, durable improvement history wired into the pipeline, and Prometheus
-alert rules with one tracked monitoring set.
+**Branch:** `fix/orchestration-reliability-frontend` — 34 commits ahead / 0 behind
+`origin/master` after merge `c466fd3`. Recent verified work adds the real-PostgreSQL
+strategy route module, the opt-in local chat fallback, the accessibility audit, the
+improvement metric correction, durable improvement history wired into the pipeline,
+Prometheus alert rules with one tracked monitoring set, and branch/Dependabot cleanup.
 The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
 strategy data`) passed GitHub Actions run **39780873063** on all five jobs: `lint`,
 `test`, `postgres-integration`, `frontend`, and `docker`.
@@ -339,14 +339,17 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | CI | GitHub Actions run **40099879748** passed all five jobs: `lint`, `test`, `postgres-integration` (23 tests), `frontend`, and `docker`. |
 | Safety | Alerting is read-only observability. No rule, dashboard, or compose change touches the kill switch, approval mode, promotion gate, or a trading threshold. |
 
-## Post-merge dependency alignment (verified 2026-10-25)
+## Post-merge sync and cleanup (verified 2026-10-25)
 
 | Piece | Evidence |
 |---|---|
-| Failure | The master sync bumped `react` to 19.3.1 but left `react-dom` at `^19.1.0`, which resolved 19.2.7. CI run **40211715708** failed the `frontend` job with `Incompatible React versions`. |
-| Fix | `frontend/package.json` now requires `react-dom ^19.3.1`; `frontend/pnpm-lock.yaml` resolves both packages to **19.3.1**. |
-| Verification | `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass locally. GitHub Actions run **40212632255** passed all five jobs. |
-| Safety | Dependency-only change; no trading, safety, auth, or API behavior changed. |
+| Branch sync | `origin/master` was merged twice: `67c5222` (react/@types bump, checkout v7, live-routing safety test) and `c466fd3` (setup-node v7, setup-buildx v4, tailwindcss 4.3.3). The branch is **34 commits ahead / 0 behind** after this docs commit. |
+| React failure and fix | The first sync bumped `react` to 19.3.1 but left `react-dom` at `^19.1.0`, which resolved 19.2.7. CI run **40211715708** failed the `frontend` job with `Incompatible React versions`. `frontend/package.json` now requires `react-dom ^19.3.1`; `frontend/pnpm-lock.yaml` resolves both packages to **19.3.1**. |
+| Branch prune | Deleted nine remote branches already merged into `origin/master`: `codex/m14-safety-operability`, `docs/correct-milestone-readme-arch-agent-md`, `fix/csp-cleanup-stripe-jsdelivr`, `fix/frontend-api-url-build-arg`, `fix/news-agent-router-call`, `fix/silent-except-logging`, `fix/skills-json-relative-path`, `fix/wire-dead-metrics`, and `fix/workflow-consolidation`. None had an open PR. |
+| Dependabot | Merged green PRs **#57** (`actions/setup-node` 7), **#56** (`docker/setup-buildx-action` 4), and **#67** (`tailwindcss` 4.3.3). The branch's own `postgres-integration` job now uses `actions/checkout@v7` too. Remaining Dependabot PRs fail or conflict against old bases (including #65) and are left open for rebase. |
+| Feature PRs | #104, #105, #106, and #75 remain open. They are not safely closable as superseded: #104/#105 contain error-handler and engine opt-in changes absent from this branch, #106 is a deferred local-first design, and #75 is an older partial runtime. |
+| Verification | `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass locally. GitHub Actions run **40214589411** passed all five jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`. |
+| Safety | Dependency and CI cleanup only; no trading, safety, auth, or API behavior changed. |
 
 ## Red / known gaps
 
