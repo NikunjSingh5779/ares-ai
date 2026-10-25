@@ -114,7 +114,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Initialize database schema
         run: psql -h localhost -U ares -d ares_ai_test -f database/schema.sql
