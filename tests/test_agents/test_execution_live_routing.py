@@ -48,6 +48,7 @@ def mock_live_engine(mock_live_exchange):
     engine = MagicMock(spec=LiveTradingEngine)
     engine.exchange = mock_live_exchange
     engine.is_connected = True
+    engine.live_order_placement_enabled = False
     return engine
 
 
@@ -114,6 +115,7 @@ async def test_routes_to_live_through_engine_when_enabled(
     from configs.settings import settings
 
     monkeypatch.setattr(settings, "live_trading_enabled", True)
+    mock_live_engine.live_order_placement_enabled = True  # Explicit test-only opt-in
     mock_live_engine.mode = TradingMode.AUTO
     mock_live_engine.is_running = True
     mock_live_engine.is_connected = True
