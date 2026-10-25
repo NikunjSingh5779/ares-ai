@@ -2,7 +2,7 @@
 # Status — verified state
 
 **Last verified:** 2026-10-25
-**Branch:** `fix/orchestration-reliability-frontend` — 29 commits ahead / 0 behind
+**Branch:** `fix/orchestration-reliability-frontend` — 31 commits ahead / 0 behind
 `origin/master` after merge `67c5222`. Recent verified work adds the real-PostgreSQL
 strategy route module, the opt-in local chat fallback, the accessibility audit, the improvement
 metric correction, durable improvement history wired into the pipeline, and Prometheus
@@ -338,6 +338,15 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Validation | `promtool check config` reports 1 rule file and valid syntax; `promtool check rules` reports **7 rules**. `docker compose ... config --quiet` passes for both compose files. `pytest tests/test_infra_config.py -q` — **18 passed**, including rule fields, emitted-metric coverage, compose mounts, and dashboard JSON. Full suite **1259 passed, 3 skipped / 82.17%**; `ruff` and `mypy` clean on **211 files**. |
 | CI | GitHub Actions run **40099879748** passed all five jobs: `lint`, `test`, `postgres-integration` (23 tests), `frontend`, and `docker`. |
 | Safety | Alerting is read-only observability. No rule, dashboard, or compose change touches the kill switch, approval mode, promotion gate, or a trading threshold. |
+
+## Post-merge dependency alignment (verified 2026-10-25)
+
+| Piece | Evidence |
+|---|---|
+| Failure | The master sync bumped `react` to 19.3.1 but left `react-dom` at `^19.1.0`, which resolved 19.2.7. CI run **40211715708** failed the `frontend` job with `Incompatible React versions`. |
+| Fix | `frontend/package.json` now requires `react-dom ^19.3.1`; `frontend/pnpm-lock.yaml` resolves both packages to **19.3.1**. |
+| Verification | `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass locally. GitHub Actions run **40212632255** passed all five jobs. |
+| Safety | Dependency-only change; no trading, safety, auth, or API behavior changed. |
 
 ## Red / known gaps
 
