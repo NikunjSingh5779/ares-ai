@@ -49,7 +49,7 @@ export default function PortfolioPage() {
     if (!portfolio || !chartRef.current || orders.length === 0) return;
 
     if (!chartApiRef.current) {
-      import("lightweight-charts").then(({ createChart, ColorType }) => {
+      import("lightweight-charts").then(({ createChart, ColorType, LineSeries }) => {
         if (!chartRef.current) return;
         const chart = createChart(chartRef.current, {
           layout: {
@@ -75,7 +75,7 @@ export default function PortfolioPage() {
           },
         });
 
-        const series = chart.addLineSeries({
+        const series = chart.addSeries(LineSeries, {
           color: "#22c55e",
           lineWidth: 2,
           crosshairMarkerBackgroundColor: "#22c55e",

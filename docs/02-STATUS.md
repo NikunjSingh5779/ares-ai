@@ -2,13 +2,14 @@
 # Status — verified state
 
 **Last verified:** 2026-10-26
-**Branch:** `chore/deps-consolidated-2026-10` — 2 commits ahead / 0 behind
-`origin/master` (`ceca202`). The previous branch landed as `ceca202` (PR #113), which
-fixed `master`'s Ruff `N999` failure. Recent verified work adds the real-PostgreSQL
+**Branch:** `chore/lightweight-charts-v5` — 1 commit ahead / 0 behind
+`origin/master` (`cfabad8`, PR #114 merged). The dependency consolidation landed, and
+PR #115 ports the superseded feature-PR hunks (paper-only audit, free-only guard,
+router error fallthrough, schema retry). Recent verified work adds the real-PostgreSQL
 strategy route module, the opt-in local chat fallback, the accessibility audit, the
 improvement metric correction, durable improvement history wired into the pipeline,
 Prometheus alert rules with one tracked monitoring set, branch/Dependabot cleanup,
-and a consolidated dependency bump (PR #114).
+a consolidated dependency bump (PR #114), and the `lightweight-charts` v5 port.
 The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
 strategy data`) passed GitHub Actions run **39780873063** on all five jobs: `lint`,
 `test`, `postgres-integration`, `frontend`, and `docker`.
@@ -363,6 +364,16 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Excluded | #82 (`lightweight-charts` 5.2.1) is a breaking major: v5 removes `addCandlestickSeries`/`addLineSeries` used by `frontend/src/app/markets/page.tsx` and `frontend/src/app/portfolio/page.tsx`. It stays open for a code port. |
 | Verification | With the new versions installed: `ruff check .` and `ruff format --check .` clean on 268 files, `mypy .` clean on 211 source files, `pytest tests/ -q` **1259 passed, 3 skipped** at 82.17%, and `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), `pnpm build` pass. |
 | Safety | Dependency-only change; no trading, safety, auth, API, or model-routing behavior changed. |
+
+## lightweight-charts v5 port (verified 2026-10-26)
+
+| Piece | Evidence |
+|---|---|
+| Dependency | `frontend/package.json` requires `lightweight-charts ^5.2.1`; `frontend/pnpm-lock.yaml` resolves **5.2.1** (was 4.2.3). No other dependency changed. |
+| Markets chart | `frontend/src/app/markets/page.tsx` imports `CandlestickSeries` and calls `chart.addSeries(CandlestickSeries, options)`. The v4-only `chart.addCandlestickSeries` is gone. |
+| Portfolio chart | `frontend/src/app/portfolio/page.tsx` imports `LineSeries` and calls `chart.addSeries(LineSeries, options)`. The v4-only `chart.addLineSeries` is gone. |
+| Verification | `pnpm lint` (zero warnings), `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` (all 19 routes) pass locally against 5.2.1. |
+| Safety | Display-only chart code. No trading, safety, auth, API, or model-routing behavior changed. |
 
 ## Red / known gaps
 

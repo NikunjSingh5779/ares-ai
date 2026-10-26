@@ -15,8 +15,8 @@ importers:
         specifier: ^5.3.0
         version: 5.3.0
       lightweight-charts:
-        specifier: ^4.2.0
-        version: 4.2.3
+        specifier: ^5.2.1
+        version: 5.2.1
       lucide-react:
         specifier: ^1.61.0
         version: 1.61.0(@types/react@19.3.0)(react@19.3.1)
@@ -2041,8 +2041,8 @@ packages:
     resolution: {integrity: sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==}
     engines: {node: '>= 12.0.0'}
 
-  lightweight-charts@4.2.3:
-    resolution: {integrity: sha512-5kS/2hY3wNYNzhnS8Gb+GAS07DX8GPF2YVDnd2NMC85gJVQ6RLU6YrXNgNJ6eg0AnWPwCnvaGtYmGky3HiLQEw==}
+  lightweight-charts@5.2.1:
+    resolution: {integrity: sha512-IVwoK1RLFiLPubaKIjNbtjWLnpPMqiABSrTay6whmNa8L1+19292VtHJ+BWyPUuLCwF0tcQlhEWd1CLB2a1nsQ==}
 
   locate-path@6.0.0:
     resolution: {integrity: sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==}
@@ -4740,7 +4740,7 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.33.0
       lightningcss-win32-x64-msvc: 1.33.0
 
-  lightweight-charts@4.2.3:
+  lightweight-charts@5.2.1:
     dependencies:
       fancy-canvas: 2.1.0
 
