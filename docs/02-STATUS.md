@@ -404,8 +404,9 @@ than replacing them.
 
 | Piece | Evidence |
 |---|---|
-| Branch | `feat/port-superseded-pr-hunks` off `ceca202`. Ports only the still-valuable hunks from #105, #106, and #75; #104 is fully superseded and #82 stays open for its breaking `lightweight-charts` v5 API port. |
+| Branch | `feat/port-superseded-pr-hunks` off `ceca202`. Ports only the still-valuable hunks from #104, #105, #106, and #75; #82 stays open for its breaking `lightweight-charts` v5 API port. |
 | Paper-only audit | `live_trading/engine.py` records an `AuditEntry` with `order_result.status = "blocked_paper_only"` before returning the refusal, so a direct caller's blocked live attempt leaves a trace. The `settings.live_trading_enabled` gate itself is unchanged (HEAD's env-driven gate, not #105's per-instance opt-in). |
+| Compose hostnames | #104's Compose fix is already in `master` (`docker/docker-compose.yml` uses `postgres`/`redis`/`chromadb` and container port 8000). Its regression test is ported into `tests/test_infra_config.py`; its `ares_error_handler` widening is not ported because HEAD's handler correctly re-raises unexpected exceptions. |
 | Free-only guard | `agents/client.py` rejects a hosted model without a free suffix (`:free` for OpenRouter, `-free` for OpenCode), rejects direct Google/Mistral models, and rejects `local/` when no local provider is configured — all before an HTTP client is built. Local inference stays opt-in. |
 | Provider error envelopes | `agents/client.py` treats a 200-with-`error` body from `local` the same as OpenRouter, and `agents/router.py` now falls through to the next model instead of returning an error dict as a successful completion. This also changes the `NoOpLLMClient` path to report `success=False` / `degraded=True`, which is the correct meaning. |
 | Free-price bound | `agents/client.py` sets OpenRouter `provider.max_price` to zero for prompt, completion, request, and image tokens (merging any caller provider preferences), so a roster entry that loses its `:free` suffix cannot silently incur charges. |
