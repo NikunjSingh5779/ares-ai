@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import BaseModel
 
 from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.client import LLMClient, NoOpLLMClient
@@ -62,28 +63,29 @@ class TestModelRouter:
         assert len(result.errors) == 0  # nothing to try
 
     @pytest.mark.asyncio
-    async def test_single_model_success(self, router: ModelRouter) -> None:
-        """NoOpLLMClient returns a response without raising — router sees success."""
+    async def test_single_model_error_envelope_degrades(self, router: ModelRouter) -> None:
+        """An error envelope from the no-op client must not count as success."""
         result = await router.execute(
             model_chain=["test-model"],
             messages=[{"role": "user", "content": "test"}],
         )
-        # NoOpLLMClient returns an error dict without raising, so router reports success
-        assert result.success is True
-        assert result.model_used == "test-model"
-        assert result.degraded is False
+        assert result.success is False
+        assert result.degraded is True
+        assert result.model_used == ""
+        assert len(result.errors) == 1
+        assert result.errors[0]["error_type"] == "error_response"
 
     @pytest.mark.asyncio
     async def test_all_fallbacks_exhausted(self, router: ModelRouter) -> None:
-        """All models return responses — router sees success for each."""
+        """Error envelopes from every candidate result in graceful degradation."""
         result = await router.execute(
             model_chain=["model-a", "model-b", "model-c"],
             messages=[{"role": "user", "content": "test"}],
         )
-        # Each model returns without raising, so the first one "succeeds"
-        assert result.success is True
-        assert result.model_used == "model-a"  # first model "succeeds"
-        assert len(result.errors) == 0
+        assert result.success is False
+        assert result.degraded is True
+        assert result.model_used == ""
+        assert len(result.errors) == 3
 
     @pytest.mark.asyncio
     async def test_circuit_breaker_skips_model(self, router: ModelRouter) -> None:
@@ -135,6 +137,109 @@ class TestModelRouter:
         # Queue should have been created with RPM=100
         queue = router.queues.get("test-model")
         assert queue.rpm == 100
+
+
+class TestModelRouterSchemaValidation:
+    """Structured output: schema violations get one corrective retry, then fall through."""
+
+    class Signal(BaseModel):
+        action: str
+        confidence: float
+
+    @staticmethod
+    def _response(content: str, model: str = "model-a") -> dict[str, Any]:
+        return {
+            "choices": [{"message": {"content": content}}],
+            "model": model,
+            "usage": {"total_tokens": 10},
+        }
+
+    def _router(self, mock_client: AsyncMock) -> ModelRouter:
+        mock_client.is_error_response.return_value = False
+        return ModelRouter(
+            llm_client=mock_client,
+            breaker_registry=CircuitBreakerRegistry(),
+            queue_registry=QueueRegistry(),
+            retry_config=RetryConfig(max_retries=0, base_delay=0.01),
+        )
+
+    @pytest.mark.asyncio
+    async def test_valid_json_is_parsed_without_correction(self) -> None:
+        from agents.client import LLMClient
+
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.chat_completion = AsyncMock(return_value=self._response('{"action": "buy", "confidence": 0.9}'))
+        router = self._router(mock_client)
+
+        result = await router.execute(
+            model_chain=["model-a"],
+            messages=[{"role": "user", "content": "signal"}],
+            schema_type=self.Signal,
+        )
+
+        assert result.success is True
+        assert isinstance(result.parsed, self.Signal)
+        assert result.parsed.action == "buy"
+        assert result.schema_corrections == 0
+        sent = mock_client.chat_completion.await_args.kwargs
+        assert sent["json_schema"]["properties"]["action"]["type"] == "string"
+
+    @pytest.mark.asyncio
+    async def test_invalid_json_triggers_one_corrective_retry(self) -> None:
+        from agents.client import LLMClient
+
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.chat_completion = AsyncMock(
+            side_effect=[
+                self._response("not json"),
+                self._response('{"action": "sell", "confidence": 0.4}'),
+            ]
+        )
+        router = self._router(mock_client)
+
+        result = await router.execute(
+            model_chain=["model-a"],
+            messages=[{"role": "user", "content": "signal"}],
+            schema_type=self.Signal,
+        )
+
+        assert result.success is True
+        assert isinstance(result.parsed, self.Signal)
+        assert result.parsed.action == "sell"
+        assert result.schema_corrections == 1
+        assert mock_client.chat_completion.await_count == 2
+        corrective_messages = mock_client.chat_completion.await_args_list[1].kwargs["messages"]
+        assert corrective_messages[-1]["role"] == "system"
+        assert "JSON schema" in corrective_messages[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_persistent_schema_violation_falls_through(self) -> None:
+        from agents.client import LLMClient
+
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.chat_completion = AsyncMock(
+            side_effect=[
+                self._response('{"action": "buy"}'),  # missing confidence
+                self._response("still not json"),
+                self._response('{"action": "hold", "confidence": 0.5}', model="model-b"),
+            ]
+        )
+        router = self._router(mock_client)
+
+        result = await router.execute(
+            model_chain=["model-a", "model-b"],
+            messages=[{"role": "user", "content": "signal"}],
+            schema_type=self.Signal,
+        )
+
+        assert result.success is True
+        assert result.model_used == "model-b"
+        assert result.fallback_used is True
+        assert isinstance(result.parsed, self.Signal)
+        assert result.parsed.action == "hold"
+        assert result.schema_corrections == 1
+        assert result.errors[0]["model"] == "model-a"
+        assert result.errors[0]["error_type"] == "schema_error"
 
 
 class TestModelRouterWithRealClient:
@@ -236,6 +341,52 @@ class TestModelRouterMocked:
         assert result.degraded is False
         assert "model-a" in called_models
         assert "model-b" in called_models
+
+    @pytest.mark.asyncio
+    async def test_error_envelope_falls_through_to_fallback(self) -> None:
+        """A 200-with-error payload must not end the chain."""
+        from agents.client import LLMClient
+
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.chat_completion = AsyncMock(
+            side_effect=[
+                {
+                    "error": True,
+                    "error_type": "HTTPStatusError",
+                    "model": "model-a",
+                    "choices": [],
+                    "usage": {"total_tokens": 0},
+                },
+                {
+                    "choices": [{"message": {"content": '{"result": "ok"}'}}],
+                    "model": "model-b",
+                    "usage": {"total_tokens": 10},
+                },
+            ]
+        )
+        mock_client.is_error_response.side_effect = lambda response: bool(response.get("error"))
+
+        router = ModelRouter(
+            llm_client=mock_client,
+            breaker_registry=CircuitBreakerRegistry(),
+            queue_registry=QueueRegistry(),
+            retry_config=RetryConfig(max_retries=0, base_delay=0.01),
+        )
+
+        result = await router.execute(
+            model_chain=["model-a", "model-b"],
+            messages=[{"role": "user", "content": "test"}],
+        )
+
+        assert result.success is True
+        assert result.model_used == "model-b"
+        assert result.fallback_used is True
+        assert result.degraded is False
+        assert len(result.errors) == 1
+        assert result.errors[0]["model"] == "model-a"
+        assert result.errors[0]["error_type"] == "error_response"
+        # An error envelope is a real model failure, so it trips the breaker.
+        assert router.breakers.get("model-a").failure_count == 1
 
     @pytest.mark.asyncio
     async def test_local_busy_is_not_a_model_failure(

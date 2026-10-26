@@ -167,6 +167,25 @@ class TestCircuitBreakerRegistry:
         breaker = registry.get("model-a")
         assert breaker.consecutive_threshold == 1
 
+    def test_get_or_register_creates_with_custom_params(self) -> None:
+        registry = CircuitBreakerRegistry()
+        breaker = registry.get_or_register("model-a", threshold=5, reset_seconds=60)
+        assert breaker.consecutive_threshold == 5
+        assert breaker.reset_seconds == 60
+
+    def test_get_or_register_preserves_existing_state(self) -> None:
+        """Re-registering on every call must not erase accumulated failures."""
+        registry = CircuitBreakerRegistry()
+        breaker = registry.get_or_register("model-a", threshold=5)
+        breaker.record_failure()
+        breaker.record_failure()
+
+        same = registry.get_or_register("model-a", threshold=1, reset_seconds=1)
+
+        assert same is breaker
+        assert same.consecutive_threshold == 5
+        assert same.failure_count == 2
+
     def test_all_stats(self) -> None:
         registry = CircuitBreakerRegistry()
         registry.get("model-a")

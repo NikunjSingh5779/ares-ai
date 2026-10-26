@@ -8,6 +8,7 @@ import pytest
 from pytest_httpx import HTTPXMock
 
 from agents.client import LLMClient, NoOpLLMClient, create_llm_client
+from agents.models import load_model_roster
 
 
 class TestLLMClientInit:
@@ -59,6 +60,91 @@ class TestLLMClientInit:
         assert payload["model"] == "qwen3.6-35b-a3b-ud-q4_k_m"
         assert payload["reasoning_effort"] == "off"
         assert "authorization" not in request.headers
+
+
+class TestFreeOnlyModelPolicy:
+    """The free-only policy is enforced before any network client is built."""
+
+    @pytest.mark.asyncio
+    async def test_paid_hosted_model_is_blocked_before_network(self) -> None:
+        client = LLMClient(api_key="sk-test-key")
+        with pytest.raises(ValueError, match="free-only policy"):
+            await client.chat_completion(
+                model="open_router/openai/gpt-4o",
+                messages=[{"role": "user", "content": "hello"}],
+            )
+        assert client._clients == {}
+
+    @pytest.mark.asyncio
+    async def test_paid_opencode_model_is_blocked(self) -> None:
+        client = LLMClient(providers={"opencode": {"api_key": "test", "base_url": "https://api.opencode.ai/v1"}})
+        with pytest.raises(ValueError, match="free-only policy"):
+            await client.chat_completion(model="opencode/gpt-5", messages=[])
+
+    @pytest.mark.asyncio
+    async def test_direct_google_model_is_blocked(self) -> None:
+        client = LLMClient(
+            providers={
+                "google": {"api_key": "test", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"}
+            }
+        )
+        with pytest.raises(ValueError, match="free-only model policy"):
+            await client.chat_completion(model="google/gemini-2.5-pro", messages=[])
+
+    @pytest.mark.asyncio
+    async def test_local_model_without_configuration_is_blocked(self) -> None:
+        client = LLMClient()
+        with pytest.raises(ValueError, match="LOCAL_LLM_BASE_URL"):
+            await client.chat_completion(model="local/qwen", messages=[])
+
+    @pytest.mark.asyncio
+    async def test_free_hosted_model_is_allowed(self, httpx_mock: HTTPXMock) -> None:
+        httpx_mock.add_response(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            method="POST",
+            json={"choices": [{"message": {"content": "ok"}}]},
+        )
+        client = LLMClient(api_key="sk-test-key")
+        response = await client.chat_completion(
+            model="open_router/nvidia/nemotron-3-super-120b-a12b:free",
+            messages=[{"role": "user", "content": "hello"}],
+        )
+        await client.close()
+
+        assert response["choices"][0]["message"]["content"] == "ok"
+        request = httpx_mock.get_request()
+        assert request is not None
+        payload = json.loads(request.content)
+        assert payload["max_price"] == {"prompt": 0, "completion": 0, "request": 0, "image": 0}
+
+    @pytest.mark.asyncio
+    async def test_local_error_envelope_is_raised(self, httpx_mock: HTTPXMock) -> None:
+        """A local server can return 200 with an error body; do not pass it through."""
+        httpx_mock.add_response(
+            url="http://local.test/v1/chat/completions",
+            method="POST",
+            json={"error": {"message": "model not loaded"}},
+        )
+        client = LLMClient(providers={"local": {"api_key": "", "base_url": "http://local.test/v1"}})
+        with pytest.raises(ValueError, match="local payload error"):
+            await client.chat_completion(model="local/qwen", messages=[])
+        await client.close()
+
+
+class TestFreeOnlyModelRoster:
+    def test_every_hosted_model_is_explicitly_free(self) -> None:
+        roster = load_model_roster()
+        for agent_name in roster.agent_names:
+            for model_id in roster.get(agent_name).model_chain:
+                if model_id.startswith("open_router/"):
+                    hosted_id = model_id.removeprefix("open_router/")
+                    assert hosted_id.endswith(":free") or hosted_id == "openrouter/free", (
+                        f"{agent_name} uses an unverified model: {model_id}"
+                    )
+                elif model_id.startswith("opencode/"):
+                    assert model_id.endswith("-free"), f"{agent_name} uses an unverified OpenCode model: {model_id}"
+                else:
+                    assert model_id.startswith("local/"), f"{agent_name} uses a non-allowlisted model: {model_id}"
 
 
 class TestNoOpLLMClient:

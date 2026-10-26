@@ -33,6 +33,12 @@ class RouterResult:
         self.fallback_used: bool = False
         self.degraded: bool = False
         self.errors: list[dict[str, Any]] = []
+        # Number of corrective (schema-violation) retries issued to the SAME
+        # model, so the cost of malformed output is auditable.
+        self.schema_corrections: int = 0
+        # When a ``schema_type`` is supplied, the validated Pydantic object (or
+        # None) goes here; ``response`` still holds the raw provider payload.
+        self.parsed: Any | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -42,6 +48,7 @@ class RouterResult:
             "total_latency_ms": self.total_latency_ms,
             "fallback_used": self.fallback_used,
             "degraded": self.degraded,
+            "schema_corrections": self.schema_corrections,
             "errors": self.errors,
         }
 
@@ -76,6 +83,9 @@ class ModelRouter:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         rpm: int = 20,
+        schema_type: type[Any] | None = None,
+        breaker_threshold: int = 3,
+        breaker_reset_seconds: float = 300.0,
     ) -> RouterResult:
         """Execute across the fallback chain.
         Args:
@@ -84,11 +94,18 @@ class ModelRouter:
             temperature: Sampling temperature.
             max_tokens: Max tokens in response.
             rpm: Rate limit for each model.
+            schema_type: Optional Pydantic model used for JSON Schema structured
+                output. When provided, one corrective (JSON-only) retry is
+                issued to the SAME model on an invalid parse, then the next
+                fallback is tried.
+            breaker_threshold: per-model consecutive-failure threshold.
+            breaker_reset_seconds: breaker reset window.
         Returns:
             RouterResult with success/failure, response, model used, etc.
         """
         result = RouterResult()
         start = time.monotonic()
+        json_schema = schema_type.model_json_schema() if schema_type is not None else None
         for i, model_id in enumerate(model_chain):
             is_fallback = i > 0
             attempt_info: dict[str, Any] = {
@@ -100,8 +117,8 @@ class ModelRouter:
             }
             model_start = time.monotonic()
             try:
-                # Get or create circuit breaker for this model
-                breaker = self.breakers.get(model_id)
+                # Get or create circuit breaker honouring per-model limits.
+                breaker = self.breakers.get_or_register(model_id, breaker_threshold, breaker_reset_seconds)
                 # Get or create rate-limit queue
                 queue = self.queues.get(model_id, rpm=rpm)
                 # Check circuit breaker first
@@ -144,6 +161,7 @@ class ModelRouter:
                             messages=messages,
                             temperature=temperature,
                             max_tokens=max_tokens,
+                            json_schema=json_schema,
                         ),
                         config=self.retry_config,
                         breaker=breaker,
@@ -154,9 +172,65 @@ class ModelRouter:
                     await queue.release()
                 attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
                 if retry_result.success:
+                    response = retry_result.result
+                    if response is None or self.client.is_error_response(response):
+                        # A provider can return an error envelope with a 200
+                        # status. Treat it as a failed attempt so the chain
+                        # falls through instead of handing an error dict to
+                        # the agent as if it were a completion.
+                        if response is None:
+                            attempt_info["error"] = "empty_model_response"
+                        elif isinstance(response, dict):
+                            attempt_info["error"] = str(
+                                response.get("error_type", response.get("error", "error_response"))
+                            )
+                        else:
+                            attempt_info["error"] = "invalid_model_response"
+                        attempt_info["error_type"] = "error_response"
+                        breaker.record_failure()
+                        result.errors.append(attempt_info)
+                        continue
+                    parsed_out: Any = None
+                    if schema_type is not None:
+                        content = self._extract_content(response)
+                        parsed_out = self._validate_content(content, schema_type)
+                        if parsed_out is None:
+                            # One corrective JSON-only retry to the SAME model,
+                            # then fall through so a malformed model cannot
+                            # burn the rest of the chain's budget.
+                            result.schema_corrections += 1
+                            corrective_messages = [
+                                *messages,
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "Your previous output did not conform to the required JSON schema. "
+                                        "Correct it and return ONLY valid JSON matching the schema."
+                                    ),
+                                },
+                            ]
+                            try:
+                                corr_resp = await self.client.chat_completion(
+                                    model=model_id,
+                                    messages=corrective_messages,
+                                    temperature=temperature,
+                                    max_tokens=max_tokens,
+                                    json_schema=json_schema,
+                                )
+                                parsed_out = self._validate_content(self._extract_content(corr_resp), schema_type)
+                            except Exception as exc:  # noqa: BLE001 - fall through to next model
+                                logger.error("Corrective retry failed for %s: %s", model_id, exc)
+                                parsed_out = None
+                            if parsed_out is None:
+                                attempt_info["error"] = "Invalid JSON/schema output after one corrective retry"
+                                attempt_info["error_type"] = "schema_error"
+                                attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
+                                result.errors.append(attempt_info)
+                                continue
                     elapsed = int((time.monotonic() - start) * 1000)
                     result.success = True
-                    result.response = retry_result.result
+                    result.response = response
+                    result.parsed = parsed_out
                     result.model_used = model_id
                     result.attempts = retry_result.attempts
                     result.total_latency_ms = elapsed
@@ -186,3 +260,22 @@ class ModelRouter:
             "usage": {"total_tokens": 0},
         }
         return result
+
+    @staticmethod
+    def _extract_content(response: dict[str, Any] | None) -> str | None:
+        """Extract the text content from an OpenAI-style chat payload."""
+        try:
+            content: Any = (response or {})["choices"][0]["message"]["content"]
+            return content if isinstance(content, str) else None
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    @staticmethod
+    def _validate_content(content: str | None, schema_type: type[Any]) -> Any | None:
+        """Validate raw JSON text against a Pydantic model (JSON Schema)."""
+        if not content:
+            return None
+        try:
+            return schema_type.model_validate_json(content)
+        except Exception:  # noqa: BLE001 - any parse/validation error means invalid output
+            return None
