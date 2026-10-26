@@ -1,12 +1,14 @@
 <!-- docs/02-STATUS.md -->
 # Status — verified state
 
-**Last verified:** 2026-10-25
-**Branch:** `fix/orchestration-reliability-frontend` — 35 commits ahead / 0 behind
-`origin/master` after merge `c466fd3`. Recent verified work adds the real-PostgreSQL
+**Last verified:** 2026-10-26
+**Branch:** `chore/deps-consolidated-2026-10` — 2 commits ahead / 0 behind
+`origin/master` (`ceca202`). The previous branch landed as `ceca202` (PR #113), which
+fixed `master`'s Ruff `N999` failure. Recent verified work adds the real-PostgreSQL
 strategy route module, the opt-in local chat fallback, the accessibility audit, the
 improvement metric correction, durable improvement history wired into the pipeline,
-Prometheus alert rules with one tracked monitoring set, and branch/Dependabot cleanup.
+Prometheus alert rules with one tracked monitoring set, branch/Dependabot cleanup,
+and a consolidated dependency bump (PR #114).
 The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
 strategy data`) passed GitHub Actions run **39780873063** on all five jobs: `lint`,
 `test`, `postgres-integration`, `frontend`, and `docker`.
@@ -349,8 +351,18 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Dependabot | Merged green PRs **#57** (`actions/setup-node` 7), **#56** (`docker/setup-buildx-action` 4), and **#67** (`tailwindcss` 4.3.3). The branch's own `postgres-integration` job now uses `actions/checkout@v7` too. Remaining Dependabot PRs fail or conflict against old bases (including #65) and are left open for rebase. |
 | Feature PRs | #104, #105, #106, and #75 remain open. They are not safely closable as superseded: #104/#105 contain error-handler and engine opt-in changes absent from this branch, #106 is a deferred local-first design, and #75 is an older partial runtime. |
 | Verification | `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass locally. GitHub Actions run **40214589411** passed all five jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`. |
-| Pull request | **PR #113** (`fix/orchestration-reliability-frontend` → `master`) opened 2026-10-25 and left unmerged. PR CI run **40215564861** passed all five jobs. `master` stays red on the pre-existing Ruff `N999` for `scripts/load-test.py` until this PR lands, because this branch renames it to `scripts/load_test.py`. |
+| Pull request | **PR #113** (`fix/orchestration-reliability-frontend` → `master`) merged 2026-10-25 as `ceca202` with a merge commit. PR CI run **40215564861** passed all five jobs, and the post-merge `master` run **40246201368** passed all five, clearing the `N999` failure on `scripts/load-test.py`. |
 | Safety | Dependency and CI cleanup only; no trading, safety, auth, or API behavior changed. |
+
+## Dependency consolidation (verified 2026-10-26)
+
+| Piece | Evidence |
+|---|---|
+| Scope | **PR #114** (`chore/deps-consolidated-2026-10` → `master`) absorbs 14 Dependabot PRs: `@types/node` 26.6.5, `next` 16.4.3, `lucide-react` 1.61.0, `@tailwindcss/postcss` 4.3.3, `python-jose` 3.5.0, `prometheus-client` 0.26.0, `ccxt` 4.5.90, `pydantic-settings` 2.14.2, `python-multipart` 0.0.32, `uvicorn` 0.54.0, `chromadb` 1.5.9, `pre-commit` 4.7.0, `pytest-asyncio` 1.4.0, and `ruff` 0.17.2. Only `pyproject.toml`, `uv.lock`, `frontend/package.json`, and `frontend/pnpm-lock.yaml` change. |
+| Why one PR | Every frontend bump conflicts on the `pnpm-lock.yaml` rewrite from #113, and every Python bump edits `pyproject.toml` only while CI runs `uv sync --locked`. One regeneration validates all of them. |
+| Excluded | #82 (`lightweight-charts` 5.2.1) is a breaking major: v5 removes `addCandlestickSeries`/`addLineSeries` used by `frontend/src/app/markets/page.tsx` and `frontend/src/app/portfolio/page.tsx`. It stays open for a code port. |
+| Verification | With the new versions installed: `ruff check .` and `ruff format --check .` clean on 268 files, `mypy .` clean on 211 source files, `pytest tests/ -q` **1259 passed, 3 skipped** at 82.17%, and `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), `pnpm build` pass. |
+| Safety | Dependency-only change; no trading, safety, auth, API, or model-routing behavior changed. |
 
 ## Red / known gaps
 
