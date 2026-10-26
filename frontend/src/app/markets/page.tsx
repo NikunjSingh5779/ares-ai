@@ -36,7 +36,7 @@ export default function MarketsPage() {
     let chart: IChartApi | null = null;
     let observer: ResizeObserver | null = null;
 
-    void import("lightweight-charts").then(({ ColorType, createChart }) => {
+    void import("lightweight-charts").then(({ CandlestickSeries, ColorType, createChart }) => {
       const container = chartContainerRef.current;
       if (disposed || !container) return;
 
@@ -65,7 +65,7 @@ export default function MarketsPage() {
         height: CHART_HEIGHT,
       });
 
-      seriesRef.current = chart.addCandlestickSeries({
+      seriesRef.current = chart.addSeries(CandlestickSeries, {
         upColor: "#22c55e",
         downColor: "#ef4444",
         borderUpColor: "#22c55e",
