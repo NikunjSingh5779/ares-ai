@@ -362,7 +362,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 |---|---|
 | Scope | **PR #114** (`chore/deps-consolidated-2026-10` → `master`) absorbs 14 Dependabot PRs: `@types/node` 26.6.5, `next` 16.4.3, `lucide-react` 1.61.0, `@tailwindcss/postcss` 4.3.3, `python-jose` 3.5.0, `prometheus-client` 0.26.0, `ccxt` 4.5.90, `pydantic-settings` 2.14.2, `python-multipart` 0.0.32, `uvicorn` 0.54.0, `chromadb` 1.5.9, `pre-commit` 4.7.0, `pytest-asyncio` 1.4.0, and `ruff` 0.17.2. Only `pyproject.toml`, `uv.lock`, `frontend/package.json`, and `frontend/pnpm-lock.yaml` change. |
 | Why one PR | Every frontend bump conflicts on the `pnpm-lock.yaml` rewrite from #113, and every Python bump edits `pyproject.toml` only while CI runs `uv sync --locked`. One regeneration validates all of them. |
-| Excluded | #82 (`lightweight-charts` 5.2.1) is a breaking major: v5 removes `addCandlestickSeries`/`addLineSeries` used by `frontend/src/app/markets/page.tsx` and `frontend/src/app/portfolio/page.tsx`. It stays open for a code port. |
+| Excluded | #82 (`lightweight-charts` 5.2.1) is a breaking major: v5 removes `addCandlestickSeries`/`addLineSeries` used by `frontend/src/app/markets/page.tsx` and `frontend/src/app/portfolio/page.tsx`. It was left open for a code port, completed by #116. |
 | Verification | With the new versions installed: `ruff check .` and `ruff format --check .` clean on 268 files, `mypy .` clean on 211 source files, `pytest tests/ -q` **1259 passed, 3 skipped** at 82.17%, and `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), `pnpm build` pass. |
 | Safety | Dependency-only change; no trading, safety, auth, API, or model-routing behavior changed. |
 
@@ -416,7 +416,7 @@ than replacing them.
 
 | Piece | Evidence |
 |---|---|
-| Branch | `feat/port-superseded-pr-hunks` off `cfabad8` (after #114). Ports only the still-valuable hunks from #104, #105, #106, and #75; #82 stays open for its breaking `lightweight-charts` v5 API port. |
+| Branch | `feat/port-superseded-pr-hunks` off `cfabad8` (after #114), merged as `46ee8b4`. Ports only the still-valuable hunks from #104, #105, #106, and #75; #82 was completed separately by #116. |
 | Paper-only audit | `live_trading/engine.py` records an `AuditEntry` with `order_result.status = "blocked_paper_only"` before returning the refusal, so a direct caller's blocked live attempt leaves a trace. The `settings.live_trading_enabled` gate itself is unchanged (HEAD's env-driven gate, not #105's per-instance opt-in). |
 | Compose hostnames | #104's Compose fix is already in `master` (`docker/docker-compose.yml` uses `postgres`/`redis`/`chromadb` and container port 8000). Its regression test is ported into `tests/test_infra_config.py`; its `ares_error_handler` widening is not ported because HEAD's handler correctly re-raises unexpected exceptions. |
 | Free-only guard | `agents/client.py` rejects a hosted model without a free suffix (`:free` for OpenRouter, `-free` for OpenCode), rejects direct Google/Mistral models, and rejects `local/` when no local provider is configured — all before an HTTP client is built. Local inference stays opt-in. |
