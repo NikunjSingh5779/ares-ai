@@ -303,3 +303,26 @@ def test_grafana_dashboards_are_valid_and_mounted() -> None:
         assert data["panels"], f"{name} must define at least one panel"
         assert f"monitoring/{name}:/var/lib/grafana/dashboards/" in root_compose
         assert f"./monitoring/{name}:/var/lib/grafana/dashboards/" in full_compose
+
+
+# ── Docker-internal service addresses ────────────────────────────────────
+
+
+def test_fullstack_compose_uses_internal_service_hostnames() -> None:
+    """Host-facing .env defaults must not break service-to-service traffic.
+
+    The full-stack Compose project reads the root .env file, whose host-run
+    defaults use localhost and a published ChromaDB port. Containers must use
+    Compose DNS names and container ports instead.
+    """
+    path = PROJECT_ROOT / "docker" / "docker-compose.yml"
+    compose = yaml.safe_load(path.read_text(encoding="utf-8"))
+    backend_env = compose["services"]["backend"]["environment"]
+
+    assert backend_env["DATABASE_URL"] == (
+        "postgresql+asyncpg://${POSTGRES_USER:-ares}:${POSTGRES_PASSWORD:-changeme_in_production}"
+        "@postgres:5432/${POSTGRES_DB:-ares_ai}"
+    )
+    assert backend_env["REDIS_HOST"] == "redis"
+    assert backend_env["CHROMA_HOST"] == "chromadb"
+    assert backend_env["CHROMA_PORT"] == 8000

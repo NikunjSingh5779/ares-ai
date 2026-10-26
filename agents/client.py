@@ -163,8 +163,28 @@ class LLMClient:
             clean_model = clean_model.replace("local/", "", 1)
             provider = "local"
 
+        # Enforce the free-hosted-model policy at the network boundary. Local
+        # models are unrestricted; hosted models must use provider-designated
+        # free IDs so a roster typo cannot silently incur charges.
+        if (
+            provider in {"open_router", "default"}
+            and clean_model != "openrouter/free"
+            and not clean_model.endswith(":free")
+        ):
+            raise ValueError(f"Paid or unverified OpenRouter model blocked by free-only policy: {model}")
+        if provider == "opencode" and not clean_model.endswith("-free"):
+            raise ValueError(f"Paid or unverified OpenCode model blocked by free-only policy: {model}")
+        if provider in {"google", "mistral"}:
+            raise ValueError(f"Direct {provider} models are not enabled by the free-only model policy: {model}")
+        if provider == "local" and "local" not in self.providers:
+            raise ValueError("Local inference was requested but LOCAL_LLM_BASE_URL is not configured")
+
         self._check_circuit_breaker(model)
         client = self._get_client(provider)
+
+        # Structured output: if the caller supplies a JSON Schema dict, request
+        # a guaranteed-JSON response via OpenRouter's response_format.
+        structured_schema = kwargs.pop("json_schema", None)
 
         payload: dict[str, Any] = {
             "model": clean_model,
@@ -177,6 +197,29 @@ class LLMClient:
             # Local reasoning tokens otherwise consume a small max_tokens budget
             # and can leave message.content null. Chat fails closed on empty text.
             payload.setdefault("reasoning_effort", "off")
+        if provider == "open_router":
+            # Hard zero-price bound, set inside OpenRouter's ``provider``
+            # preferences — OpenRouter rejects with 402 if the chosen endpoint
+            # would cost more than this, guaranteeing a free-only request even
+            # if a roster entry loses its ``:free`` suffix. Other provider
+            # preferences supplied by the caller are preserved.
+            provider_prefs = dict(payload.get("provider") or {})
+            provider_prefs["max_price"] = {
+                "prompt": 0,
+                "completion": 0,
+                "request": 0,
+                "image": 0,
+            }
+            payload["provider"] = provider_prefs
+            if structured_schema is not None:
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "structured_output",
+                        "strict": True,
+                        "schema": structured_schema,
+                    },
+                }
 
         provider_config = self.providers.get(provider) or {}
         request_timeout = (
@@ -196,12 +239,14 @@ class LLMClient:
 
             response_json = response.json()
 
-            # Catch OpenRouter downstream errors hidden in 200 OK responses
-            if provider == "open_router" and isinstance(response_json, dict) and "error" in response_json:
+            # Catch provider errors hidden in 200 OK responses. OpenRouter and
+            # some local OpenAI-compatible servers return an error envelope
+            # with a 200 status instead of an HTTP error.
+            if provider in {"open_router", "local"} and isinstance(response_json, dict) and "error" in response_json:
                 error_msg = response_json["error"]
-                logger.error(f"OpenRouter downstream payload error: {error_msg}")
+                logger.error(f"{provider} downstream payload error: {error_msg}")
                 self._record_failure(model)
-                raise ValueError(f"OpenRouter payload error: {error_msg}")
+                raise ValueError(f"{provider} payload error: {error_msg}")
 
             self._record_success(model)
             return response_json  # type: ignore[no-any-return]

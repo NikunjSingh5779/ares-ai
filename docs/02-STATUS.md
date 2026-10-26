@@ -410,3 +410,18 @@ The conventional docs set added on 2026-10-22 (`docs/PRD.md`, `docs/API.md`,
 `docs/DECISIONS.md`, `docs/CONVENTIONS.md`, `docs/FEATURES.md`,
 `docs/IMPLEMENTATION.md`) summarizes and links to the numbered ICM docs rather
 than replacing them.
+
+## Superseded feature-PR ports (verified 2026-10-26)
+
+| Piece | Evidence |
+|---|---|
+| Branch | `feat/port-superseded-pr-hunks` off `cfabad8` (after #114). Ports only the still-valuable hunks from #104, #105, #106, and #75; #82 stays open for its breaking `lightweight-charts` v5 API port. |
+| Paper-only audit | `live_trading/engine.py` records an `AuditEntry` with `order_result.status = "blocked_paper_only"` before returning the refusal, so a direct caller's blocked live attempt leaves a trace. The `settings.live_trading_enabled` gate itself is unchanged (HEAD's env-driven gate, not #105's per-instance opt-in). |
+| Compose hostnames | #104's Compose fix is already in `master` (`docker/docker-compose.yml` uses `postgres`/`redis`/`chromadb` and container port 8000). Its regression test is ported into `tests/test_infra_config.py`; its `ares_error_handler` widening is not ported because HEAD's handler correctly re-raises unexpected exceptions. |
+| Free-only guard | `agents/client.py` rejects a hosted model without a free suffix (`:free` for OpenRouter, `-free` for OpenCode), rejects direct Google/Mistral models, and rejects `local/` when no local provider is configured — all before an HTTP client is built. Local inference stays opt-in. |
+| Provider error envelopes | `agents/client.py` treats a 200-with-`error` body from `local` the same as OpenRouter. `agents/router.py` raises the envelope inside the retried callable, so `with_retry` records a failure instead of a success: the breaker accumulates consecutive failures and opens, and the chain falls through instead of returning an error dict as a completion. This also changes the `NoOpLLMClient` path to report `success=False` / `degraded=True`, which is the correct meaning. |
+| Free-price bound | `agents/client.py` sets OpenRouter `provider.max_price` to zero for prompt, completion, request, and image tokens (merging any caller provider preferences), so a roster entry that loses its `:free` suffix cannot silently incur charges. |
+| Structured output | `agents/router.py` accepts an optional Pydantic `schema_type`, requests JSON Schema output, validates the reply, and issues exactly one corrective retry to the same model before falling through. The corrective call stays inside the process-wide local gate and consumes its own RPM slot, and its prompt includes the invalid assistant output. `RouterResult` exposes `parsed` and `schema_corrections`. No agent is wired to it yet. |
+| Breaker registry | `CircuitBreakerRegistry.get_or_register` creates a breaker with per-model limits only on first use, so repeated routing cannot reset failure state. |
+| Verification | `pytest tests/ -q` — **1276 passed, 3 skipped**, 82.59% coverage; `ruff check .` clean; `ruff format --check .` clean on 268 files; `mypy .` clean on 211 source files. |
+| Safety | Paper-only default, kill switch, approval modes, promotion gate, and every trading threshold are untouched. The port adds refusals and audit records; it removes no gate. |

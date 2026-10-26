@@ -150,6 +150,22 @@ class CircuitBreakerRegistry:
         self._breakers[model_id] = breaker
         return breaker
 
+    def get_or_register(
+        self,
+        model_id: str,
+        threshold: int = 3,
+        reset_seconds: float = 300,
+    ) -> ModelCircuitBreaker:
+        """Get an existing breaker, creating one only on first use.
+
+        Re-registering on every call would reset failure state, so an existing
+        breaker is returned as-is even if the current config differs — this
+        honours per-model limits on creation without discarding live state.
+        """
+        if model_id not in self._breakers:
+            return self.register(model_id, threshold, reset_seconds)
+        return self._breakers[model_id]
+
     def all_stats(self) -> dict[str, dict[str, Any]]:
         """Get stats for all breakers."""
         return {mid: b.stats() for mid, b in self._breakers.items()}
