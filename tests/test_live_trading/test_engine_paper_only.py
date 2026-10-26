@@ -59,3 +59,25 @@ async def test_execute_signal_refuses_when_live_trading_disabled(paper_only_engi
     assert result["order"] is None
     assert "paper-only" in result["reason"].lower()
     paper_only_engine.exchange.create_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_blocked_live_attempt_is_audited(paper_only_engine, monkeypatch) -> None:
+    """A paper-only refusal must leave an audit trail, not just a return value."""
+    monkeypatch.setattr(settings, "live_trading_enabled", False)
+
+    await paper_only_engine.execute_signal(
+        signal={"symbol": "BTC-USD", "side": "buy", "quantity": 1.0, "order_type": "market"},
+        agent_chain=[{"agent": "risk", "approved": True}],
+        risk_checks=[{"check": "drawdown", "passed": True}],
+    )
+
+    entries = paper_only_engine.auditor.recent()
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.order_result is not None
+    assert entry.order_result["status"] == "blocked_paper_only"
+    assert entry.order_intent["symbol"] == "BTC-USD"
+    assert entry.agent_chain == [{"agent": "risk", "approved": True}]
+    assert entry.risk_checks == [{"check": "drawdown", "passed": True}]
+    paper_only_engine.exchange.create_order.assert_not_awaited()

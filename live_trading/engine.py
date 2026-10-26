@@ -361,6 +361,20 @@ class LiveTradingEngine:
         # check it, but a direct caller must never be able to place a live
         # order just because the engine object exists.
         if not settings.live_trading_enabled:
+            # Record the refusal so a blocked live attempt is auditable even
+            # though no safety check or order placement ever runs. Without
+            # this, a direct caller gets a clean refusal but leaves no trace.
+            self.auditor.record(
+                AuditEntry(
+                    order_intent=order_intent,
+                    agent_chain=agent_chain or [],
+                    risk_checks=risk_checks or [],
+                    order_result={
+                        "status": "blocked_paper_only",
+                        "reason": "Live order placement is disabled (paper-only mode)",
+                    },
+                )
+            )
             return {
                 "accepted": False,
                 "reason": (
