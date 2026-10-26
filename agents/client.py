@@ -198,15 +198,19 @@ class LLMClient:
             # and can leave message.content null. Chat fails closed on empty text.
             payload.setdefault("reasoning_effort", "off")
         if provider == "open_router":
-            # Hard zero-price bound — OpenRouter rejects with 402 if the chosen
-            # model would cost more than this, guaranteeing a free-only request
-            # even if a roster entry loses its ``:free`` suffix.
-            payload["max_price"] = {
+            # Hard zero-price bound, set inside OpenRouter's ``provider``
+            # preferences — OpenRouter rejects with 402 if the chosen endpoint
+            # would cost more than this, guaranteeing a free-only request even
+            # if a roster entry loses its ``:free`` suffix. Other provider
+            # preferences supplied by the caller are preserved.
+            provider_prefs = dict(payload.get("provider") or {})
+            provider_prefs["max_price"] = {
                 "prompt": 0,
                 "completion": 0,
                 "request": 0,
                 "image": 0,
             }
+            payload["provider"] = provider_prefs
             if structured_schema is not None:
                 payload["response_format"] = {
                     "type": "json_schema",

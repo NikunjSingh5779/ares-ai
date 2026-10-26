@@ -108,6 +108,7 @@ class TestFreeOnlyModelPolicy:
         response = await client.chat_completion(
             model="open_router/nvidia/nemotron-3-super-120b-a12b:free",
             messages=[{"role": "user", "content": "hello"}],
+            provider={"sort": "price"},
         )
         await client.close()
 
@@ -115,7 +116,13 @@ class TestFreeOnlyModelPolicy:
         request = httpx_mock.get_request()
         assert request is not None
         payload = json.loads(request.content)
-        assert payload["max_price"] == {"prompt": 0, "completion": 0, "request": 0, "image": 0}
+        # max_price belongs inside OpenRouter's provider preferences, not at
+        # the top level, and caller preferences must survive the merge.
+        assert "max_price" not in payload
+        assert payload["provider"] == {
+            "sort": "price",
+            "max_price": {"prompt": 0, "completion": 0, "request": 0, "image": 0},
+        }
 
     @pytest.mark.asyncio
     async def test_local_error_envelope_is_raised(self, httpx_mock: HTTPXMock) -> None:
