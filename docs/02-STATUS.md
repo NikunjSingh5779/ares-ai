@@ -2,14 +2,15 @@
 # Status — verified state
 
 **Last verified:** 2026-10-26
-**Branch:** `chore/lightweight-charts-v5` — 1 commit ahead / 0 behind
-`origin/master` (`cfabad8`, PR #114 merged). The dependency consolidation landed, and
-PR #115 ports the superseded feature-PR hunks (paper-only audit, free-only guard,
-router error fallthrough, schema retry). Recent verified work adds the real-PostgreSQL
+**Branch:** `master` — clean, equal to `origin/master` (`46ee8b4`). PR #114 landed the
+dependency consolidation, #116 ported both charts to `lightweight-charts` v5 (closing
+#82), and #115 ported the superseded feature-PR hunks (paper-only audit, free-only
+guard, router error fallthrough, schema retry, Compose hostname test). Master CI run
+**40253581645** passed all five jobs. Recent verified work adds the real-PostgreSQL
 strategy route module, the opt-in local chat fallback, the accessibility audit, the
 improvement metric correction, durable improvement history wired into the pipeline,
 Prometheus alert rules with one tracked monitoring set, branch/Dependabot cleanup,
-a consolidated dependency bump (PR #114), and the `lightweight-charts` v5 port.
+and the consolidated dependency bump.
 The phase-2 baseline `caae9d6` (`feat(phase-2): wire real market, settings, live, and
 strategy data`) passed GitHub Actions run **39780873063** on all five jobs: `lint`,
 `test`, `postgres-integration`, `frontend`, and `docker`.
