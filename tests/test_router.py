@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import BaseModel
 
-from agents.circuit_breaker import CircuitBreakerRegistry
+from agents.circuit_breaker import CircuitBreakerRegistry, CircuitState
 from agents.client import LLMClient, NoOpLLMClient
-from agents.local_gate import LocalModelBusyError
+from agents.local_gate import LocalModelBusyError, LocalModelGate
 from agents.queue import QueueRegistry
 from agents.retry import RetryConfig
 from agents.router import ModelRouter, RouterResult
@@ -209,6 +209,8 @@ class TestModelRouterSchemaValidation:
         assert result.schema_corrections == 1
         assert mock_client.chat_completion.await_count == 2
         corrective_messages = mock_client.chat_completion.await_args_list[1].kwargs["messages"]
+        # The model must see what it actually produced, not just "try again".
+        assert corrective_messages[-2] == {"role": "assistant", "content": "not json"}
         assert corrective_messages[-1]["role"] == "system"
         assert "JSON schema" in corrective_messages[-1]["content"]
 
@@ -240,6 +242,56 @@ class TestModelRouterSchemaValidation:
         assert result.schema_corrections == 1
         assert result.errors[0]["model"] == "model-a"
         assert result.errors[0]["error_type"] == "schema_error"
+
+    @pytest.mark.asyncio
+    async def test_corrective_retry_holds_local_gate_and_rate_slot(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The corrective call is a real second inference and must stay gated.
+
+        It may not escape the process-wide single-flight gate or the per-model
+        RPM queue just because it is a retry of the same attempt.
+        """
+        gate = LocalModelGate()
+        monkeypatch.setattr("agents.router.get_local_model_gate", lambda: gate)
+
+        in_use_during_calls: list[int] = []
+        model_id = "local/qwen3.6-35b-a3b-ud-q4_k_m"
+
+        async def fake_chat_completion(**kwargs: Any) -> dict[str, Any]:
+            in_use_during_calls.append(gate.in_use)
+            content = "not json" if len(in_use_during_calls) == 1 else '{"action": "buy", "confidence": 0.9}'
+            return {
+                "choices": [{"message": {"content": content}}],
+                "model": model_id,
+                "usage": {"total_tokens": 10},
+            }
+
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.is_error_response.return_value = False
+        mock_client.chat_completion = AsyncMock(side_effect=fake_chat_completion)
+        router = ModelRouter(
+            llm_client=mock_client,
+            breaker_registry=CircuitBreakerRegistry(),
+            queue_registry=QueueRegistry(),
+            retry_config=RetryConfig(max_retries=0, base_delay=0.01),
+        )
+
+        result = await router.execute(
+            model_chain=[model_id],
+            messages=[{"role": "user", "content": "signal"}],
+            schema_type=self.Signal,
+        )
+
+        assert result.success is True
+        assert result.schema_corrections == 1
+        # Both provider calls ran while holding the single local slot.
+        assert in_use_during_calls == [1, 1]
+        assert gate.in_use == 0
+        # Both calls consumed an RPM slot.
+        queue = router.queues.get(model_id)
+        assert queue.active_count == 2
 
 
 class TestModelRouterWithRealClient:
@@ -387,6 +439,32 @@ class TestModelRouterMocked:
         assert result.errors[0]["error_type"] == "error_response"
         # An error envelope is a real model failure, so it trips the breaker.
         assert router.breakers.get("model-a").failure_count == 1
+
+    @pytest.mark.asyncio
+    async def test_repeated_error_envelopes_open_breaker(self, router: ModelRouter) -> None:
+        """A provider that always returns 200-with-error must eventually be skipped.
+
+        The breaker only accumulates failures if the envelope is raised inside
+        the retried callable; recording success first would reset it forever.
+        """
+        for _ in range(3):
+            result = await router.execute(
+                model_chain=["model-a"],
+                messages=[{"role": "user", "content": "test"}],
+            )
+            assert result.success is False
+            assert result.errors[0]["error_type"] == "error_response"
+
+        breaker = router.breakers.get("model-a")
+        assert breaker.state == CircuitState.OPEN
+        assert breaker.failure_count == 3
+
+        skipped = await router.execute(
+            model_chain=["model-a"],
+            messages=[{"role": "user", "content": "test"}],
+        )
+        assert skipped.success is False
+        assert skipped.errors[0]["error_type"] == "circuit_breaker_open"
 
     @pytest.mark.asyncio
     async def test_local_busy_is_not_a_model_failure(

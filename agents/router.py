@@ -16,9 +16,19 @@ from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.client import LLMClient, NoOpLLMClient
 from agents.local_gate import LocalModelBusyError, LocalModelGate, get_local_model_gate, is_local_model
 from agents.queue import QueueRegistry
-from agents.retry import RetryConfig, with_retry
+from agents.retry import RetryConfig, RetryResult, with_retry
+from backend.core.exceptions import ModelUnavailableError
 
 logger = logging.getLogger(__name__)
+
+
+class ProviderErrorEnvelopeError(ModelUnavailableError):
+    """A provider returned HTTP 200 with an error body instead of a completion.
+
+    Raised inside the retried callable so ``with_retry`` records a failure
+    rather than a success; otherwise the breaker would be reset on every
+    attempt and a permanently broken provider would never open it.
+    """
 
 
 class RouterResult:
@@ -140,6 +150,27 @@ class ModelRouter:
                     continue
                 local_gate: LocalModelGate | None = None
                 gate_acquired = False
+                retry_result: RetryResult | None = None
+                response: dict[str, Any] | None = None
+                parsed_out: Any = None
+                schema_error = False
+
+                async def _call(msgs: list[dict[str, str]]) -> dict[str, Any]:
+                    """One provider call that rejects 200-with-error payloads."""
+                    resp = await self.client.chat_completion(
+                        model=model_id,
+                        messages=msgs,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        json_schema=json_schema,
+                    )
+                    if resp is None:
+                        raise ProviderErrorEnvelopeError("empty_model_response")
+                    if self.client.is_error_response(resp):
+                        detail = resp.get("error_type", resp.get("error", "error_response"))
+                        raise ProviderErrorEnvelopeError(str(detail))
+                    return resp
+
                 try:
                     if is_local_model(model_id):
                         local_gate = get_local_model_gate()
@@ -154,79 +185,75 @@ class ModelRouter:
                             attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
                             result.errors.append(attempt_info)
                             continue
-                    # Execute with retry
+                    # Execute with retry. The envelope check lives inside the
+                    # callable so with_retry does not record success (and reset
+                    # the breaker) for a provider error payload.
                     retry_result = await with_retry(
-                        func=lambda: self.client.chat_completion(
-                            model=model_id,
-                            messages=messages,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            json_schema=json_schema,
-                        ),
+                        func=lambda: _call(messages),
                         config=self.retry_config,
                         breaker=breaker,
                     )
+                    if retry_result.success:
+                        response = retry_result.result
+                        if schema_type is not None and response is not None:
+                            content = self._extract_content(response)
+                            parsed_out = self._validate_content(content, schema_type)
+                            if parsed_out is None:
+                                # One corrective JSON-only retry to the SAME
+                                # model, still inside the gate and rate-limit
+                                # scope so local inference stays single-flight.
+                                result.schema_corrections += 1
+                                corrective_messages = [*messages]
+                                if content:
+                                    corrective_messages.append({"role": "assistant", "content": content})
+                                corrective_messages.append(
+                                    {
+                                        "role": "system",
+                                        "content": (
+                                            "Your previous output did not conform to the required JSON schema. "
+                                            "Correct it and return ONLY valid JSON matching the schema."
+                                        ),
+                                    }
+                                )
+                                try:
+                                    # A corrective retry is a second provider
+                                    # call and consumes a second RPM slot.
+                                    queue_wait = await queue.acquire()
+                                    attempt_info["queue_wait_ms"] = int(attempt_info.get("queue_wait_ms", 0)) + int(
+                                        queue_wait * 1000
+                                    )
+                                    corr_resp = await _call(corrective_messages)
+                                    parsed_out = self._validate_content(self._extract_content(corr_resp), schema_type)
+                                except Exception as exc:  # noqa: BLE001 - fall through to next model
+                                    logger.error("Corrective retry failed for %s: %s", model_id, exc)
+                                    parsed_out = None
+                                if parsed_out is None:
+                                    schema_error = True
                 finally:
                     if gate_acquired and local_gate is not None:
                         local_gate.release()
                     await queue.release()
                 attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
-                if retry_result.success:
-                    response = retry_result.result
-                    if response is None or self.client.is_error_response(response):
-                        # A provider can return an error envelope with a 200
-                        # status. Treat it as a failed attempt so the chain
-                        # falls through instead of handing an error dict to
-                        # the agent as if it were a completion.
-                        if response is None:
-                            attempt_info["error"] = "empty_model_response"
-                        elif isinstance(response, dict):
-                            attempt_info["error"] = str(
-                                response.get("error_type", response.get("error", "error_response"))
-                            )
-                        else:
-                            attempt_info["error"] = "invalid_model_response"
-                        attempt_info["error_type"] = "error_response"
-                        breaker.record_failure()
-                        result.errors.append(attempt_info)
-                        continue
-                    parsed_out: Any = None
-                    if schema_type is not None:
-                        content = self._extract_content(response)
-                        parsed_out = self._validate_content(content, schema_type)
-                        if parsed_out is None:
-                            # One corrective JSON-only retry to the SAME model,
-                            # then fall through so a malformed model cannot
-                            # burn the rest of the chain's budget.
-                            result.schema_corrections += 1
-                            corrective_messages = [
-                                *messages,
-                                {
-                                    "role": "system",
-                                    "content": (
-                                        "Your previous output did not conform to the required JSON schema. "
-                                        "Correct it and return ONLY valid JSON matching the schema."
-                                    ),
-                                },
-                            ]
-                            try:
-                                corr_resp = await self.client.chat_completion(
-                                    model=model_id,
-                                    messages=corrective_messages,
-                                    temperature=temperature,
-                                    max_tokens=max_tokens,
-                                    json_schema=json_schema,
-                                )
-                                parsed_out = self._validate_content(self._extract_content(corr_resp), schema_type)
-                            except Exception as exc:  # noqa: BLE001 - fall through to next model
-                                logger.error("Corrective retry failed for %s: %s", model_id, exc)
-                                parsed_out = None
-                            if parsed_out is None:
-                                attempt_info["error"] = "Invalid JSON/schema output after one corrective retry"
-                                attempt_info["error_type"] = "schema_error"
-                                attempt_info["latency_ms"] = int((time.monotonic() - model_start) * 1000)
-                                result.errors.append(attempt_info)
-                                continue
+                if retry_result is None:  # pragma: no cover - defensive
+                    continue
+                if not retry_result.success:
+                    attempt_info["error"] = str(retry_result.error)
+                    # A provider error envelope is reported as an error
+                    # response, not by its internal exception name.
+                    attempt_info["error_type"] = (
+                        "error_response"
+                        if retry_result.last_error_type == ProviderErrorEnvelopeError.__name__
+                        else retry_result.last_error_type
+                    )
+                    result.errors.append(attempt_info)
+                    # Continue to next model in chain
+                    continue
+                elif schema_error:
+                    attempt_info["error"] = "Invalid JSON/schema output after one corrective retry"
+                    attempt_info["error_type"] = "schema_error"
+                    result.errors.append(attempt_info)
+                    continue
+                else:
                     elapsed = int((time.monotonic() - start) * 1000)
                     result.success = True
                     result.response = response
@@ -236,11 +263,6 @@ class ModelRouter:
                     result.total_latency_ms = elapsed
                     result.fallback_used = is_fallback
                     return result
-                else:
-                    attempt_info["error"] = str(retry_result.error)
-                    attempt_info["error_type"] = retry_result.last_error_type
-                    result.errors.append(attempt_info)
-                    # Continue to next model in chain
             except Exception as e:
                 logger.error(f"Unhandled exception: {e}", exc_info=True)
                 attempt_info["error"] = str(e)
