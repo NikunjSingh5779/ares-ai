@@ -50,7 +50,7 @@ dependencies = [
     "statsmodels>=0.14.0",
 
     # Web Search (DuckDuckGo)
-    "duckduckgo-search>=4.1.1",
+    "duckduckgo-search>=8.1.1",
 
     # Web Data Collection (browser-use - optional, installed on demand)
     # "browser-use>=0.1.0",
