@@ -31,7 +31,7 @@ slice `c322f23` passed run **40097868595** on all five jobs, including
 |---|---|---|---|---|
 | 0.1 | Auth on every non-public route + frontend session/API-key flow | `backend/core/dependencies.py`, `backend/main.py`, `backend/routers/**`, `frontend/src/lib/api.ts`, `frontend/src/components/AuthGate.tsx`, `frontend/src/app/login/page.tsx` | Route test enumerates `/api/v1` and fails on any unprotected path; UI sends the header; default/empty key returns 503 | **Done** |
 | 0.2 | One fail-closed kill switch across API and runner; route all live orders through `execute_signal` | `live_trading/safety.py`, `live_trading/engine.py`, `agents/execution.py`, `scripts/run_live.py`, `backend/routers/live.py` | Integration test: Redis down → rejected; recovery still requires human re-arm; agent never calls `exchange.create_order` | **Done** |
-| 0.3 | Refresh model roster + universal fallback | `configs/models.yaml`, `agents/models.py` | Every configured ID resolves in the live free catalog; exhausted chain reaches `openrouter/free` | **Done (manual catalog check)**; CI check remains |
+| 0.3 | Refresh model roster + universal fallback | `configs/models.yaml`, `agents/models.py` | Every configured ID resolves in the live free catalog; exhausted chain reaches `openrouter/free` | **Done (manual catalog check)**; the free-only roster shape is now CI-tested, scheduled live-catalog check remains |
 | 0.4 | Realistic paper accounting: fees, slippage, mark-to-market, short proceeds | `paper_trading/engine.py`, `paper_trading/worker.py`, `agents/execution.py`, `configs/settings.py`, `backend/routers/trading.py` | Tests for fee-adjusted fill, intra-trade drawdown, and a profitable short; agent persists actual fill/quantity | **Done** |
 | 0.5 | Enforce production config | `docker-compose.prod.yml`, `docker/docker-compose.prod.yml`, `configs/settings.py`, `.env.example` | Compose overlay sets `ENVIRONMENT=production`; validator rejects default API/JWT/DB secrets | **Done** |
 
@@ -151,10 +151,11 @@ authenticated route shells; data-populated states remain an optional follow-up.
   errors, fallback spike, live-order failure, kill switch), validated with
   `promtool`; both compose files mount the tracked set. Remaining: an Alertmanager
   target for delivery.
-- Branch and Dependabot cleanup: **done 2026-10-25** — deleted nine merged remote
-  branches and merged the three green Dependabot PRs (#57, #56, #67). Remaining
-  Dependabot PRs fail or conflict against old bases and need a rebase; feature PRs
-  #104/#105/#106/#75 remain open because their changes are not fully superseded.
+- Branch and Dependabot cleanup: **done 2026-10-26** — nine merged remote branches
+  were deleted 2026-10-25 and the green Dependabot PRs #57, #56, and #67 landed.
+  #114 consolidated 14 more bumps; #116 ported `lightweight-charts` v5 and closed
+  #82; #104/#105/#106/#75 were closed as superseded by #115. The merged branches
+  from #114/#115/#116 still exist and can be pruned with approval.
 
 ## Guardrails
 

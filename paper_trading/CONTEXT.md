@@ -84,7 +84,8 @@ returns empty state; writes return 503 rather than persisting in memory.
 ## Known gaps
 The advisory lock is database-wide rather than per account (fine for one seeded paper
 account). `/execute` trusts the authenticated caller's agent
-payload (no signed/expiring token); there is no automated PostgreSQL CI job; the engine
-must be constructed with the same fee settings after restart. Stop fills still use the stop
-price on a gap, and there are no partial fills or borrow/funding costs. No manual
-paper-trade path exists; a future one must be labeled and excluded from promotion.
+payload (no signed/expiring token); the `postgres-integration` CI job covers the
+ledger; the engine must be constructed with the same fee settings after restart. Stop
+fills still use the stop price on a gap, and there are no partial fills or
+borrow/funding costs. No manual paper-trade path exists; a future one must be labeled
+and excluded from promotion.
