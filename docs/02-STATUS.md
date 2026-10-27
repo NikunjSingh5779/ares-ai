@@ -2,7 +2,8 @@
 # Status — verified state
 
 **Last verified:** 2026-10-28
-**Branch:** `master` — clean, equal to `origin/master` (`742b901`). PR #128
+**Branch:** `master` at `e022e95`; the `web_collector` free-only fix is verified in
+the working tree (not yet committed). PR #128
 squash-merged the shared Redis kill-switch arm epoch, closing P1 gap #6. PR #127
 squash-merged the analysis-control slice (`backend/services/analysis_control.py`,
 router, metrics, and tests), closing the P1 `/analyze` concurrency/cost gap. PR #114
@@ -38,12 +39,12 @@ five jobs, including `postgres-integration` with all three PostgreSQL modules. T
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1331 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`); 83.29% coverage |
-| Coverage | `pytest tests/ -q` | **83.29%** default (gate 78%); the ledger module adds 5 tests, the strategy module adds 12, and the improvement module adds 6 when the URL is set |
+| Test suite | `pytest tests/ -q` | **1349 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`); 84.09% coverage |
+| Coverage | `pytest tests/ -q` | **84.09%** default (gate 78%); the ledger module adds 5 tests, the strategy module adds 12, and the improvement module adds 6 when the URL is set |
 | Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
 | Health and metrics | `pytest tests/test_monitoring -q` | **34 passed** — 503 on each degraded dependency, 200 only when all answer, Prometheus-backed JSON snapshot, `/metrics` exposition mount |
 | Infra config | `pytest tests/test_infra_config.py -q` | **18 passed** — build args, container service hosts, Chroma pin, LF entrypoint, alert rules, single monitoring set, dashboard JSON |
-| Type check | `mypy .` | **clean, 213 source files** |
+| Type check | `mypy .` | **clean, 214 source files** |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
 | Market candles | `pytest tests/test_market_router.py -q` | **13 passed** — validation, ordering, deduplication, 404/502/504, source selection |
 | Settings | `pytest tests/test_settings_router.py tests/test_settings_service.py -q` | **23 passed** — GET/PUT round-trip, normalization, 422 on safety overrides, 503 when the store is unavailable |
@@ -403,6 +404,18 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Tests | `pytest tests/test_live_trading/test_safety.py tests/test_live_trading/test_safety_edge_cases.py tests/test_live_trading/test_kill_switch_integration.py -q` → **65 passed** (cross-process arm clears a latched runner, recovery alone does not, a republished baseline does not, a missing token does not, a failed arm does not, in-memory arm still works). |
 | Safety | No gate, approval, promotion, drawdown, or exposure behavior changed. The epoch only clears a latch after an explicit human arm; it never trips or arms automatically. |
 
+## Web collector free-only policy (verified 2026-10-28)
+
+| Piece | Evidence |
+|---|---|
+| Roster | `configs/models.yaml` adds a `web_collector` chain (`open_router/openrouter/free` + free fallbacks). No model ID remains in `agents/web_collector.py`. |
+| Policy | `agents/client.py::free_model_policy_violation` is shared by `LLMClient.chat_completion` and the browser-use path. A paid, direct-provider, or unverified model is rejected before the chat model is constructed. |
+| Adapter | The path uses browser-use's native `ChatOpenRouter` (not `langchain_openai`, which is not a base browser-use dependency), with the roster model, `OPENROUTER_API_KEY`, and the configured base URL. |
+| Network bound | `ChatOpenRouter` receives OpenRouter's zero-price `max_price` (`prompt`/`completion`/`request`/`image` all `0`), so a route that is not free is rejected instead of billed. |
+| Failure modes | Missing `OPENROUTER_API_KEY`, a paid/missing roster entry, or a missing optional dependency returns a descriptive `success=False` result; it never falls back to a paid model. |
+| Tests | `pytest tests/test_web_collector.py tests/test_client.py tests/test_config.py -q` → **55 passed**; the roster's free-only shape is also enforced by `tests/test_client.py::TestFreeOnlyModelRoster`. |
+| Runtime scope | The `web-automation` extra installs `browser-use` and `playwright`; CI installs neither a browser nor a live key. The policy and construction are unit-tested with fakes, so a live browser-use run remains an optional, manually verified path. |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
@@ -424,6 +437,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 15 | ~~Updated PostgreSQL CI command has not run on GitHub Actions~~ | Closed 2026-10-24: GitHub Actions run **40097868595** ran `.github/workflows/ci.yml::postgres-integration` with all three modules (5 ledger + 12 strategy + 6 improvement = **23 passed**, no skip) on `postgres:16-alpine`. | ~~P2~~ fixed |
 | 16 | Accessibility audit did not exercise data-populated states | The 2026-10-24 pass used a 503 API stub, so tables, charts, and dialogs with real data were not audited. The route shells, login, and loading/error states are clean. | P3 |
 | 17 | ~~Improvement history is in-memory and the engine is not wired into the pipeline~~ | Closed 2026-10-24: `reflection_runs`/`improvement_records` (migration `0006`) persist structured reflection and suggestions; the supervisor post-run hook calls the engine after every production pipeline run, best-effort; the API reads PostgreSQL and returns 503 on store failure. `analyze(history=...)` keeps trend context across restarts. | ~~P2~~ fixed |
+| 18 | ~~`web_collector` bypasses the free-only policy~~ | Closed 2026-10-28: the optional browser-use path reads its LLM only from the free-only `web_collector` roster entry via browser-use's native `ChatOpenRouter`, validates it with the shared `free_model_policy_violation` helper, and sets OpenRouter's zero-price `max_price` bound. Missing key, paid/missing roster entry, or missing dependency fails closed; no hardcoded paid model remains. | ~~P2~~ fixed |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 

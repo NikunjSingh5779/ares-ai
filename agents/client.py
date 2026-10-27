@@ -17,6 +17,56 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+def parse_model_id(model: str) -> tuple[str, str]:
+    """Split a roster model ID into ``(provider, clean_model)``.
+
+    ``open_router/foo:free`` becomes ``("open_router", "foo:free")``; an
+    unprefixed ID is treated as the default OpenRouter-compatible provider.
+    """
+    clean_model = model
+    provider = "default"
+
+    if clean_model.startswith("open_router/"):
+        clean_model = clean_model.replace("open_router/", "", 1)
+        provider = "open_router"
+    elif clean_model.startswith("opencode/"):
+        clean_model = clean_model.replace("opencode/", "", 1)
+        provider = "opencode"
+    elif clean_model.startswith("google/"):
+        clean_model = clean_model.replace("google/", "", 1)
+        provider = "google"
+    elif clean_model.startswith("mistral/"):
+        clean_model = clean_model.replace("mistral/", "", 1)
+        provider = "mistral"
+    elif clean_model.startswith("local/"):
+        clean_model = clean_model.replace("local/", "", 1)
+        provider = "local"
+
+    return provider, clean_model
+
+
+def free_model_policy_violation(model: str) -> str | None:
+    """Return why ``model`` is blocked by the free-only policy, or ``None``.
+
+    This mirrors the network-boundary check in :meth:`LLMClient.chat_completion`
+    so optional code paths that build their own provider client (for example
+    ``browser-use``) cannot bypass the free-tier rule.
+    """
+    provider, clean_model = parse_model_id(model)
+
+    if (
+        provider in {"open_router", "default"}
+        and clean_model != "openrouter/free"
+        and not clean_model.endswith(":free")
+    ):
+        return f"Paid or unverified OpenRouter model blocked by free-only policy: {model}"
+    if provider == "opencode" and not clean_model.endswith("-free"):
+        return f"Paid or unverified OpenCode model blocked by free-only policy: {model}"
+    if provider in {"google", "mistral"}:
+        return f"Direct {provider} models are not enabled by the free-only model policy: {model}"
+    return None
+
+
 class LLMClient:
     """Async HTTP client for LLM chat completion APIs.
 
@@ -144,38 +194,14 @@ class LLMClient:
             httpx.RequestError: On connection/network errors.
         """
         # Strip provider prefixes if present and determine provider
-        clean_model = model
-        provider = "default"
-
-        if clean_model.startswith("open_router/"):
-            clean_model = clean_model.replace("open_router/", "", 1)
-            provider = "open_router"
-        elif clean_model.startswith("opencode/"):
-            clean_model = clean_model.replace("opencode/", "", 1)
-            provider = "opencode"
-        elif clean_model.startswith("google/"):
-            clean_model = clean_model.replace("google/", "", 1)
-            provider = "google"
-        elif clean_model.startswith("mistral/"):
-            clean_model = clean_model.replace("mistral/", "", 1)
-            provider = "mistral"
-        elif clean_model.startswith("local/"):
-            clean_model = clean_model.replace("local/", "", 1)
-            provider = "local"
+        provider, clean_model = parse_model_id(model)
 
         # Enforce the free-hosted-model policy at the network boundary. Local
         # models are unrestricted; hosted models must use provider-designated
         # free IDs so a roster typo cannot silently incur charges.
-        if (
-            provider in {"open_router", "default"}
-            and clean_model != "openrouter/free"
-            and not clean_model.endswith(":free")
-        ):
-            raise ValueError(f"Paid or unverified OpenRouter model blocked by free-only policy: {model}")
-        if provider == "opencode" and not clean_model.endswith("-free"):
-            raise ValueError(f"Paid or unverified OpenCode model blocked by free-only policy: {model}")
-        if provider in {"google", "mistral"}:
-            raise ValueError(f"Direct {provider} models are not enabled by the free-only model policy: {model}")
+        violation = free_model_policy_violation(model)
+        if violation:
+            raise ValueError(violation)
         if provider == "local" and "local" not in self.providers:
             raise ValueError("Local inference was requested but LOCAL_LLM_BASE_URL is not configured")
 

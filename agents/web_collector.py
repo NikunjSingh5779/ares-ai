@@ -19,6 +19,9 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from agents.base import AgentContext, BaseAgent
+from agents.client import free_model_policy_violation, parse_model_id
+from agents.models import AgentModelConfig, load_model_roster
+from configs.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,24 @@ class WebCollectorOutput(BaseModel):
     model_used: str = Field(default="", description="Browser automation backend used")
     steps_taken: int = Field(default=0, description="Number of steps taken")
     rationale: str = Field(default="", description="Summary of what was collected")
+
+
+def _browser_llm_config() -> AgentModelConfig:
+    """Return the roster's browser-use entry after the free-only policy check.
+
+    Raises:
+        ValueError: If the roster entry is missing or violates the free-only
+            model policy. The optional browser-use path must never construct a
+            paid model.
+    """
+    try:
+        config = load_model_roster().get("web_collector")
+    except KeyError as exc:
+        raise ValueError("web_collector roster entry is missing") from exc
+    violation = free_model_policy_violation(config.primary)
+    if violation:
+        raise ValueError(violation)
+    return config
 
 
 # ---------------------------------------------------------------------------
@@ -105,44 +126,47 @@ class WebCollectorAgent(BaseAgent[WebCollectorInput, WebCollectorOutput]):
         """Attempt data collection using browser-use."""
         try:
             from browser_use import Agent as BrowserAgent  # optional dep, guarded by try/except
-            from langchain_openai import ChatOpenAI
+            from browser_use import ChatOpenRouter
 
-            # Try to use available LLM via OpenRouter-compatible endpoint
-            llm = None
-            try:
-                from configs.settings import settings
-
-                if settings.openrouter_api_key:
-                    llm = ChatOpenAI(
-                        model="openai/gpt-4o-mini",
-                        openai_api_key=settings.openrouter_api_key,
-                        openai_api_base=settings.openrouter_base_url,
-                        temperature=0.1,
-                    )
-                elif settings.gemini_api_key:
-                    llm = ChatOpenAI(
-                        model="gemini/gemini-2.0-flash",
-                        openai_api_key=settings.gemini_api_key,
-                        openai_api_base=settings.gemini_base_url,
-                        temperature=0.1,
-                    )
-            except Exception:
-                logger.debug("Failed to configure LLM for browser-use", exc_info=True)
-
-            if llm is None:
-                logger.error(
-                    "browser-use requires an LLM API key (OpenRouter or Gemini). "
-                    "Set OPENROUTER_API_KEY or GEMINI_API_KEY in .env"
-                )
+            # browser-use needs one of its own chat-model adapters. Build it only
+            # from the free-only roster entry so this optional path cannot
+            # bypass the free-tier policy enforced by LLMClient.
+            if not settings.openrouter_api_key.strip():
+                logger.error("browser-use requires OPENROUTER_API_KEY")
                 return {
                     "success": False,
                     "data": [],
                     "text": "",
-                    "error": "browser-use needs an LLM API key (OPENROUTER_API_KEY or GEMINI_API_KEY)",
+                    "error": "browser-use needs OPENROUTER_API_KEY (free-tier OpenRouter models only)",
                     "model_used": "none",
                     "steps_taken": 0,
-                    "rationale": "No LLM configured for browser-use agent.",
+                    "rationale": "No free-tier LLM configured for browser-use agent.",
                 }
+
+            config = _browser_llm_config()
+            provider, clean_model = parse_model_id(config.primary)
+            if provider not in {"open_router", "default"}:
+                raise ValueError(f"browser-use requires an OpenRouter model, got {config.primary}")
+
+            llm = ChatOpenRouter(
+                model=clean_model,
+                api_key=settings.openrouter_api_key,
+                base_url=settings.openrouter_base_url,
+                temperature=0.1,
+                timeout=config.timeout,
+                # Same zero-price bound as LLMClient: OpenRouter rejects the
+                # request instead of billing if the route is not free.
+                extra_body={
+                    "provider": {
+                        "max_price": {
+                            "prompt": 0,
+                            "completion": 0,
+                            "request": 0,
+                            "image": 0,
+                        }
+                    }
+                },
+            )
 
             # Create the browser agent
             # NB: browser_use.Agent is a generic class; mypy cannot fully infer

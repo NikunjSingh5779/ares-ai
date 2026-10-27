@@ -6,7 +6,7 @@
 > Do not start a later phase before the previous exit criterion unless a human
 > explicitly reprioritizes.
 >
-> Last checked: 2026-10-28 against `master` (`096c575`).
+> Last checked: 2026-10-28 against `master` (`e022e95`).
 
 ## Now — Phase 2 (product realism and UI)
 
@@ -91,12 +91,16 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
       borrow/funding costs, per-symbol slippage. (Verified 2026-10-28: commission
       plus one global `paper_trading_slippage_pct` only; see
       `paper_trading/CONTEXT.md` Known gaps.)
-- [ ] Close the paid-model bypass in `agents/web_collector.py`. Its optional
-      `browser_use` path builds `ChatOpenAI` with `openai/gpt-4o-mini` or
-      `gemini/gemini-2.0-flash`, bypassing the `LLMClient` free-only guard.
-      (Found 2026-10-28; directly reachable from `/predictions` when the optional
-      dependency and a paid key are present. It is registered in the analysis
-      registry but is not a `PIPELINE_ORDER` node.)
+- [x] Close the paid-model bypass in `agents/web_collector.py`. (2026-10-28:
+      the optional `browser_use` path now builds browser-use's native
+      `ChatOpenRouter` only from the free-only `web_collector` roster entry,
+      requires `OPENROUTER_API_KEY`, and sets OpenRouter's zero-price `max_price`
+      bound. `agents/client.py` exposes `parse_model_id`/
+      `free_model_policy_violation`, shared with `LLMClient`, so a paid or
+      direct-provider roster entry is rejected before construction.
+      `tests/test_web_collector.py` covers the roster, paid rejection, missing-key,
+      and missing-dependency paths. The live browser run remains optional and is
+      not exercised in CI.)
 
 ## Later — Phase 3 hygiene
 

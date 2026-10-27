@@ -7,7 +7,8 @@
 - `settings.py` — `Settings` (pydantic-settings), env overrides, `live_trading_enabled`
   (default false), production secret validator.
 - `models.yaml` — per-agent primary + fallback chain, timeouts, retry/breaker defaults,
-  `defaults.universal_fallback`, and the separate opt-in `local_chat` entry.
+  `defaults.universal_fallback`, and the separate opt-in `local_chat` and `web_collector`
+  entries.
 
 ## Rules
 - Model IDs live **only** in `models.yaml` (hard rule #1).

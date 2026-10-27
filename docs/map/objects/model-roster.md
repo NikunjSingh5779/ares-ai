@@ -17,16 +17,21 @@ gates local concurrency, and trips circuit breakers.
 **Shape:** per agent `{primary, fallbacks[], timeout_seconds, max_retries}`; defaults for
 timeout, retries, breaker threshold/reset, RPM, and `universal_fallback`. The separate
 `local_chat` entry uses `local/qwen3.6-35b-a3b-ud-q4_k_m`; it is not part of the
-free-tier `chat` chain.
+free-tier `chat` chain. The optional `web_collector` entry supplies the browser-use
+agent's `ChatOpenRouter` model; that path uses the primary only and fails closed
+rather than walking the router chain.
 
 **Writers:** humans edit YAML. The breaker/queue and local gate keep per-process state.
 
 **Readers:** every LLM-backed agent, `scripts/run_live.py`, `backend/routers/analysis.py`,
-and `backend/services/chat_service.py`.
+`agents/web_collector.py`, and `backend/services/chat_service.py`.
 
 **Invariants:**
 - No model ID in source (hard rule #1).
 - A failed required agent causes rejection, never approval.
+- Optional paths that build their own provider client (browser-use) must validate the
+  roster ID with `agents/client.py::free_model_policy_violation` and set the same
+  zero-price OpenRouter bound; they may not bypass the free-only policy.
 - `AgentModelConfig.model_chain` appends `defaults.universal_fallback`
   (`open_router/openrouter/free`) last, deduplicated. The chat service uses the
   explicit local entry, not its universal fallback.
@@ -43,7 +48,7 @@ and `backend/services/chat_service.py`.
 
 **Tests:** `tests/test_router.py`, `test_retry.py`, `test_circuit_breaker.py`,
 `test_queue.py`, `test_models.py`, `test_local_gate.py`, `test_client.py`,
-`test_chat_service.py`, `tests/test_test_free_models.py`.
+`test_chat_service.py`, `test_web_collector.py`, `tests/test_test_free_models.py`.
 
 **Known gaps:** catalog removals are not yet checked in CI. The roster was validated
 against the live OpenRouter catalog on 2026-10-21 (14 unique free models, all
