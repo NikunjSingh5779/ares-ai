@@ -680,3 +680,46 @@ fill; a run already in execution finishes and reports its real result. The budge
 in-flight count reset on process restart, and a multi-worker deployment would need a
 shared store. The safety gates, kill switch, and promotion logic are unchanged; this ADR
 only bounds how analysis work is scheduled and where its result lives.
+
+---
+
+## ADR-024 — One shared kill-switch arm epoch clears every process
+
+**Status:** accepted 2026-10-28.
+
+**Context:** ADR-010 makes a Redis outage latch each `KillSwitch` process closed, but
+`arm()` only cleared the calling process's `_mem`/`_fail_closed`. `/live/arm` therefore
+unblocked the API while a runner that had also latched stayed blocked until restarted.
+One human re-arm must clear every process that shares the store.
+
+**Decision:**
+- Store a shared token at `ares:kill_switch:arm_epoch`. `arm()` deletes `active`, `reason`,
+  and `timestamp` and writes a new `arm:<uuid>` token in one
+  `pipeline(transaction=True)`, so a crash cannot leave the active state cleared without a
+  new epoch. A healthy process that finds no token publishes a `baseline:<uuid>` so a
+  process that later latches has a pre-outage reference; the prefix keeps that publication
+  distinct from a human arm.
+- Each `KillSwitch` keeps the last token it observed. While healthy, `is_active` reads the
+  token before the active flag and records it, so an arm observed before an outage is not
+  mistaken for a post-latch re-arm.
+- A latched process reads the token on each check. It clears only on an `arm:` token that
+  differs from its observed baseline. A `baseline:` token, a missing/unreadable token, an
+  unchanged token, or a flush followed by another process's baseline publication never
+  clears the latch; store recovery alone cannot re-enable trading.
+- A process that latched before it ever observed a token records the post-recovery token
+  as its baseline and requires one further human arm. That is deliberate fail-closed
+  behavior.
+- `arm()` returns `False` and leaves the latch closed when the transaction fails.
+
+**Alternatives considered:**
+- *Poll a shared "armed" boolean.* Rejected: a recovered store whose boolean is already
+  false would clear every latch without a human action.
+- *Use a timestamp instead of a token.* Rejected: cross-process clock skew could clear a
+  latch early; a token needs no clock agreement.
+- *Publish the token with separate commands.* Rejected: a crash between the delete and the
+  set could leave the active state cleared with no epoch, so the write is atomic.
+
+**Consequences:** One `/live/arm` clears the API and every runner that had a baseline,
+without restarting them. A runner that latched before its first successful read still
+needs a second arm; the switch never auto-arms. Redis cleanup between tests must remove
+the epoch key as well as the active/reason/timestamp keys.

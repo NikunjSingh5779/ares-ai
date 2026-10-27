@@ -30,7 +30,7 @@ slice `c322f23` passed run **40097868595** on all five jobs, including
 | # | Work | Files | Exit criterion | State |
 |---|---|---|---|---|
 | 0.1 | Auth on every non-public route + frontend session/API-key flow | `backend/core/dependencies.py`, `backend/main.py`, `backend/routers/**`, `frontend/src/lib/api.ts`, `frontend/src/components/AuthGate.tsx`, `frontend/src/app/login/page.tsx` | Route test enumerates `/api/v1` and fails on any unprotected path; UI sends the header; default/empty key returns 503 | **Done** |
-| 0.2 | One fail-closed kill switch across API and runner; route all live orders through `execute_signal` | `live_trading/safety.py`, `live_trading/engine.py`, `agents/execution.py`, `scripts/run_live.py`, `backend/routers/live.py` | Integration test: Redis down → rejected; recovery still requires human re-arm; agent never calls `exchange.create_order` | **Done** |
+| 0.2 | One fail-closed kill switch across API and runner; route all live orders through `execute_signal` | `live_trading/safety.py`, `live_trading/engine.py`, `agents/execution.py`, `scripts/run_live.py`, `backend/routers/live.py` | Integration test: Redis down → rejected; recovery still requires human re-arm; agent never calls `exchange.create_order`. Shared arm epoch: one `/live/arm` clears every process that had observed the store | **Done** |
 | 0.3 | Refresh model roster + universal fallback | `configs/models.yaml`, `agents/models.py` | Every configured ID resolves in the live free catalog; exhausted chain reaches `openrouter/free` | **Done (manual catalog check)**; the free-only roster shape is now CI-tested, scheduled live-catalog check remains |
 | 0.4 | Realistic paper accounting: fees, slippage, mark-to-market, short proceeds | `paper_trading/engine.py`, `paper_trading/worker.py`, `agents/execution.py`, `configs/settings.py`, `backend/routers/trading.py` | Tests for fee-adjusted fill, intra-trade drawdown, and a profitable short; agent persists actual fill/quantity | **Done** |
 | 0.5 | Enforce production config | `docker-compose.prod.yml`, `docker/docker-compose.prod.yml`, `configs/settings.py`, `.env.example` | Compose overlay sets `ENVIRONMENT=production`; validator rejects default API/JWT/DB secrets | **Done** |
@@ -144,9 +144,12 @@ authenticated route shells; data-populated states remain an optional follow-up.
   `/analyze/stream` return **429** when busy or over budget; `/signal` returns
   **429/504**; `/agents/status` accepts `?session_id=`. See ADR-023 and the
   verified section in `02-STATUS.md`.
-- Shared Redis kill-switch arm epoch: **open** — `KillSwitch.arm()` clears only the
-  calling process; a runner that latched stays blocked until restarted. See
-  `02-STATUS.md` gap #6.
+- Shared Redis kill-switch arm epoch: **done 2026-10-28** — `KillSwitch.arm()`
+  atomically clears the active state and publishes an `arm:` token at
+  `ares:kill_switch:arm_epoch`; every process clears its latch when it sees a new
+  `arm:` token. A missing token or a recovered store alone never clears a latch. A
+  process that latched before its first read needs one further arm. See ADR-024
+  and `02-STATUS.md` gap #6.
 - Manual reconciliation of pre-P1-A short positions migrated as long: **open** —
   operational, needs production database access. See `02-STATUS.md` gap #10.
 

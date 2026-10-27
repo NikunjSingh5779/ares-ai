@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import uuid
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -23,6 +24,12 @@ import redis
 from backend.core.metrics import set_kill_switch_active
 
 logger = logging.getLogger(__name__)
+
+_ARM_EPOCH_KEY = "ares:kill_switch:arm_epoch"
+"""Shared token bumped by a human re-arm so every process clears its latch."""
+
+_EPOCH_BASELINE_PREFIX = "baseline:"
+_EPOCH_ARM_PREFIX = "arm:"
 
 
 def create_kill_switch_redis() -> redis.Redis:
@@ -92,7 +99,8 @@ class KillSwitch:
     - **Automatic**: triggered when a drawdown or circuit-breaker
       threshold is breached via ``.auto_trigger()``.
 
-    Once active, a human must call ``.arm()`` to re-enable trading.
+    Once active, a human must call ``.arm()`` (in any process sharing the
+    store) to re-enable trading.
 
     Uses **in-memory state by default** for testability. Pass a ``redis.Redis``
     client for shared atomic state across concurrent agents in production.
@@ -109,8 +117,12 @@ class KillSwitch:
         # In-memory fallback when Redis is not configured, and a local mirror
         # of any trip that could not be written to the shared store.
         self._mem: dict[str, str] = {}
-        # Latched fail-closed state. Cleared only by a successful .arm().
+        # Latched fail-closed state. Cleared only by a successful .arm() or by
+        # observing a newer shared arm epoch published by another process.
         self._fail_closed = False
+        # Last shared arm token this process observed. A different token means
+        # a human re-armed somewhere else, so a local latch can be cleared.
+        self._observed_arm_epoch: str | None = None
 
     # ── Storage abstraction ────────────────────────────────────────
 
@@ -155,6 +167,69 @@ class KillSwitch:
             self._mem.pop(k, None)
         return True
 
+    def _read_arm_epoch(self) -> str | None:
+        """Read the shared re-arm token.
+
+        Returns ``""`` when the store is healthy but has no token yet, and
+        ``None`` when the store cannot be read.
+        """
+        if self._redis_client is None:
+            return None
+        try:
+            val = self._redis_client.get(_ARM_EPOCH_KEY)
+        except (redis.RedisError, OSError) as exc:
+            self._on_storage_error(exc)
+            return None
+        if val is None:
+            return ""
+        return val.decode() if isinstance(val, bytes) else str(val)
+
+    def _observe_arm_epoch(self) -> None:
+        """Remember the current shared token while the store is healthy.
+
+        A fresh store has no token; publish a baseline once so a later human
+        arm is distinguishable from "no arm has ever happened".
+        """
+        epoch = self._read_arm_epoch()
+        if epoch is None:
+            return
+        if epoch == "":
+            token = f"{_EPOCH_BASELINE_PREFIX}{uuid.uuid4().hex}"
+            if self._set(_ARM_EPOCH_KEY, token, nx=True):
+                epoch = token
+            else:
+                epoch = self._read_arm_epoch()
+                if epoch is None or epoch == "":
+                    return
+        self._observed_arm_epoch = epoch
+
+    def _maybe_clear_latch(self) -> None:
+        """Clear a local latch when another process published a newer arm token.
+
+        A missing token never clears a latch. Only an ``arm:`` token that
+        differs from the last observed baseline can, so a recovered or flushed
+        store cannot silently re-enable trading even if another process
+        republishes a baseline.
+        """
+        epoch = self._read_arm_epoch()
+        if epoch is None or epoch == "":
+            return
+        if self._observed_arm_epoch is None:
+            self._observed_arm_epoch = epoch
+            return
+        if epoch == self._observed_arm_epoch:
+            return
+        if not epoch.startswith(_EPOCH_ARM_PREFIX):
+            # Another process may publish a fresh baseline after a flush.
+            # That is not a human re-arm and must not clear a latch.
+            self._observed_arm_epoch = epoch
+            return
+        logger.warning("Kill switch re-armed by shared epoch; clearing local latch")
+        self._observed_arm_epoch = epoch
+        self._mem.clear()
+        self._fail_closed = False
+        set_kill_switch_active(False)
+
     # ── State ──────────────────────────────────────────────────────
 
     @property
@@ -165,8 +240,18 @@ class KillSwitch:
     @property
     def is_active(self) -> bool:
         """``True`` if the kill switch has been tripped or state is unavailable."""
-        # Once latched, do not touch the store again: the switch stays closed
-        # until a human re-arms it, even if Redis has recovered.
+        # A latched process checks the shared arm epoch before blocking, so a
+        # human re-arm in any process clears every runner.  If the store is
+        # still unavailable, the latch stays closed.
+        if self._fail_closed:
+            self._maybe_clear_latch()
+            if self._fail_closed:
+                return True
+        # Refresh the baseline before reading the active flag.  If the store
+        # fails during this check, the last readable token is the baseline, so
+        # an arm observed just before the outage is not mistaken for a
+        # post-latch re-arm.
+        self._observe_arm_epoch()
         if self._fail_closed:
             return True
         active = self._get("ares:kill_switch:active") == "1"
@@ -277,15 +362,34 @@ class KillSwitch:
     def arm(self) -> bool:
         """Re-arm the kill switch (human confirmation required).
 
-        Returns ``False`` when the shared store is unavailable; in that case
-        the switch stays latched active so orders remain blocked.
+        The re-arm publishes a new shared epoch token atomically with clearing
+        the active state, so every process that latched on the outage clears
+        its local latch on the next check.  Returns ``False`` when the shared
+        store is unavailable; in that case the switch stays latched active so
+        orders remain blocked.
         """
-        if not self._delete(
-            "ares:kill_switch:active",
-            "ares:kill_switch:reason",
-            "ares:kill_switch:timestamp",
-        ):
-            return False
+        if self._redis_client is None:
+            if not self._delete(
+                "ares:kill_switch:active",
+                "ares:kill_switch:reason",
+                "ares:kill_switch:timestamp",
+            ):
+                return False
+        else:
+            token = f"{_EPOCH_ARM_PREFIX}{uuid.uuid4().hex}"
+            try:
+                pipe = self._redis_client.pipeline(transaction=True)
+                pipe.delete(
+                    "ares:kill_switch:active",
+                    "ares:kill_switch:reason",
+                    "ares:kill_switch:timestamp",
+                )
+                pipe.set(_ARM_EPOCH_KEY, token)
+                pipe.execute()
+            except (redis.RedisError, OSError) as exc:
+                self._on_storage_error(exc)
+                return False
+            self._observed_arm_epoch = token
         self._mem.clear()
         self._fail_closed = False
         set_kill_switch_active(False)

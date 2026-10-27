@@ -2,7 +2,8 @@
 # Status — verified state
 
 **Last verified:** 2026-10-28
-**Branch:** `master` — clean, equal to `origin/master` (`aac7eb0`). PR #127
+**Branch:** `master` at `b1cb068`; the shared Redis kill-switch arm epoch is
+verified in the working tree (not yet committed). PR #127
 squash-merged the analysis-control slice (`backend/services/analysis_control.py`,
 router, metrics, and tests), closing the P1 `/analyze` concurrency/cost gap. PR #114
 landed the dependency consolidation, #116 ported both charts to `lightweight-charts` v5 (closing
@@ -37,8 +38,8 @@ five jobs, including `postgres-integration` with all three PostgreSQL modules. T
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1325 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`); 83.23% coverage |
-| Coverage | `pytest tests/ -q` | **83.23%** default (gate 78%); the ledger module adds 5 tests, the strategy module adds 12, and the improvement module adds 6 when the URL is set |
+| Test suite | `pytest tests/ -q` | **1331 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`); 83.29% coverage |
+| Coverage | `pytest tests/ -q` | **83.29%** default (gate 78%); the ledger module adds 5 tests, the strategy module adds 12, and the improvement module adds 6 when the URL is set |
 | Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
 | Health and metrics | `pytest tests/test_monitoring -q` | **34 passed** — 503 on each degraded dependency, 200 only when all answer, Prometheus-backed JSON snapshot, `/metrics` exposition mount |
 | Infra config | `pytest tests/test_infra_config.py -q` | **18 passed** — build args, container service hosts, Chroma pin, LF entrypoint, alert rules, single monitoring set, dashboard JSON |
@@ -74,7 +75,7 @@ five jobs, including `postgres-integration` with all three PostgreSQL modules. T
 |---|---|
 | Auth on every non-public route | `backend/main.py` mounts every domain router with `Depends(verify_auth)`; `tests/test_security/test_route_auth.py` traverses FastAPI 0.139 `_IncludedRouter` wrappers and fails if any `/api/v1` route is unprotected (the old flat scan was vacuous on this FastAPI version). Default/empty `API_SECRET_KEY` returns 503; no `API_DEBUG` bypass. |
 | Single-user registration, no role escalation | `/auth/register` is a one-time bootstrap that requires the operator's API key; the first account is admin and later registrations are 403. `UserRegister` has no `role` field. |
-| Fail-closed, shared kill switch | `live_trading/safety.py` latches on `redis.RedisError`/`OSError`; `is_active`/`check()` return blocked; `arm()` refuses while Redis is down; after recovery a human `arm()` is required. `/live/kill` and `/live/arm` work with no exchange configured. |
+| Fail-closed, shared kill switch | `live_trading/safety.py` latches on `redis.RedisError`/`OSError`; `is_active`/`check()` return blocked; `arm()` refuses while Redis is down; after recovery a human `arm()` is required. `arm()` publishes an `arm:` token at `ares:kill_switch:arm_epoch` atomically, so one re-arm clears every process that had observed a baseline. `/live/kill` and `/live/arm` work with no exchange configured. |
 | One live-order path | `agents/execution.py` calls `LiveTradingEngine.execute_signal()`; the only production `exchange.create_order` call site is `live_trading/engine.py`. Tests assert the agent never calls the exchange directly. |
 | Paper-only by default | `settings.live_trading_enabled=False`; `/live/start`, `set_mode(auto\|semi)`, the agent, and the engine all refuse. Even when enabled, kill switch + mode + promotion + connection must pass. |
 | Validated free roster + universal fallback | 14 unique OpenRouter free models checked against the live catalog on 2026-10-21; `defaults.universal_fallback: open_router/openrouter/free` is appended (deduplicated) by `AgentModelConfig.model_chain`. |
@@ -391,6 +392,17 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Tests | `pytest tests/test_analysis_control.py tests/test_analysis_router.py -q` → **44 passed** (gate limits, budget window, busy rejection, 202 accept, deadline 504, plain-timeout 500, generic failure, cancellation, per-session lookup, stream release, unstarted-stream and cancelled-before-start terminal state). `pytest tests/test_supervisor.py -q` → **38 passed**, including deadline-before-stage, LLM cancellation, inner-timeout-is-not-a-deadline, execution-clears-deadline, and journal-after-deadline coverage. |
 | Safety | The gate only schedules analysis work; it does not touch the kill switch, approval, promotion, drawdown, or exposure gates. Busy/timeout paths fail closed and never execute a trade. |
 
+## Shared kill-switch arm epoch (verified 2026-10-28)
+
+| Piece | Evidence |
+|---|---|
+| Shared token | `live_trading/safety.py::_ARM_EPOCH_KEY` (`ares:kill_switch:arm_epoch`) holds a token. `KillSwitch.arm()` deletes `active`/`reason`/`timestamp` and writes a new `arm:<uuid>` in one `pipeline(transaction=True)`; a healthy process with no token publishes a `baseline:<uuid>`. |
+| Latch clear | Each process records the token it last observed. A latched process clears only on an `arm:` token that differs from that baseline; a `baseline:` token, a missing/unreadable token, an unchanged token, or a flush followed by another process's baseline never clears the latch. |
+| Baseline | A healthy `is_active` refreshes the token before reading the active flag. A process that latched before its first successful read records the post-recovery token and needs one further human arm (fail-closed). |
+| Failure | A failed `arm()` transaction latches the switch and returns `False`; `/live/arm` returns **503** and orders stay blocked. |
+| Tests | `pytest tests/test_live_trading/test_safety.py tests/test_live_trading/test_safety_edge_cases.py tests/test_live_trading/test_kill_switch_integration.py -q` → **65 passed** (cross-process arm clears a latched runner, recovery alone does not, a republished baseline does not, a missing token does not, a failed arm does not, in-memory arm still works). |
+| Safety | No gate, approval, promotion, drawdown, or exposure behavior changed. The epoch only clears a latch after an explicit human arm; it never trips or arms automatically. |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
@@ -400,7 +412,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 3 | ~~No role-based authorization on trading/live routes~~ | Closed by P1.6: viewer JWTs get 403 on `/execute` and all live controls; operator+ required; JWT role claim and API-key mapping tested on the real routes. | ~~P1~~ fixed |
 | 4 | ~~`mypy` fails~~ | Closed: the 22 errors in 8 test/script files are fixed, `mypy .` is clean on 184 files, and CI run 39742069953 passed `lint`. | ~~P1~~ fixed |
 | 5 | ~~`/analyze` concurrency/cost control absent~~ | Closed 2026-10-28: `backend/services/analysis_control.py` provides a bounded per-session state store, a process-wide semaphore (default one run), a rolling hourly run budget, a stage-start deadline, and idempotent lease release. `/analyze` and `/analyze/stream` reject extra starts with **429**; `/signal` waits up to `ANALYSIS_QUEUE_TIMEOUT_SECONDS` and returns **504** only when the deadline fires before execution starts. `/agents/status?session_id=` reads a specific run. | ~~P1~~ fixed |
-| 6 | Kill-switch latch is process-local | a Redis outage latches each process; `/live/arm` clears the API process, but a runner that also latched stays blocked until restarted (fail-closed, never auto-trades) | P1 operational |
+| 6 | ~~Kill-switch latch is process-local~~ | Closed 2026-10-28: `arm()` publishes an `arm:` token at `ares:kill_switch:arm_epoch` atomically with clearing the active state; a latched process clears only on an `arm:` token different from its observed baseline. Recovery, a missing token, a republished `baseline:`, or a flushed store never clears the latch. A process that latched before its first successful read needs one further human arm (fail-closed). | ~~P1~~ fixed |
 | 7 | ~~No automated PostgreSQL integration test in CI~~ | Closed by P1.4/P1.4b: `postgres-integration` runs hydrate → fill → restart → close, duplicate IDs, concurrent fills, and the busy lock, plus the strategy route → service → JSONB round-trip on `postgres:16-alpine`; the local default suite skips all three modules without `ARES_TEST_POSTGRES_URL`. | ~~P2~~ fixed |
 | 8 | ~~Remaining UI polling and accessibility gaps~~ | Closed 2026-10-22: `/live` fetches status/audit concurrently, pauses when hidden, guards in-flight refreshes, aborts on unmount, and force-refreshes after controls; `usePipelinePolling` single-polls with abort/backoff; `api.ts` has bounded timeouts and typed errors; skip link, navigation/dialog ARIA, labelled controls, and stronger muted-text contrast are in place. The 2026-10-24 audit (Lighthouse 13.5.0, axe-core 4.14.0) found and closed five more issues across the route shells. | ~~P2~~ fixed |
 | 9 | Live model-catalog removals are not checked in CI | the roster's free-only shape is now CI-tested (`tests/test_client.py::TestFreeOnlyModelRoster`), but `scripts/test_free_models.py` (live availability) is still manual and no workflow is scheduled | P2 |

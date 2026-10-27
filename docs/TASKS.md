@@ -60,10 +60,14 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
       `/agents/status?session_id=` reads a specific run.
       `tests/test_analysis_control.py`, `tests/test_analysis_router.py`, and
       `tests/test_supervisor.py` cover the limits and terminal paths.)
-- [ ] Shared Redis kill-switch arm epoch so one human re-arm clears the API and
-      every runner. (Verified 2026-10-28: `KillSwitch.arm()` clears only the
-      calling process's `_mem`/`_fail_closed`; no shared epoch key, so a runner
-      that latched stays blocked.)
+- [x] Shared Redis kill-switch arm epoch so one human re-arm clears the API and
+      every runner. (2026-10-28: `KillSwitch.arm()` atomically clears the active
+      state and publishes an `arm:` token at `ares:kill_switch:arm_epoch`; each
+      process clears its latch only on an `arm:` token different from its observed
+      baseline. A missing/flushed token, a republished `baseline:`, or store
+      recovery alone never clears it. A process that latched before its first
+      read needs one further arm. Covered by
+      `tests/test_live_trading/test_safety_edge_cases.py`; see ADR-024.)
 - [ ] Manually reconcile pre-P1-A short positions that were migrated as long.
       (Operational: `02-STATUS.md` gap #10 records that old shorts cannot be
       inferred and default to long. Needs a human with production DB access.)

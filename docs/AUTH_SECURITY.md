@@ -3,7 +3,7 @@
 
 > The safety rules are non-negotiable: see `docs/01-SPEC.md`. Structural
 > rationale is in `docs/04-DECISIONS.md` (ADR-009 auth, ADR-010 kill switch,
-> ADR-011 live opt-in, ADR-016 roles). This file explains the current
+> ADR-011 live opt-in, ADR-016 roles, ADR-024 shared arm epoch). This file explains the current
 > implementation and its known limits.
 
 ## Authentication
@@ -76,7 +76,10 @@ Live trading is opt-in at every layer:
    execute otherwise.
 2. Human-approval mode is the default for every new strategy/account.
 3. The paper-trading promotion gate must be met before autonomous mode.
-4. The kill switch latches closed and requires human re-arm.
+4. The kill switch latches closed and requires human re-arm; `arm()` publishes an
+   `arm:` epoch token in shared Redis, so one human action clears every process that
+   had observed the shared state. Recovery, a missing token, or a republished
+   baseline never clears a latch by itself.
 5. Every live order goes through `LiveTradingEngine.execute_signal`; there is
    exactly one production `exchange.create_order` call site.
 6. The kill switch and live controls work from the credential alone, so a
@@ -90,8 +93,6 @@ Never weaken a gate to make a test pass or to “speed things up.”
 - **`/execute` trust boundary:** the route re-runs consensus and caps size, but
   an authenticated caller supplies the agent payload. A signed/expiring signal
   record is a P2 design item.
-- **Kill-switch arm epoch:** the re-arm epoch is process-local; a shared Redis
-  epoch is P1 work so one human re-arm clears every runner.
 - **API key role mapping:** every API-key holder maps to `admin`; use JWTs when
   distinct roles are required.
 - **JWT revocation:** no revocation list; role changes apply on next login.
