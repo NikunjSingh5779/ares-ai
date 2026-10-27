@@ -148,3 +148,15 @@ agents:
     rpm: 1
     temperature: 0.4
     max_tokens: 1024
+
+  web_collector:
+    # Optional browser-use agent. Needs tool calling, so prefer the free
+    # auto-router first. The browser-use path uses only this primary and fails
+    # closed rather than walking the chain. Never point this at a paid model.
+    primary: open_router/openrouter/free
+    fallbacks:
+      - open_router/nvidia/nemotron-3-super-120b-a12b:free
+      - open_router/google/gemma-4-26b-a4b-it:free
+    timeout_seconds: 120
+    rpm: 4
+    temperature: 0.1

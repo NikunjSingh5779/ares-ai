@@ -14,7 +14,8 @@ modules gate. This is the controller + model layer of the pipeline.
   `reflection`, `memory`, `kronos_predictor`.
 - Deterministic gates: `consensus.py`; rules in `risk.py`, `indicators.py`, `candlesticks.py`.
 - `improvement.py` — cross-run analysis; accepts an explicit history window and emits
-  UUID-tagged advisory records. `web_collector.py` — research input.
+  UUID-tagged advisory records. `web_collector.py` — optional browser-use research
+  input; its LLM comes only from the free-only `web_collector` roster entry.
 
 ## Inputs
 `AgentState` slices (symbol, request, candles) and market data from `backend/data/`.
