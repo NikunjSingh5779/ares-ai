@@ -60,10 +60,23 @@ Public routes: `/health`, `/metrics`, `/docs`, `/redoc`, `/openapi.json`,
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/api/v1/analyze` | Required | Run the pipeline for a symbol and return the typed result |
+| POST | `/api/v1/analyze` | Required | Start the pipeline for a symbol in the background; returns the accepted `session_id` |
 | GET | `/api/v1/analyze/stream` | Required | Server-Sent Events stream of pipeline progress |
 | POST | `/api/v1/signal` | Required | Generate and process a trading signal through the agent path |
 | GET | `/api/v1/signals/history` | Required | Recent signal history |
+| GET | `/api/v1/agents/status?session_id=...` | Required | Pipeline status for one run; omit `session_id` for the latest started run |
+
+Analysis starts are bounded. `POST /analyze` and `GET /analyze/stream` return
+**429** with `Retry-After` when another run holds the single process-wide slot or
+the rolling hourly run budget is exhausted. `POST /signal` waits up to
+`ANALYSIS_QUEUE_TIMEOUT_SECONDS` for a slot, then returns **429**. The
+`ANALYSIS_TIMEOUT_SECONDS` deadline is checked before each LLM stage; once
+execution starts it is cleared so a committed fill cannot be cancelled. A
+`/signal` run that reaches the deadline before execution returns **504**; a plain
+`TimeoutError` from post-fill logging or the database returns **500** so a retry
+cannot duplicate the fill. The `session_id` from `POST /analyze` can be passed to
+`/agents/status` to read that exact run while a newer run is active. The gate,
+budget, and state store are process-local.
 
 ### Market data
 

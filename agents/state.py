@@ -207,6 +207,9 @@ class AgentState(BaseModel):
     request: str = ""
     request_type: str = "analysis"
     candles: list[Any] | None = None
+    # Process-local deadline in monotonic seconds. The supervisor checks it
+    # before starting another LLM stage; it is excluded from API serialization.
+    deadline_monotonic: float | None = Field(default=None, exclude=True, repr=False)
 
     # Agent outputs (populated as pipeline executes)
     market_analyst: MarketAnalystOutput | None = None

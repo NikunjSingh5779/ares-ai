@@ -6,7 +6,7 @@
 > Do not start a later phase before the previous exit criterion unless a human
 > explicitly reprioritizes.
 >
-> Last checked: 2026-10-28 against `master` (`3b172e5`).
+> Last checked: 2026-10-28 against `master` (`096c575`).
 
 ## Now — Phase 2 (product realism and UI)
 
@@ -49,11 +49,17 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
 
 ## Next — P1 gaps
 
-- [ ] `/analyze` concurrency/cost control: replace the module-global
+- [x] `/analyze` concurrency/cost control: replace the module-global
       `_last_state`, bound concurrent runs, add timeouts/cancellation and a cost
-      budget. (Verified 2026-10-28: `backend/routers/analysis.py:34,204-241`
-      still uses `_last_state` plus unbounded `BackgroundTasks`; no semaphore,
-      timeout, or budget.)
+      budget. (2026-10-28: `backend/services/analysis_control.py` adds a bounded
+      per-session store, a process-wide semaphore (default one run), a rolling
+      hourly run budget, `ANALYSIS_TIMEOUT_SECONDS` as a stage-start deadline
+      that is cleared before execution, and cancellation handling;
+      `/analyze` and `/analyze/stream` return **429** when busy or over budget,
+      `/signal` returns **504** when the deadline fires before execution, and
+      `/agents/status?session_id=` reads a specific run.
+      `tests/test_analysis_control.py`, `tests/test_analysis_router.py`, and
+      `tests/test_supervisor.py` cover the limits and terminal paths.)
 - [ ] Shared Redis kill-switch arm epoch so one human re-arm clears the API and
       every runner. (Verified 2026-10-28: `KillSwitch.arm()` clears only the
       calling process's `_mem`/`_fail_closed`; no shared epoch key, so a runner

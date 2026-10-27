@@ -134,6 +134,22 @@ authenticated route shells; data-populated states remain an optional follow-up.
 
 **Phase 2 is closed as of 2026-10-24.**
 
+## P1 reliability/safety (post-Phase 2)
+
+- Analysis concurrency, cost budget, deadline, and per-session state: **done
+  2026-10-28** — `backend/services/analysis_control.py` bounds concurrent runs
+  (default one), enforces a rolling hourly run budget and a stage-start deadline,
+  and stores results per `session_id`. The deadline is cleared once execution
+  starts, so a timeout cannot cancel a committed fill. `/analyze` and
+  `/analyze/stream` return **429** when busy or over budget; `/signal` returns
+  **429/504**; `/agents/status` accepts `?session_id=`. See ADR-023 and the
+  verified section in `02-STATUS.md`.
+- Shared Redis kill-switch arm epoch: **open** — `KillSwitch.arm()` clears only the
+  calling process; a runner that latched stays blocked until restarted. See
+  `02-STATUS.md` gap #6.
+- Manual reconciliation of pre-P1-A short positions migrated as long: **open** —
+  operational, needs production database access. See `02-STATUS.md` gap #10.
+
 ## Phase 3 — hygiene
 
 - Keep `mypy .` green (clean on 211 files as of 2026-10-24).

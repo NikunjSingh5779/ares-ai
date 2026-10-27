@@ -33,26 +33,37 @@ and the outcome is recorded as no-trade.
 - Paper/live trade row (via Execution + Journal) when approved.
 - `reflection_runs` + advisory `improvement_records` when the post-run hook succeeds;
   a failure is logged and does not change the result.
-- `_last_state` in the API process, read by `/agents/status` and `/risk` (not by
-  `/api/v1/metrics`, which reads the Prometheus registry).
+- A bounded per-session `AnalysisStateStore` in the API process
+  (`backend/services/analysis_control.py`), read by `/agents/status` (latest
+  started run, or `?session_id=...`) and `/risk` (not by `/api/v1/metrics`,
+  which reads the Prometheus registry).
 
 ## Human check
 - `GET /api/v1/agents/status` shows completed/failed/skipped nodes and model chains.
+- `GET /api/v1/agents/status?session_id=...` shows the run returned by
+  `POST /api/v1/analyze`.
 - A rejected trade must show a reason in `consensus.rationale` or `risk.reasons`.
 
 ## Change impact
 - Add/reorder a node → `PIPELINE_ORDER`, graph edges, `REQUIRED_AGENTS`, status UI, this card.
 - Change a threshold → `agents/consensus.py` / `agents/risk.py` + boundary tests.
 - Change the entry route → `backend/routers/analysis.py`, `frontend/src/lib/api.ts`, types.
+- Change concurrency, budget, deadline, or state retention →
+  `backend/services/analysis_control.py`, `configs/settings.py`, `.env.example`,
+  `tests/test_analysis_control.py`, `tests/test_analysis_router.py`,
+  `tests/test_supervisor.py`, this card.
+- Change the deadline check or execution clearing → `agents/supervisor.py`,
+  `agents/state.py`, `tests/test_supervisor.py`, this card.
 - Change the post-run hook → `agents/supervisor.py`, `backend/services/improvement_service.py`,
   `scripts/run_live.py`, `tests/test_supervisor.py`, `tests/test_improvement_service.py`.
 
 ## Tests
 `tests/test_supervisor.py`, `test_consensus.py`, `test_risk.py`,
-`tests/test_analysis_router.py`, `tests/test_agents/*`.
+`tests/test_analysis_control.py`, `tests/test_analysis_router.py`, `tests/test_agents/*`.
 
 ## Known gaps
-- `_last_state` is a single module global: concurrent runs race (P1-7). `/agents/status`
-  and `/risk` still read it; `/api/v1/metrics` does not.
-- Unbounded background tasks; no per-user isolation or cost cap.
+- The gate and state store are process-local; a multi-worker API would need shared
+  state (for example Redis) for the concurrency limit, run budget, and per-session
+  reads. Compose runs one uvicorn worker.
+- The run budget resets on process restart.
 - LLM degradation is not surfaced in `degraded`.
