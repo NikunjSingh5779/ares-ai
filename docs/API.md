@@ -171,7 +171,12 @@ approved `current_price`, and caps notional at 2% of paper equity. A duplicate
 | GET | `/api/v1/live/paper_record` | Required | Promotion-gate paper record |
 
 The live controls verify the credential only, so `/live/kill` still works when
-PostgreSQL is unreachable.
+PostgreSQL is unreachable. `/live/arm` clears the active state and publishes an
+`arm:` token at `ares:kill_switch:arm_epoch` atomically; every process clears its
+fail-closed latch when it sees a new `arm:` token. A missing token, a republished
+baseline, or a recovered store alone never clears a latch, and a process that latched
+before its first successful read needs one further arm. If the shared store is
+unavailable, `/live/arm` returns **503** and orders stay blocked.
 
 ### Journal, memory, agents, monitoring
 

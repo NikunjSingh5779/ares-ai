@@ -76,8 +76,8 @@ marks are durable. API reads hydrate from the ledger before returning.
 
 **Live execution** (`/api/v1/live/*`, `scripts/run_live.py`)
 `ExecutionAgent` → `LiveTradingEngine.execute_signal()` → safety gates
-(fail-closed kill switch, mode, promotion, exchange) → exchange connector →
-`OrderAuditor`. The engine also refuses to start or execute when
+(fail-closed kill switch with a shared Redis arm epoch, mode, promotion, exchange) →
+exchange connector → `OrderAuditor`. The engine also refuses to start or execute when
 `LIVE_TRADING_ENABLED=false`; this is the default. There is exactly one
 production `exchange.create_order` call site: `live_trading/engine.py`.
 
@@ -133,7 +133,7 @@ A router may validate and delegate; it must not own portfolio state or exchange 
 | Paper cache | in-memory `PaperTradingEngine` | hydrated from the ledger before every action; snapshot-restored on write failure | process-local cache only; never the source of truth |
 | Closed paper trades | `trade_history` table | ledger closures and execution-agent fallback | promotion gate reads this table |
 | Pipeline result | bounded per-session `AnalysisStateStore` (`backend/services/analysis_control.py`) | `/analyze`, `/analyze/stream`, `/signal` | latest-started run by default; `session_id` selects one run; capacity-bounded; process-local |
-| Live orders | exchange + `OrderAuditor` | `LiveTradingEngine.execute_signal` only | single path; kill switch is shared Redis state |
+| Live orders | exchange + `OrderAuditor` | `LiveTradingEngine.execute_signal` only | single path; kill switch is shared Redis state with a shared arm epoch |
 | Model roster | `configs/models.yaml` | — | validated free IDs + universal fallback appended by `AgentModelConfig` |
 | Dashboard preferences | singleton `app_settings` JSONB row | `settings_service` through `PUT /api/v1/settings/preferences` | non-safety only; safety limits are computed from `agents.risk`/`agents.consensus`/`configs.settings` (ADR-018) |
 | Strategy drafts | PostgreSQL `strategies` | `strategy_service` through `/api/v1/strategies` | draft/paused edits only; status, live enablement, and promotion counters are server-owned and never written by this surface |

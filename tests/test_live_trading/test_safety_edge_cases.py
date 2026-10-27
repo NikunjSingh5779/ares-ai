@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import redis
 
-from live_trading.safety import KillSwitch, SafetyCheckResult
+from live_trading.safety import _ARM_EPOCH_KEY, KillSwitch, SafetyCheckResult
 
 
 class TestSafetyCheckResultDunder:
@@ -34,6 +35,7 @@ class TestKillSwitchRedisErrors:
         client.get.side_effect = redis.ConnectionError()
         client.set.side_effect = redis.ConnectionError()
         client.delete.side_effect = redis.ConnectionError()
+        client.pipeline.side_effect = redis.ConnectionError()
         return client
 
     def test_get_returns_none_on_redis_error(self) -> None:
@@ -101,8 +103,11 @@ class TestKillSwitchRedisErrors:
         # Store recovers, but the switch stays latched until a human re-arms.
         client.get.side_effect = None
         client.get.return_value = None
+        client.set.side_effect = None
+        client.set.return_value = True
         client.delete.side_effect = None
         client.delete.return_value = 1
+        client.pipeline.side_effect = None
 
         assert ks.is_active
         assert ks.arm() is True
@@ -157,3 +162,192 @@ class TestKillSwitchRedisBytes:
         result = ks.triggered_at
         assert result is not None
         assert result.year == 2024
+
+
+class _FakePipeline:
+    """Pipeline subset used by ``KillSwitch.arm()``."""
+
+    def __init__(self, store: dict[str, str]) -> None:
+        self._store = store
+        self._ops: list[tuple[str, tuple[str, ...], dict[str, Any]]] = []
+
+    def delete(self, *keys: str) -> _FakePipeline:
+        self._ops.append(("delete", keys, {}))
+        return self
+
+    def set(self, key: str, value: str, **kwargs: Any) -> _FakePipeline:
+        self._ops.append(("set", (key, value), kwargs))
+        return self
+
+    def execute(self) -> list[Any]:
+        results: list[Any] = []
+        for op, args, kwargs in self._ops:
+            if op == "delete":
+                results.append(sum(1 for key in args if self._store.pop(key, None) is not None))
+            else:
+                key, value = args
+                if kwargs.get("nx") and key in self._store:
+                    results.append(False)
+                else:
+                    self._store[key] = value
+                    results.append(True)
+        self._ops.clear()
+        return results
+
+
+class _FakeRedis:
+    """Tiny shared Redis stand-in; two ``KillSwitch`` instances share it.
+
+    ``down`` makes every command fail like a connection outage.
+    ``pipeline_down`` fails only ``pipeline()``, so reads still work.
+    """
+
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+        self.down = False
+        self.pipeline_down = False
+
+    def get(self, key: str) -> str | None:
+        if self.down:
+            raise redis.ConnectionError("store down")
+        return self.store.get(key)
+
+    def set(self, key: str, value: str, nx: bool = False) -> bool:
+        if self.down:
+            raise redis.ConnectionError("store down")
+        if nx and key in self.store:
+            return False
+        self.store[key] = value
+        return True
+
+    def delete(self, *keys: str) -> int:
+        if self.down:
+            raise redis.ConnectionError("store down")
+        return sum(1 for key in keys if self.store.pop(key, None) is not None)
+
+    def pipeline(self, transaction: bool = True) -> _FakePipeline:
+        if self.down or self.pipeline_down:
+            raise redis.ConnectionError("store down")
+        return _FakePipeline(self.store)
+
+
+class TestKillSwitchSharedArmEpoch:
+    """A human re-arm in one process must clear every other process's latch."""
+
+    @staticmethod
+    def _client(fake: _FakeRedis) -> redis.Redis:
+        return cast(redis.Redis, fake)
+
+    def test_one_shared_arm_clears_a_latched_runner(self) -> None:
+        fake = _FakeRedis()
+        runner = KillSwitch(redis_client=self._client(fake))
+        api = KillSwitch(redis_client=self._client(fake))
+
+        assert not runner.is_active  # healthy: publishes/observes a baseline
+        baseline = fake.store[_ARM_EPOCH_KEY]
+        assert baseline.startswith("baseline:")
+
+        fake.down = True
+        assert runner.is_active  # the outage latches this process
+        assert not runner.storage_healthy
+
+        fake.down = False
+        assert runner.is_active  # recovery alone never clears the latch
+        assert not runner.storage_healthy
+
+        assert api.arm() is True
+        assert fake.store[_ARM_EPOCH_KEY].startswith("arm:")
+        assert fake.store[_ARM_EPOCH_KEY] != baseline
+
+        assert not runner.is_active  # the shared epoch clears the runner
+        assert runner.storage_healthy
+
+    def test_check_stays_blocked_until_the_shared_arm(self) -> None:
+        fake = _FakeRedis()
+        runner = KillSwitch(redis_client=self._client(fake))
+        api = KillSwitch(redis_client=self._client(fake))
+
+        assert not runner.is_active
+        fake.down = True
+        assert not runner.check()
+        fake.down = False
+        assert not runner.check()
+
+        assert api.arm() is True
+        assert runner.check()
+
+    def test_missing_epoch_token_never_clears_a_latch(self) -> None:
+        """A flushed store cannot silently re-enable trading."""
+        fake = _FakeRedis()
+        ks = KillSwitch(redis_client=self._client(fake))
+
+        assert not ks.is_active
+        fake.down = True
+        assert ks.is_active
+
+        fake.down = False
+        fake.store.clear()  # token missing, as after a Redis flush
+
+        assert ks.is_active
+        assert ks.is_active
+        assert not ks.storage_healthy
+
+    def test_another_process_baseline_after_flush_does_not_clear_a_latch(self) -> None:
+        """A republished baseline is not a human arm."""
+        fake = _FakeRedis()
+        runner = KillSwitch(redis_client=self._client(fake))
+        api = KillSwitch(redis_client=self._client(fake))
+
+        assert not runner.is_active
+        fake.down = True
+        assert runner.is_active
+        fake.down = False
+
+        fake.store.clear()  # Redis flush: both the trip and the token are gone
+        assert not api.is_active  # the API republishes a fresh baseline
+        assert fake.store[_ARM_EPOCH_KEY].startswith("baseline:")
+
+        assert runner.is_active  # a new baseline is not a human re-arm
+        assert not runner.storage_healthy
+
+        assert api.arm() is True
+        assert not runner.is_active
+
+    def test_a_failed_arm_leaves_the_switch_latched(self) -> None:
+        fake = _FakeRedis()
+        ks = KillSwitch(redis_client=self._client(fake))
+
+        assert not ks.is_active
+        baseline = fake.store[_ARM_EPOCH_KEY]
+
+        fake.pipeline_down = True
+        assert ks.arm() is False
+        assert fake.store[_ARM_EPOCH_KEY] == baseline
+        assert ks.is_active
+        assert not ks.storage_healthy
+
+        fake.pipeline_down = False
+        assert ks.arm() is True
+        assert not ks.is_active
+        assert ks.storage_healthy
+
+    def test_latch_without_a_baseline_needs_one_more_arm(self) -> None:
+        """A process that never read the store stays closed after recovery.
+
+        It records the post-recovery token as its baseline, so a further human
+        arm is required.  This is fail-closed and documented.
+        """
+        fake = _FakeRedis()
+        fake.store[_ARM_EPOCH_KEY] = "pre-existing-token"
+        fake.down = True
+        runner = KillSwitch(redis_client=self._client(fake))
+        api = KillSwitch(redis_client=self._client(fake))
+
+        assert runner.is_active  # latches before ever reading a baseline
+        fake.down = False
+
+        assert runner.is_active  # records the token, does not clear
+        assert runner.is_active
+
+        assert api.arm() is True
+        assert not runner.is_active

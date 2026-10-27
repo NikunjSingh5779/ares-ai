@@ -67,7 +67,6 @@
 - Keep the custom pure-Python backtest engine or adopt VectorBT/Backtrader.
 - Signed/stored approval for `/execute` versus the current API-key trust
   boundary.
-- Shared kill-switch arm epoch design for multiple runners.
 - Paper realism depth: gap-through stops, partial fills, funding/borrow costs.
 
 ## Read next

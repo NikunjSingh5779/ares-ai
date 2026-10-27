@@ -31,7 +31,10 @@ Order result, `live_trades` row, audit entry, `LIVE_ORDERS_TOTAL` / kill-switch 
 - Live trading is opt-in: `LIVE_TRADING_ENABLED=false` blocks `start()` and
   `execute_signal()` at the engine, not just the API.
 - Kill switch uses shared Redis, fails closed on any Redis error, latches, and requires
-  a human `arm()` after recovery.
+  a human `arm()` after recovery. `arm()` atomically clears the active state and
+  publishes an `arm:` token at `ares:kill_switch:arm_epoch`; every process clears its
+  latch when it sees an `arm:` token different from the one it last observed. A missing
+  token, a republished `baseline:` token, or store recovery alone never clears a latch.
 - Default mode is `human_approval`; auto is opt-in per strategy.
 - Every order logs the approving agents and checks.
 
@@ -46,6 +49,7 @@ With Redis stopped, status must report `storage_healthy=false` and orders must b
 No idempotency or reconciliation; `get_open_orders()` returns `[]`. Paper accounting
 now includes fees, adverse slippage, and intra-trade marks, and the worker writes SL/TP
 closures to `trade_history`; the remaining optimism is durability, because the engine
-is in memory and the portfolio row is a projection. The fail-closed latch is
-process-local: after a Redis recovery an API `arm()` clears the API process, but a
-runner that also latched must be restarted until a shared arm epoch is implemented.
+is in memory and the portfolio row is a projection. A process that latched before it
+ever read the shared arm token records the post-recovery token as its baseline and
+needs one further human `arm()`; this is deliberate fail-closed behavior, not a
+restart requirement.

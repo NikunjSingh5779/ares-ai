@@ -29,7 +29,7 @@
 | Duplicate order protection | Working | Required `client_order_id`; duplicate -> 409 |
 | Restart-safe paper state | Working | Phase 1 Compose exit passed on 2026-10-21 |
 | Backtesting | Working | Custom pure-Python simulator; library choice remains open |
-| Live trading controls | Gated / not enabled | One order path; kill switch, human approval, promotion, exchange gates |
+| Live trading controls | Gated / not enabled | One order path; kill switch with a shared arm epoch, human approval, promotion, exchange gates |
 | Exchange connectors | Partial | Binance, Bybit, Coinbase, Kraken implemented; Zerodha and IBKR order methods are stubs |
 | Promotion gate | Working | 30 trading days or 50 closed paper trades, whichever is longer |
 
@@ -78,7 +78,6 @@
 
 - `/execute` trusts the authenticated caller's agent payload; a signed or stored
   approval is a P2 design item.
-- The kill-switch arm epoch is process-local; a shared Redis epoch is P1 work.
 - `/analyze` runs are bounded by a process-wide gate (default one run), a rolling
   hourly budget, and a stage-start deadline that is cleared once execution
   begins; results are stored per `session_id`. The gate and store are

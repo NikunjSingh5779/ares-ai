@@ -93,8 +93,11 @@ writing to memory only; the request must fail closed.
   re-arm.
 - Do not clear the kill-switch key manually in production. Use `/live/arm` with
   a live-control credential after review.
-- The arm epoch is process-local; a multi-runner deployment needs the shared
-  epoch work in `docs/05-NEXT.md`.
+- `/live/arm` publishes an `arm:` token at `ares:kill_switch:arm_epoch`; a
+  latched process clears only on a new `arm:` token, so one human re-arm clears
+  every runner that had observed the shared state. Do not delete or edit the
+  epoch key manually. A process that latched before its first successful read
+  needs one further arm.
 
 ## Frontend problems
 
