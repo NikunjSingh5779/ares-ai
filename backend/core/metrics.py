@@ -53,6 +53,19 @@ AGENTS_FALLBACK_TOTAL = Counter(
     ["agent", "from_model", "to_model"],
 )
 
+# ── Analysis pipeline metrics ───────────────────────────────────────────────
+
+ANALYSIS_RUNS_TOTAL = Counter(
+    "ares_analysis_runs_total",
+    "Analysis pipeline runs by status",
+    ["status"],
+)
+
+ANALYSIS_IN_FLIGHT = Gauge(
+    "ares_analysis_in_flight",
+    "Analysis pipeline runs currently in flight",
+)
+
 # ── Live trading metrics ────────────────────────────────────────────────────
 
 LIVE_KILL_SWITCH_ACTIVE = Gauge(
@@ -115,6 +128,16 @@ def record_agent_fallback(agent: str, from_model: str, to_model: str) -> None:
     AGENTS_FALLBACK_TOTAL.labels(agent=agent, from_model=from_model, to_model=to_model).inc()
 
 
+def record_analysis_run(status: str) -> None:
+    """Increment the analysis-run counter for a terminal or start status."""
+    ANALYSIS_RUNS_TOTAL.labels(status=status).inc()
+
+
+def set_analysis_in_flight(count: int) -> None:
+    """Set the gauge for analysis runs currently holding a slot."""
+    ANALYSIS_IN_FLIGHT.set(count)
+
+
 def set_kill_switch_active(active: bool) -> None:
     """Set the kill switch gauge (1 = active, 0 = inactive)."""
     LIVE_KILL_SWITCH_ACTIVE.set(1 if active else 0)
@@ -150,6 +173,8 @@ def get_metrics_snapshot() -> dict[str, int | bool]:
         "agent_runs_total": int(_sum_samples(AGENTS_RUNS_TOTAL, "ares_agents_runs_total")),
         "agent_errors_total": int(_sum_samples(AGENTS_RUNS_TOTAL, "ares_agents_runs_total", status="error")),
         "agent_fallbacks_total": int(_sum_samples(AGENTS_FALLBACK_TOTAL, "ares_agents_fallback_total")),
+        "analysis_runs_total": int(_sum_samples(ANALYSIS_RUNS_TOTAL, "ares_analysis_runs_total")),
+        "analysis_in_flight": int(_sum_samples(ANALYSIS_IN_FLIGHT, "ares_analysis_in_flight")),
         "live_orders_total": int(_sum_samples(LIVE_ORDERS_TOTAL, "ares_live_orders_total")),
         "kill_switch_active": bool(_sum_samples(LIVE_KILL_SWITCH_ACTIVE, "ares_live_kill_switch_active")),
     }

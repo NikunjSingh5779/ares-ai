@@ -37,8 +37,9 @@ Browser / API client
 ```
 
 - **Analysis:** `backend/routers/analysis.py` -> `agents/supervisor.py` ->
-  `PIPELINE_ORDER`. The module-global `_last_state` caches the last run and is
-  a known isolation gap (see `docs/02-STATUS.md`).
+  `PIPELINE_ORDER`. `backend/services/analysis_control.py` bounds concurrent
+  runs, enforces a rolling hourly budget and a stage-start deadline, and stores
+  results per `session_id`; `/agents/status?session_id=` reads a specific run.
 - **Paper execution:** `backend/routers/trading.py` -> `PaperTradingLedger` ->
   `PaperLedgerRepository` -> PostgreSQL, with the in-memory engine used only
   as a rehydrated cache.

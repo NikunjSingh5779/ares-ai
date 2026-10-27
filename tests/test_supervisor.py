@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+import time
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from langgraph.graph import END, START, StateGraph
 
 from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.client import NoOpLLMClient
@@ -22,7 +25,15 @@ from agents.state import (
     PipelineStatus,
     RiskOutput,
 )
-from agents.supervisor import Supervisor
+from agents.supervisor import (
+    AnalysisDeadlineExceededError,
+    Supervisor,
+    _execute_agent_node,
+    _make_node_fn,
+    _merge_pipeline_status,
+    _raise_if_deadline_expired,
+    _remaining_seconds,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -595,3 +606,191 @@ class TestPipelineStatusInvariants:
         assert "market_analyst" not in vis_ps.skipped_nodes, (
             "auto_skip_prior=False caused market_analyst to be marked skipped"
         )
+
+
+class TestSupervisorDeadline:
+    """The run deadline stops new LLM stages without cancelling execution."""
+
+    def test_deadline_helpers(self) -> None:
+        state = AgentState(symbol="BTC-USD", request="test")
+        assert _remaining_seconds(state) is None
+        _raise_if_deadline_expired(state, "quant")
+
+        state.deadline_monotonic = time.monotonic() + 60
+        remaining = _remaining_seconds(state)
+        assert remaining is not None
+        assert 0 < remaining <= 60
+
+        state.deadline_monotonic = time.monotonic() - 1
+        with pytest.raises(AnalysisDeadlineExceededError, match="before quant"):
+            _raise_if_deadline_expired(state, "quant")
+
+    def test_deadline_is_excluded_from_serialization(self) -> None:
+        state = AgentState(
+            symbol="BTC-USD",
+            request="test",
+            deadline_monotonic=time.monotonic() + 60,
+        )
+
+        assert "deadline_monotonic" not in state.model_dump()
+        assert "deadline_monotonic" not in state.model_dump_json()
+
+    @pytest.mark.asyncio
+    async def test_expired_deadline_stops_before_the_llm_stage(
+        self,
+        supervisor: Supervisor,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A stage that starts after the deadline never calls the model."""
+        supervisor.build_graph()
+        node = _make_node_fn("quant")
+        state = AgentState(
+            symbol="BTC-USD",
+            request="test",
+            deadline_monotonic=time.monotonic() - 1,
+        )
+
+        async def _unexpected(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            raise AssertionError("LLM stage started after the deadline")
+
+        monkeypatch.setattr("agents.supervisor._execute_agent_node", _unexpected)
+
+        with pytest.raises(AnalysisDeadlineExceededError, match="before quant"):
+            await node(state)
+
+    @pytest.mark.asyncio
+    async def test_llm_stage_is_cancelled_at_the_deadline(
+        self,
+        supervisor: Supervisor,
+    ) -> None:
+        """A slow model call is bounded by the remaining deadline."""
+        supervisor.build_graph()
+        config = AgentModelConfig.from_dict("quant", {"primary": "model-quant"})
+
+        class _SlowRouter:
+            async def execute(self, **kwargs: Any) -> Any:
+                await asyncio.sleep(5)
+                raise AssertionError("slow model call was not cancelled")
+
+        state = AgentState(
+            symbol="BTC-USD",
+            request="test",
+            deadline_monotonic=time.monotonic() + 0.02,
+        )
+
+        with pytest.raises(AnalysisDeadlineExceededError):
+            await _execute_agent_node("quant", state, cast(ModelRouter, _SlowRouter()), config)
+
+    @pytest.mark.asyncio
+    async def test_inner_timeout_before_the_deadline_is_not_a_deadline(
+        self,
+        supervisor: Supervisor,
+    ) -> None:
+        """An agent's own TimeoutError must stay a failure, not a 504 deadline."""
+        supervisor.build_graph()
+        config = AgentModelConfig.from_dict("quant", {"primary": "model-quant"})
+
+        class _TimeoutRouter:
+            async def execute(self, **kwargs: Any) -> Any:
+                raise TimeoutError("provider timed out")
+
+        state = AgentState(
+            symbol="BTC-USD",
+            request="test",
+            deadline_monotonic=time.monotonic() + 60,
+        )
+
+        with pytest.raises(TimeoutError) as exc_info:
+            await _execute_agent_node("quant", state, cast(ModelRouter, _TimeoutRouter()), config)
+
+        assert type(exc_info.value) is TimeoutError
+
+    @pytest.mark.asyncio
+    async def test_execution_clears_the_deadline_for_later_stages(
+        self,
+        supervisor: Supervisor,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A timeout that lands during execution must not cancel later stages."""
+        supervisor.build_graph()
+        clock = [1000.0]
+        monkeypatch.setattr("agents.supervisor.time.monotonic", lambda: clock[0])
+
+        calls: list[str] = []
+        execution_deadline: list[float | None] = []
+
+        async def fake_execute(
+            agent_name: str,
+            state: AgentState,
+            router: ModelRouter,
+            model_config: AgentModelConfig,
+        ) -> dict[str, Any]:
+            calls.append(agent_name)
+            if agent_name == "execution":
+                execution_deadline.append(state.deadline_monotonic)
+                # The deadline expires while execution is running.  A stage
+                # after execution must still run because execution cleared it.
+                clock[0] = 1020.0
+            return {"pipeline_status": _merge_pipeline_status(state, completed=[agent_name])}
+
+        monkeypatch.setattr("agents.supervisor._execute_agent_node", fake_execute)
+
+        builder: StateGraph[AgentState] = StateGraph(AgentState)
+        builder.add_node("execution", _make_node_fn("execution"))
+        builder.add_node("journal", _make_node_fn("journal"))
+        builder.add_edge(START, "execution")
+        builder.add_edge("execution", "journal")
+        builder.add_edge("journal", END)
+        graph = builder.compile()
+
+        state = AgentState(
+            symbol="BTC-USD",
+            request="test",
+            deadline_monotonic=1010.0,
+        )
+        result = AgentState.model_validate(await graph.ainvoke(state))
+
+        assert execution_deadline == [None]
+        assert calls == ["execution", "journal"]
+        assert result.deadline_monotonic is None
+        assert "journal" in result.pipeline_status.completed_nodes
+
+    @pytest.mark.asyncio
+    async def test_journal_still_runs_after_the_deadline(
+        self,
+        supervisor: Supervisor,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A rejected run keeps its audit trail even when the deadline expired."""
+        supervisor.build_graph()
+        calls: list[str] = []
+
+        async def fake_execute(
+            agent_name: str,
+            state: AgentState,
+            router: ModelRouter,
+            model_config: AgentModelConfig,
+        ) -> dict[str, Any]:
+            calls.append(agent_name)
+            return {"pipeline_status": _merge_pipeline_status(state, completed=[agent_name])}
+
+        monkeypatch.setattr("agents.supervisor._execute_agent_node", fake_execute)
+        state = AgentState(
+            symbol="BTC-USD",
+            request="test",
+            deadline_monotonic=time.monotonic() - 1,
+        )
+
+        update = await _make_node_fn("journal")(state)
+
+        assert calls == ["journal"]
+        assert update["deadline_monotonic"] is None
+        assert state.deadline_monotonic is None
+
+    @pytest.mark.asyncio
+    async def test_run_with_an_expired_timeout_raises(self, supervisor: Supervisor) -> None:
+        """An already-expired run deadline fails before the first model call."""
+        supervisor.build_graph()
+
+        with pytest.raises(AnalysisDeadlineExceededError, match="before analysis_and_vision"):
+            await supervisor.run(symbol="BTC-USD", request="test", timeout_seconds=0)

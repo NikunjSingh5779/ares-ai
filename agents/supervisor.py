@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -48,6 +49,31 @@ from backend.core.metrics import record_agent_fallback
 logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
+
+
+class AnalysisDeadlineExceededError(TimeoutError):
+    """The analysis run deadline expired before or during a pipeline stage."""
+
+
+def _raise_if_deadline_expired(state: AgentState, stage: str) -> None:
+    """Stop starting new pipeline stages after the run deadline.
+
+    The deadline is checked between stages rather than wrapped around the
+    whole graph.  That keeps a timeout from cancelling an execution stage
+    after the paper ledger or a broker has already accepted an order.
+    """
+    deadline = state.deadline_monotonic
+    if deadline is not None and time.monotonic() >= deadline:
+        raise AnalysisDeadlineExceededError(f"Analysis deadline exceeded before {stage}")
+
+
+def _remaining_seconds(state: AgentState) -> float | None:
+    """Return the time left before the run deadline, if one is set."""
+    deadline = state.deadline_monotonic
+    if deadline is None:
+        return None
+    return max(0.0, deadline - time.monotonic())
+
 
 # ---------------------------------------------------------------------------
 # Agent output schema registry — maps agent names to their Pydantic models
@@ -203,14 +229,34 @@ async def _execute_agent_node(
     # Build messages for this agent
     messages = _build_agent_messages(agent_name, state, model_config)
 
-    # Execute via model router
-    router_result = await router.execute(
-        model_chain=model_config.model_chain,
-        messages=messages,
-        temperature=model_config.temperature,
-        max_tokens=model_config.max_tokens,
-        rpm=model_config.rpm,
-    )
+    # Execute via model router.  A remaining-deadline timeout cancels only
+    # this LLM stage; it never reaches an execution/fill stage.
+    remaining = _remaining_seconds(state)
+    try:
+        if remaining is not None:
+            async with asyncio.timeout(remaining):
+                router_result = await router.execute(
+                    model_chain=model_config.model_chain,
+                    messages=messages,
+                    temperature=model_config.temperature,
+                    max_tokens=model_config.max_tokens,
+                    rpm=model_config.rpm,
+                )
+        else:
+            router_result = await router.execute(
+                model_chain=model_config.model_chain,
+                messages=messages,
+                temperature=model_config.temperature,
+                max_tokens=model_config.max_tokens,
+                rpm=model_config.rpm,
+            )
+    except TimeoutError as exc:
+        # Only a timeout that coincides with the deadline is a run deadline.
+        # An agent-internal TimeoutError (data fetch, DB, logging) stays a
+        # normal failure so it cannot be reported as a retryable 504.
+        if _remaining_seconds(state) == 0.0:
+            raise AnalysisDeadlineExceededError(f"Analysis deadline exceeded during {agent_name}") from exc
+        raise
 
     # Record model fallback metric
     if router_result.fallback_used:
@@ -287,7 +333,7 @@ async def _execute_agent_node(
 def _make_node_fn(agent_name: str):
     """Factory: creates a LangGraph node function for an agent."""
 
-    async def node_fn(state: AgentState) -> dict[str, Any]:
+    async def run_node(state: AgentState) -> dict[str, Any]:
         context = _get_agent_context(state)
         model_config = context["agent_configs"].get(agent_name)
         router = context["router"]
@@ -319,6 +365,25 @@ def _make_node_fn(agent_name: str):
                 )
 
         return await _execute_agent_node(agent_name, state, router, model_config)
+
+    async def node_fn(state: AgentState) -> dict[str, Any]:
+        execution = agent_name == "execution"
+        post_decision = agent_name == "journal"
+        if post_decision:
+            # Journal is the first audit stage after a terminal decision.  It
+            # and the stages after it are deterministic; let them finish even
+            # when the deadline expired while the decision was being made.
+            state.deadline_monotonic = None
+        _raise_if_deadline_expired(state, agent_name)
+        if execution:
+            # The deadline has passed its last check and execution may now
+            # commit a fill.  Never cancel this stage or any stage after it;
+            # a timeout must not turn a committed trade into a retryable 504.
+            state.deadline_monotonic = None
+        update = await run_node(state)
+        if execution or post_decision:
+            update["deadline_monotonic"] = None
+        return update
 
     return node_fn
 
@@ -590,7 +655,17 @@ async def _execute_agent_impl(
             # Fallback
             agent_instance = agent_class(router=router, context=agent_ctx)  # type: ignore[call-arg]
 
-        output = await agent_instance.run(input_data)
+        remaining = _remaining_seconds(state)
+        try:
+            if remaining is not None and agent_name != "execution":
+                async with asyncio.timeout(remaining):
+                    output = await agent_instance.run(input_data)
+            else:
+                output = await agent_instance.run(input_data)
+        except TimeoutError as exc:
+            if _remaining_seconds(state) == 0.0:
+                raise AnalysisDeadlineExceededError(f"Analysis deadline exceeded during {agent_name}") from exc
+            raise
 
         # Set the output
         update[agent_name] = output
@@ -606,6 +681,8 @@ async def _execute_agent_impl(
 
         return update
 
+    except TimeoutError:
+        raise
     except Exception as e:
         logger.error(f"Unhandled exception: {e}", exc_info=True)
         update["pipeline_status"].failed_nodes = state.pipeline_status.failed_nodes + [agent_name]
@@ -630,6 +707,7 @@ async def _analysis_and_vision_node(state: AgentState) -> dict[str, Any]:
     both ``market_analyst`` and ``vision`` state keys so downstream
     nodes (quant, consensus, etc.) can consume them transparently.
     """
+    _raise_if_deadline_expired(state, "analysis_and_vision")
     context = _get_agent_context(state)
     router = context["router"]
     registry = context.get("registry")
@@ -814,11 +892,19 @@ class Supervisor:
         _build_pipeline_nodes(builder)
         self.graph = builder.compile()
 
-    async def run(self, initial_state: AgentState | None = None, **kwargs: Any) -> AgentState:
+    async def run(
+        self,
+        initial_state: AgentState | None = None,
+        timeout_seconds: float | None = None,
+        **kwargs: Any,
+    ) -> AgentState:
         """Run the full agent pipeline.
 
         Args:
             initial_state: Pre-built AgentState, or...
+            timeout_seconds: Optional deadline for starting new LLM stages.
+                Execution and post-decision audit stages are never cancelled
+                by this deadline once they begin.
             **kwargs: Fields to pass to AgentState constructor.
 
         Returns:
@@ -832,6 +918,8 @@ class Supervisor:
             state.request_id = str(uuid.uuid4())
         if not state.session_id:
             state.session_id = str(uuid.uuid4())
+        if timeout_seconds is not None:
+            state.deadline_monotonic = time.monotonic() + timeout_seconds
 
         result = await self.graph.ainvoke(state)  # type: ignore[union-attr]
         final_state = AgentState.model_validate(result)
@@ -839,15 +927,26 @@ class Supervisor:
         await self._run_post_hook(final_state)
         return final_state
 
-    async def run_analysis(self, symbol: str, request: str) -> AgentState:
+    async def run_analysis(
+        self,
+        symbol: str,
+        request: str,
+        timeout_seconds: float | None = None,
+    ) -> AgentState:
         """Convenience: run a full analysis pipeline for a symbol."""
         return await self.run(
             symbol=symbol,
             request=request,
             request_type="analysis",
+            timeout_seconds=timeout_seconds,
         )
 
-    async def stream_analysis(self, symbol: str, request: str):
+    async def stream_analysis(
+        self,
+        symbol: str,
+        request: str,
+        timeout_seconds: float | None = None,
+    ):
         """Run a full analysis pipeline and stream state updates incrementally."""
         from agents.state import AgentState
 
@@ -861,6 +960,8 @@ class Supervisor:
             request_id=str(uuid.uuid4()),
             session_id=str(uuid.uuid4()),
         )
+        if timeout_seconds is not None:
+            state.deadline_monotonic = time.monotonic() + timeout_seconds
 
         final_state = None
         async for event in self.graph.astream(state, stream_mode="values"):  # type: ignore[union-attr]

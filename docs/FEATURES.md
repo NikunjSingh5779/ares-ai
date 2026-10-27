@@ -79,8 +79,10 @@
 - `/execute` trusts the authenticated caller's agent payload; a signed or stored
   approval is a P2 design item.
 - The kill-switch arm epoch is process-local; a shared Redis epoch is P1 work.
-- `/analyze` uses a module-global `_last_state`; concurrent runs are not
-  isolated and have no cost budget.
+- `/analyze` runs are bounded by a process-wide gate (default one run), a rolling
+  hourly budget, and a stage-start deadline that is cleared once execution
+  begins; results are stored per `session_id`. The gate and store are
+  process-local, so a multi-worker deployment needs shared state.
 - Pre-P1-A short positions migrated as long need manual reconciliation.
 - Paper realism lacks gap-through stop fills, partial fills/liquidity,
   borrow/funding costs, and per-symbol slippage.

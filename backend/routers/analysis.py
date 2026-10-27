@@ -8,12 +8,18 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
+import uuid
+from collections.abc import AsyncIterator, Coroutine
+from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
+from starlette.types import Receive, Scope, Send
 
 from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.client import create_llm_client
@@ -23,15 +29,26 @@ from agents.queue import QueueRegistry
 from agents.registry import AgentRegistry
 from agents.retry import RetryConfig
 from agents.router import ModelRouter
-from agents.state import AgentState
-from agents.supervisor import Supervisor
+from agents.state import AgentState, PipelineStatus
+from agents.supervisor import AnalysisDeadlineExceededError, Supervisor
+from backend.core.metrics import record_analysis_run
+from backend.services.analysis_control import (
+    AnalysisBudgetExceededError,
+    AnalysisBusyError,
+    AnalysisLease,
+    get_analysis_gate,
+    get_analysis_state_store,
+)
 from backend.services.improvement_service import record_reflection_improvement
 from database.connection import async_session_factory
 
 router = APIRouter(prefix="/api/v1", tags=["trading"])
 
-# Store the last analysis result in-memory for the dashboard
-_last_state: AgentState | None = None
+logger = logging.getLogger("ares.api.analysis")
+
+# Strong references to accepted background runs so they are not garbage
+# collected before they release their analysis lease.
+_background_tasks: set[asyncio.Task[None]] = set()
 
 # Lazy-initialised supervisor singleton — created on first call to _get_supervisor()
 _supervisor: Supervisor | None = None
@@ -188,68 +205,344 @@ async def signals_history(limit: int = 50) -> list[dict[str, Any]]:
 
 
 def get_last_state() -> AgentState | None:
-    """Return the cached last analysis state."""
-    return _last_state
+    """Return the most recently started analysis state."""
+    return get_analysis_state_store().latest()
 
 
-async def _background_analysis(supervisor: Supervisor, symbol: str, request_text: str) -> None:
-    global _last_state
+def get_state(session_id: str) -> AgentState | None:
+    """Return one analysis state by session id, or ``None`` if evicted."""
+    return get_analysis_state_store().get(session_id)
+
+
+def _new_state(symbol: str, request_text: str) -> AgentState:
+    """Build the placeholder state installed before a run starts."""
+    return AgentState(
+        symbol=symbol,
+        request=request_text,
+        request_type="analysis",
+        request_id=str(uuid.uuid4()),
+        session_id=str(uuid.uuid4()),
+        pipeline_status=PipelineStatus(
+            current_node="supervisor",
+            completed_nodes=[],
+            failed_nodes=[],
+            skipped_nodes=[],
+            start_time=datetime.now(UTC).isoformat(),
+        ),
+    )
+
+
+def _symbol_from(body: dict[str, Any]) -> str:
+    """Return a stripped symbol, rejecting non-string values such as null."""
+    raw = body.get("symbol")
+    return raw.strip() if isinstance(raw, str) else ""
+
+
+def _request_from(body: dict[str, Any]) -> str:
+    """Return a non-empty request string."""
+    raw = body.get("request", "Analyze")
+    return raw if isinstance(raw, str) and raw.strip() else "Analyze"
+
+
+def _mark_terminal(session_id: str, message: str) -> None:
+    """Record a timeout/failure/cancellation on a session without losing progress."""
+    store = get_analysis_state_store()
+    state = store.get(session_id)
+    if state is None:
+        return
+    updated = state.model_copy(deep=True)
+    updated.pipeline_status.current_node = ""
+    updated.pipeline_status.end_time = datetime.now(UTC).isoformat()
+    if "pipeline" not in updated.pipeline_status.failed_nodes:
+        updated.pipeline_status.failed_nodes.append("pipeline")
+    updated.errors.append({"agent": "pipeline", "error": message})
+    store.put(updated)
+
+
+def _mark_completed(session_id: str) -> None:
+    """Set the end time on a run that completed normally."""
+    store = get_analysis_state_store()
+    state = store.get(session_id)
+    if state is None:
+        return
+    updated = state.model_copy(deep=True)
+    updated.pipeline_status.end_time = datetime.now(UTC).isoformat()
+    store.put(updated)
+
+
+def _rate_limit(exc: AnalysisBusyError | AnalysisBudgetExceededError) -> HTTPException:
+    """Map a gate rejection to a fail-closed 429 with a retry hint."""
+    status = "rejected_budget" if isinstance(exc, AnalysisBudgetExceededError) else "rejected_busy"
+    record_analysis_run(status)
+    return HTTPException(
+        status_code=429,
+        detail=str(exc),
+        headers={"Retry-After": str(exc.retry_after_seconds)},
+    )
+
+
+def _schedule_background(
+    coro: Coroutine[Any, Any, None],
+    lease: AnalysisLease,
+    session_id: str,
+) -> asyncio.Task[None]:
+    """Start an accepted analysis without tying its slot to the HTTP response.
+
+    The done callback releases the lease even if the task is cancelled before
+    its coroutine starts, which would skip the coroutine's own ``finally``.  A
+    run that never started is also marked terminal so the dashboard does not
+    show a permanently pending placeholder.
+    """
+    started = False
+
+    async def _run() -> None:
+        nonlocal started
+        started = True
+        await coro
+
+    task = asyncio.create_task(_run())
+    _background_tasks.add(task)
+
+    def _on_done(done: asyncio.Task[None]) -> None:
+        _background_tasks.discard(done)
+        lease.release()
+        if not started:
+            coro.close()
+            _mark_terminal(session_id, "Analysis cancelled before start")
+            record_analysis_run("cancelled")
+
+    task.add_done_callback(_on_done)
+    return task
+
+
+async def _background_analysis(
+    supervisor: Supervisor,
+    symbol: str,
+    request_text: str,
+    session_id: str,
+    lease: AnalysisLease,
+    timeout_seconds: float,
+) -> None:
+    """Run one accepted analysis under the deadline and release its slot."""
+    store = get_analysis_state_store()
+    status = "failed"
     try:
-        async for state_update in supervisor.stream_analysis(symbol=symbol, request=request_text):
-            _last_state = state_update
+        async for state_update in supervisor.stream_analysis(
+            symbol=symbol,
+            request=request_text,
+            timeout_seconds=timeout_seconds,
+        ):
+            # Keep the API-issued id so the caller can correlate the run
+            # even though the supervisor creates its own internal state.
+            state_update.session_id = session_id
+            store.put(state_update)
+        _mark_completed(session_id)
+        status = "completed"
+    except AnalysisDeadlineExceededError:
+        status = "timeout"
+        _mark_terminal(session_id, f"Analysis timed out after {timeout_seconds:.0f}s")
+        logger.warning(
+            "Background analysis timed out",
+            extra={"symbol": symbol, "session_id": session_id},
+        )
+    except asyncio.CancelledError:
+        status = "cancelled"
+        _mark_terminal(session_id, "Analysis cancelled")
+        raise
     except Exception as exc:
-        print(f"Background analysis failed: {exc}")
+        status = "failed"
+        _mark_terminal(session_id, str(exc))
+        logger.exception(
+            "Background analysis failed",
+            extra={"symbol": symbol, "session_id": session_id},
+        )
+    finally:
+        lease.release()
+        record_analysis_run(status)
 
 
-@router.post("/analyze")
-async def analyze(body: dict[str, Any], background_tasks: BackgroundTasks) -> dict[str, Any]:
+@router.post("/analyze", status_code=202)
+async def analyze(body: dict[str, Any]) -> dict[str, Any]:
     """Run the full supervisor pipeline for a given symbol and request in the background.
 
-    Returns HTTP 202 Accepted and streams updates to the state.
+    Returns HTTP 202 Accepted and streams updates to the state. The run is
+    bounded by the process-wide analysis gate; a busy pipeline or an exhausted
+    run budget returns 429 instead of queueing an unbounded task.
     """
-    global _last_state
-
-    symbol = body.get("symbol", "")
-    request_text = body.get("request", "Analyze")
+    symbol = _symbol_from(body)
+    request_text = _request_from(body)
 
     if not symbol:
         raise HTTPException(status_code=400, detail="symbol is required")
 
+    # Build the supervisor before consuming a run slot so a transient
+    # configuration failure does not burn the hourly budget.
     try:
         supervisor = _get_supervisor()
-
-        # Initialize a basic state to immediately show in the UI
-        import uuid
-        from datetime import UTC, datetime
-
-        from agents.state import AgentState, PipelineStatus
-
-        now = datetime.now(UTC).isoformat()
-        _last_state = AgentState(
-            symbol=symbol,
-            request=request_text,
-            request_type="analysis",
-            request_id=str(uuid.uuid4()),
-            session_id=str(uuid.uuid4()),
-            pipeline_status=PipelineStatus(
-                current_node="supervisor", completed_nodes=[], failed_nodes=[], skipped_nodes=[], start_time=now
-            ),
-        )
-
-        background_tasks.add_task(_background_analysis, supervisor, symbol, request_text)
-
-        return {"status": "accepted", "message": "Analysis started in background", "session_id": _last_state.session_id}
-
     except Exception as exc:
+        record_analysis_run("setup_failed")
+        logger.exception("Supervisor setup failed", extra={"symbol": symbol})
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    gate = get_analysis_gate()
+    try:
+        lease = await gate.try_start()
+    except (AnalysisBusyError, AnalysisBudgetExceededError) as exc:
+        raise _rate_limit(exc) from exc
+
+    try:
+        state = _new_state(symbol, request_text)
+        get_analysis_state_store().put(state, make_latest=True)
+        _schedule_background(
+            _background_analysis(
+                supervisor,
+                symbol,
+                request_text,
+                state.session_id,
+                lease,
+                gate.timeout_seconds,
+            ),
+            lease,
+            state.session_id,
+        )
+        return {
+            "status": "accepted",
+            "message": "Analysis started in background",
+            "session_id": state.session_id,
+            "timeout_seconds": gate.timeout_seconds,
+        }
+    except Exception as exc:
+        lease.release()
+        record_analysis_run("failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-async def _stream_analysis_events(symbol: str, request_text: str):
-    """Async generator yielding SSE-formatted pipeline state updates."""
-    supervisor = _get_supervisor()
-    async for state_update in supervisor.stream_analysis(symbol=symbol, request=request_text):
-        data = json.dumps(_state_to_dict(state_update), default=str)
-        yield f"data: {data}\n\n"
+class _TrackedStream:
+    """Async iterator wrapper that records whether iteration actually began."""
+
+    def __init__(self, content: AsyncIterator[str]) -> None:
+        self._content = content
+        self.started = False
+
+    def __aiter__(self) -> _TrackedStream:
+        return self
+
+    async def __anext__(self) -> str:
+        self.started = True
+        return await self._content.__anext__()
+
+    async def aclose(self) -> None:
+        aclose = getattr(self._content, "aclose", None)
+        if aclose is not None:
+            await aclose()
+
+
+class _AnalysisStreamingResponse(StreamingResponse):
+    """SSE response that always releases its analysis lease.
+
+    A ``StreamingResponse`` whose body iterator is never started cannot run the
+    generator's ``finally`` block.  Releasing from the response closes that
+    leak when a client disconnects before the first chunk, and a run that never
+    started is marked terminal so the dashboard does not show a pending
+    placeholder forever.
+    """
+
+    def __init__(
+        self,
+        content: AsyncIterator[str],
+        lease: AnalysisLease,
+        session_id: str,
+        **kwargs: Any,
+    ) -> None:
+        tracked = _TrackedStream(content)
+        super().__init__(tracked, **kwargs)
+        self._tracked = tracked
+        self._lease = lease
+        self._session_id = session_id
+        self._closed = False
+
+    async def aclose(self) -> None:
+        """Close the body iterator and release the slot exactly once."""
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            await self._tracked.aclose()
+        except Exception:
+            logger.debug("Analysis stream close failed", exc_info=True)
+        finally:
+            self._lease.release()
+            if not self._tracked.started:
+                _mark_terminal(self._session_id, "Analysis stream closed before start")
+                record_analysis_run("cancelled")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await self.aclose()
+
+
+async def _stream_analysis_events(
+    supervisor: Supervisor,
+    symbol: str,
+    request_text: str,
+    session_id: str,
+    lease: AnalysisLease,
+    timeout_seconds: float,
+):
+    """Async generator yielding SSE-formatted pipeline state updates.
+
+    The gate slot is released when the stream completes, times out, fails, or
+    the response is closed.  A timeout is reported as one final SSE event so
+    the client can distinguish it from a clean completion.  The supervisor's
+    deadline is checked between stages, so a timeout never cancels an
+    execution stage that may already have committed a fill.
+    """
+    store = get_analysis_state_store()
+    status = "failed"
+    terminal = False
+    try:
+        async for state_update in supervisor.stream_analysis(
+            symbol=symbol,
+            request=request_text,
+            timeout_seconds=timeout_seconds,
+        ):
+            state_update.session_id = session_id
+            store.put(state_update)
+            data = json.dumps(_state_to_dict(state_update), default=str)
+            yield f"data: {data}\n\n"
+        _mark_completed(session_id)
+        status = "completed"
+        terminal = True
+    except AnalysisDeadlineExceededError:
+        status = "timeout"
+        terminal = True
+        _mark_terminal(session_id, f"Analysis timed out after {timeout_seconds:.0f}s")
+        payload = json.dumps({"error": "timeout", "session_id": session_id}, default=str)
+        yield f"data: {payload}\n\n"
+    except asyncio.CancelledError:
+        status = "cancelled"
+        terminal = True
+        _mark_terminal(session_id, "Analysis stream cancelled")
+        raise
+    except GeneratorExit:
+        status = "cancelled"
+        terminal = True
+        _mark_terminal(session_id, "Analysis stream disconnected")
+        raise
+    except Exception as exc:
+        status = "failed"
+        terminal = True
+        _mark_terminal(session_id, str(exc))
+        logger.exception("Analysis stream failed", extra={"symbol": symbol, "session_id": session_id})
+        payload = json.dumps({"error": "analysis_failed", "detail": str(exc), "session_id": session_id}, default=str)
+        yield f"data: {payload}\n\n"
+    finally:
+        if not terminal:
+            status = "cancelled"
+        lease.release()
+        record_analysis_run(status)
 
 
 @router.get("/analyze/stream")
@@ -273,58 +566,146 @@ async def analyze_stream(
     Returns:
         StreamingResponse with media_type text/event-stream.
     """
-    if not symbol:
+    if not symbol.strip():
         raise HTTPException(status_code=400, detail="symbol is required")
+    symbol = symbol.strip()
 
-    return StreamingResponse(
-        _stream_analysis_events(symbol, x_analysis_prompt),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    # Build the supervisor before consuming a run slot so a transient
+    # configuration failure does not burn the hourly budget.
+    try:
+        supervisor = _get_supervisor()
+    except Exception as exc:
+        record_analysis_run("setup_failed")
+        logger.exception("Supervisor setup failed", extra={"symbol": symbol})
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    gate = get_analysis_gate()
+    try:
+        lease = await gate.try_start()
+    except (AnalysisBusyError, AnalysisBudgetExceededError) as exc:
+        raise _rate_limit(exc) from exc
+
+    try:
+        state = _new_state(symbol, x_analysis_prompt)
+        get_analysis_state_store().put(state, make_latest=True)
+        return _AnalysisStreamingResponse(
+            _stream_analysis_events(
+                supervisor,
+                symbol,
+                x_analysis_prompt,
+                state.session_id,
+                lease,
+                gate.timeout_seconds,
+            ),
+            lease,
+            state.session_id,
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    except Exception as exc:
+        lease.release()
+        record_analysis_run("failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/signal")
 async def signal(body: dict[str, Any]) -> dict[str, Any]:
     """Run the pipeline synchronously and return the consolidated signal result.
 
-    This bypasses background tasks for immediate response.
+    This bypasses background tasks for immediate response. It shares the same
+    gate as ``/analyze``: a busy pipeline is rejected with 429 and a run that
+    reaches the deadline before execution returns 504. The deadline is checked
+    between stages, so it cannot cancel an execution stage after a fill was
+    accepted.
     """
-    symbol = body.get("symbol", "")
-    request_text = body.get("request", "Analyze")
+    symbol = _symbol_from(body)
+    request_text = _request_from(body)
 
     if not symbol:
         raise HTTPException(status_code=400, detail="symbol is required")
 
-    supervisor = _get_supervisor()
-    state = await supervisor.run_analysis(symbol=symbol, request=request_text)
+    # Build the supervisor before consuming a run slot so a transient
+    # configuration failure does not burn the hourly budget.
+    try:
+        supervisor = _get_supervisor()
+    except Exception as exc:
+        record_analysis_run("setup_failed")
+        logger.exception("Supervisor setup failed", extra={"symbol": symbol})
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    # Update global state for UI
-    global _last_state
-    _last_state = state
+    gate = get_analysis_gate()
+    try:
+        lease = await gate.acquire()
+    except (AnalysisBusyError, AnalysisBudgetExceededError) as exc:
+        raise _rate_limit(exc) from exc
 
-    # We must convert to dict because previous logic expected state to be a dict
-    state_dict = _state_to_dict(state)
+    status = "failed"
+    try:
+        placeholder = _new_state(symbol, request_text)
+        store = get_analysis_state_store()
+        store.put(placeholder, make_latest=True)
 
-    return {
-        "status": "ok",
-        "approved": state_dict.get("consensus", {}).get("approved", False) if state_dict.get("consensus") else False,
-        "executed": state_dict.get("execution", {}).get("executed", False) if state_dict.get("execution") else False,
-        "symbol": state_dict.get("symbol", ""),
-        "confidence": state_dict.get("consensus", {}).get("composite_confidence", 0)
-        if state_dict.get("consensus")
-        else 0,
-        "direction": state_dict.get("market_analyst", {}).get("direction", "flat")
-        if state_dict.get("market_analyst")
-        else "flat",
-        "rationale": state_dict.get("execution", {}).get("rationale", "No trade")
-        if state_dict.get("execution")
-        else "No trade",
-        "pipeline_status": state_dict.get("pipeline_status", {}),
-        "errors": state_dict.get("errors", []),
-    }
+        try:
+            state = await supervisor.run_analysis(
+                symbol=symbol,
+                request=request_text,
+                timeout_seconds=gate.timeout_seconds,
+            )
+        except AnalysisDeadlineExceededError as exc:
+            status = "timeout"
+            _mark_terminal(placeholder.session_id, f"Analysis timed out after {gate.timeout_seconds:.0f}s")
+            raise HTTPException(
+                status_code=504,
+                detail=f"Analysis timed out after {gate.timeout_seconds:.0f}s",
+            ) from exc
+        except asyncio.CancelledError:
+            status = "cancelled"
+            _mark_terminal(placeholder.session_id, "Analysis cancelled")
+            raise
+        except Exception as exc:
+            status = "failed"
+            _mark_terminal(placeholder.session_id, str(exc))
+            logger.exception(
+                "Analysis signal failed",
+                extra={"symbol": symbol, "session_id": placeholder.session_id},
+            )
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        state.session_id = placeholder.session_id
+        state.pipeline_status.end_time = datetime.now(UTC).isoformat()
+        store.put(state)
+        status = "completed"
+
+        # We must convert to dict because previous logic expected state to be a dict
+        state_dict = _state_to_dict(state)
+
+        return {
+            "status": "ok",
+            "approved": state_dict.get("consensus", {}).get("approved", False)
+            if state_dict.get("consensus")
+            else False,
+            "executed": state_dict.get("execution", {}).get("executed", False)
+            if state_dict.get("execution")
+            else False,
+            "symbol": state_dict.get("symbol", ""),
+            "confidence": state_dict.get("consensus", {}).get("composite_confidence", 0)
+            if state_dict.get("consensus")
+            else 0,
+            "direction": state_dict.get("market_analyst", {}).get("direction", "flat")
+            if state_dict.get("market_analyst")
+            else "flat",
+            "rationale": state_dict.get("execution", {}).get("rationale", "No trade")
+            if state_dict.get("execution")
+            else "No trade",
+            "pipeline_status": state_dict.get("pipeline_status", {}),
+            "errors": state_dict.get("errors", []),
+        }
+    finally:
+        lease.release()
+        record_analysis_run(status)
 
 
 def _state_to_dict(state: AgentState) -> dict[str, Any]:

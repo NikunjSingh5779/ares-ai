@@ -73,8 +73,8 @@ fill with no seeded paper account is rejected rather than kept only in memory.
 **Consequences:** P1-A is implemented and covered by repository/service/restart tests
 plus a manual PostgreSQL 16 round-trip. API reads now hydrate before responding.
 Concurrent writes were still last-writer-wins at P1-A; ADR-015 (P1-C) now serializes them.
-P1-B added order idempotency. The pipeline result
-(`_last_state`) is still process-global and is a separate ownership issue.
+P1-B added order idempotency. The pipeline result used to be a process-global
+`_last_state`; ADR-023 replaces it with a bounded per-session store.
 
 ---
 
@@ -302,7 +302,7 @@ migration. The lock is per database, not per paper account, so unrelated paper a
 seeded) would serialize with each other; acceptable at single-user scale. Throughput is one
 paper write at a time, which is far above the platform's 60-second candle cadence. Reads
 still hydrate their local cache without the advisory lock, which is safe because caches are
-process-local. The pipeline result (`_last_state`) remains a separate issue (ADR-006);
+process-local. The pipeline result moved to a per-session store in ADR-023;
 role authorization is ADR-016.
 
 ---
@@ -614,3 +614,69 @@ returns real history. The hook is intentionally lossy during a database outage; 
 is skipped and the trade result is unchanged. History is global across symbols, and
 suggestions are not linked to the exact config field they would change, so an operator
 must map a suggestion to a parameter before editing configuration.
+
+---
+
+## ADR-023 — Analysis runs are bounded and state is per session
+
+**Status:** accepted 2026-10-28.
+
+**Context:** `POST /api/v1/analyze` installed a module-global `_last_state` and scheduled
+`BackgroundTasks` without a bound. Two concurrent runs raced and the last writer won;
+`/agents/status` and `/risk` could show a different run than the caller had started.
+A burst of requests could schedule an arbitrary number of multi-agent pipelines, each
+making many free-tier LLM requests, and nothing stopped a stuck pipeline.
+
+**Decision:**
+- Add `backend/services/analysis_control.py` with an `AnalysisStateStore` keyed by
+  `session_id`. The store is capacity-bounded and selects the most recently *started*
+  run for the dashboard default; an older run can still update its own session.
+- Add an `AnalysisGate` shared by `/analyze`, `/analyze/stream`, and `/signal`. It holds
+  a process-wide semaphore (`ANALYSIS_MAX_CONCURRENT`, default **1**), rejects a start
+  with **429** when no slot is free (background/stream) or after a bounded wait
+  (`ANALYSIS_QUEUE_TIMEOUT_SECONDS`), and enforces a rolling
+  `ANALYSIS_MAX_RUNS_PER_HOUR` budget. On the free tier the run count is the meaningful
+  unit of model spend; there is no dollar budget to enforce.
+- Bound every accepted run with `ANALYSIS_TIMEOUT_SECONDS` (default **300**) as a
+  **stage-start deadline**, not an outer cancellation of the graph. The supervisor checks
+  the deadline before `analysis_and_vision`, `quant`, `news`, `risk`, and `execution`, and
+  wraps each LLM call in the remaining time. Once `execution` starts, the deadline is
+  cleared so journal, reflection, memory, and post-run logging always finish; a timeout
+  must never cancel a paper/live fill after the ledger or broker accepted it and turn it
+  into a retryable response. Release the slot and record a terminal state on success,
+  failure, timeout, or cancellation. A synchronous `/signal` timeout returns **504** only
+  for `AnalysisDeadlineExceededError` raised before execution starts; a plain `TimeoutError`
+  from logging or the database is a failure (**500**), because execution may already have
+  committed a fill.
+- Release the gate through an idempotent `AnalysisLease`. `/analyze` installs a
+  done-callback so a task cancelled before its coroutine starts cannot leak the slot;
+  `/analyze/stream` releases from the response wrapper even when the body iterator is
+  never started. Both paths also mark the placeholder terminal and record `cancelled`
+  when the run never began, so the dashboard cannot show a permanently pending run.
+- Keep `ANALYSIS_STATE_CACHE_SIZE` entries (default **64**) in start order and expose
+  `GET /api/v1/agents/status?session_id=...` for a specific run; without the parameter it
+  reads the latest started run, preserving the dashboard contract.
+- Record `ares_analysis_runs_total{status}` (including `rejected_busy`, `rejected_budget`,
+  and `setup_failed`) and `ares_analysis_in_flight` so rejected, timed-out, and cancelled
+  runs are visible in Prometheus.
+
+**Alternatives considered:**
+- *Queue every request behind the semaphore.* Rejected: a burst would create an
+  unbounded backlog of background tasks that might start minutes later. Fail closed with
+  **429** instead.
+- *Share the gate through Redis now.* Deferred: the Compose stack runs one uvicorn
+  worker. The store and gate are deliberately process-local, like the metrics registry
+  and paper cache; multi-worker needs a shared implementation.
+- *Enforce a token or dollar budget.* Rejected for this slice: the roster is free-tier
+  and the pipeline does not aggregate provider usage. A run-count budget bounds the same
+  spend without a fragile per-token estimate.
+- *Keep one global and add a lock.* Rejected: a lock serializes writers but still leaves
+  no way to read the run a caller started, and it does not bound the work.
+
+**Consequences:** Concurrent analysis is explicitly serialized by default; callers that
+need more throughput can raise `ANALYSIS_MAX_CONCURRENT`, at the cost of more concurrent
+LLM traffic. A run that spends the whole deadline before execution is rejected without a
+fill; a run already in execution finishes and reports its real result. The budget and
+in-flight count reset on process restart, and a multi-worker deployment would need a
+shared store. The safety gates, kill switch, and promotion logic are unchanged; this ADR
+only bounds how analysis work is scheduled and where its result lives.

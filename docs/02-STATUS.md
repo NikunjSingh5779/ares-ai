@@ -1,8 +1,11 @@
 <!-- docs/02-STATUS.md -->
 # Status — verified state
 
-**Last verified:** 2026-10-26
-**Branch:** `master` — clean, equal to `origin/master` (`46ee8b4`). PR #114 landed the
+**Last verified:** 2026-10-28
+**Branch:** `master` — clean, equal to `origin/master` (`096c575`). The
+analysis-control slice (`backend/services/analysis_control.py`, router, metrics,
+and tests) is verified in the working tree and closes the P1 `/analyze`
+concurrency/cost gap. PR #114 landed the
 dependency consolidation, #116 ported both charts to `lightweight-charts` v5 (closing
 #82), and #115 ported the superseded feature-PR hunks (paper-only audit, free-only
 guard, router error fallthrough, schema retry, Compose hostname test). Master CI run
@@ -35,12 +38,12 @@ five jobs, including `postgres-integration` with all three PostgreSQL modules. T
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1259 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`) |
-| Coverage | `pytest tests/ -q` | **82.17%** default (gate 78%); the ledger module adds 5 tests, the strategy module adds 12, and the improvement module adds 6 when the URL is set |
+| Test suite | `pytest tests/ -q` | **1325 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`); 83.23% coverage |
+| Coverage | `pytest tests/ -q` | **83.23%** default (gate 78%); the ledger module adds 5 tests, the strategy module adds 12, and the improvement module adds 6 when the URL is set |
 | Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
 | Health and metrics | `pytest tests/test_monitoring -q` | **34 passed** — 503 on each degraded dependency, 200 only when all answer, Prometheus-backed JSON snapshot, `/metrics` exposition mount |
 | Infra config | `pytest tests/test_infra_config.py -q` | **18 passed** — build args, container service hosts, Chroma pin, LF entrypoint, alert rules, single monitoring set, dashboard JSON |
-| Type check | `mypy .` | **clean, 211 source files** |
+| Type check | `mypy .` | **clean, 213 source files** |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
 | Market candles | `pytest tests/test_market_router.py -q` | **13 passed** — validation, ordering, deduplication, 404/502/504, source selection |
 | Settings | `pytest tests/test_settings_router.py tests/test_settings_service.py -q` | **23 passed** — GET/PUT round-trip, normalization, 422 on safety overrides, 503 when the store is unavailable |
@@ -376,6 +379,19 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Verification | `pnpm lint` (zero warnings), `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` (all 19 routes) pass locally against 5.2.1. |
 | Safety | Display-only chart code. No trading, safety, auth, API, or model-routing behavior changed. |
 
+## Analysis concurrency and run budget (verified 2026-10-28)
+
+| Piece | Evidence |
+|---|---|
+| Per-session state | `backend/services/analysis_control.py::AnalysisStateStore` keys states by `session_id`, keeps the most recently **started** run as the dashboard default, and evicts the oldest entry beyond `ANALYSIS_STATE_CACHE_SIZE` (default 64). |
+| Concurrency gate | `AnalysisGate` is shared by `/analyze`, `/analyze/stream`, and `/signal`. `ANALYSIS_MAX_CONCURRENT` defaults to **1**; background/stream starts fail closed with **429** when the slot is held, and `/signal` waits at most `ANALYSIS_QUEUE_TIMEOUT_SECONDS` (default 5 s) before returning **429**. |
+| Cost budget | A rolling `ANALYSIS_MAX_RUNS_PER_HOUR` (default **30**) bounds starts; the rejection carries `Retry-After`. On the free tier the run count is the unit of model spend. |
+| Timeout/cancellation | `ANALYSIS_TIMEOUT_SECONDS` (default **300**) is a stage-start deadline: the supervisor checks it before each LLM stage and wraps each call in the remaining time, but clears it once `execution` starts so journal/reflection/memory and post-run logging always finish. A timeout before execution marks the session terminal and releases the slot; `/signal` returns **504** only for `AnalysisDeadlineExceededError`. A plain `TimeoutError` (for example a DB pool timeout after a fill) is a **500** failure, not a retryable deadline. |
+| Read path | `GET /api/v1/agents/status?session_id=...` reads one run; without the parameter it reads the latest started run. `/risk` and `/journal` keep the latest-run contract. |
+| Metrics | `ares_analysis_runs_total{status}` (including `rejected_busy`, `rejected_budget`, `setup_failed`, and `cancelled`) and `ares_analysis_in_flight` are exposed by the Prometheus mount and included in `/api/v1/metrics`. |
+| Tests | `pytest tests/test_analysis_control.py tests/test_analysis_router.py -q` → **44 passed** (gate limits, budget window, busy rejection, 202 accept, deadline 504, plain-timeout 500, generic failure, cancellation, per-session lookup, stream release, unstarted-stream and cancelled-before-start terminal state). `pytest tests/test_supervisor.py -q` → **38 passed**, including deadline-before-stage, LLM cancellation, inner-timeout-is-not-a-deadline, execution-clears-deadline, and journal-after-deadline coverage. |
+| Safety | The gate only schedules analysis work; it does not touch the kill switch, approval, promotion, drawdown, or exposure gates. Busy/timeout paths fail closed and never execute a trade. |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
@@ -384,7 +400,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 2 | `/execute` trusts the authenticated caller's agent payload | The server recomputes consensus and caps size, but an API-key holder can supply synthetic Market Analyst/Quant/Risk outputs. There is no signed or expiring signal token. The API key remains the trust boundary. | P2 |
 | 3 | ~~No role-based authorization on trading/live routes~~ | Closed by P1.6: viewer JWTs get 403 on `/execute` and all live controls; operator+ required; JWT role claim and API-key mapping tested on the real routes. | ~~P1~~ fixed |
 | 4 | ~~`mypy` fails~~ | Closed: the 22 errors in 8 test/script files are fixed, `mypy .` is clean on 184 files, and CI run 39742069953 passed `lint`. | ~~P1~~ fixed |
-| 5 | `/analyze` concurrency/cost control absent | global `_last_state`, unbounded `BackgroundTasks`; auth is required, but runs are still not isolated. `/api/v1/metrics` no longer reads `_last_state`; `/agents/status` and `/risk` still do. | P1 |
+| 5 | ~~`/analyze` concurrency/cost control absent~~ | Closed 2026-10-28: `backend/services/analysis_control.py` provides a bounded per-session state store, a process-wide semaphore (default one run), a rolling hourly run budget, a stage-start deadline, and idempotent lease release. `/analyze` and `/analyze/stream` reject extra starts with **429**; `/signal` waits up to `ANALYSIS_QUEUE_TIMEOUT_SECONDS` and returns **504** only when the deadline fires before execution starts. `/agents/status?session_id=` reads a specific run. | ~~P1~~ fixed |
 | 6 | Kill-switch latch is process-local | a Redis outage latches each process; `/live/arm` clears the API process, but a runner that also latched stays blocked until restarted (fail-closed, never auto-trades) | P1 operational |
 | 7 | ~~No automated PostgreSQL integration test in CI~~ | Closed by P1.4/P1.4b: `postgres-integration` runs hydrate → fill → restart → close, duplicate IDs, concurrent fills, and the busy lock, plus the strategy route → service → JSONB round-trip on `postgres:16-alpine`; the local default suite skips all three modules without `ARES_TEST_POSTGRES_URL`. | ~~P2~~ fixed |
 | 8 | ~~Remaining UI polling and accessibility gaps~~ | Closed 2026-10-22: `/live` fetches status/audit concurrently, pauses when hidden, guards in-flight refreshes, aborts on unmount, and force-refreshes after controls; `usePipelinePolling` single-polls with abort/backoff; `api.ts` has bounded timeouts and typed errors; skip link, navigation/dialog ARIA, labelled controls, and stronger muted-text contrast are in place. The 2026-10-24 audit (Lighthouse 13.5.0, axe-core 4.14.0) found and closed five more issues across the route shells. | ~~P2~~ fixed |

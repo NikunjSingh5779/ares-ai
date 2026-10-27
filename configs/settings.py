@@ -71,6 +71,16 @@ class Settings(BaseSettings):
     local_llm_max_concurrent: int = Field(default=1, ge=1, le=8)
     local_llm_queue_timeout_seconds: float = Field(default=20.0, gt=0.0, le=300.0)
 
+    # Analysis pipeline controls. Every run can make many LLM requests and can
+    # reach the paper-execution node, so starts are bounded per process and per
+    # rolling hour. On the free tier the run count is the meaningful unit of
+    # model spend; there is no dollar budget to enforce.
+    analysis_max_concurrent: int = Field(default=1, ge=1, le=8)
+    analysis_timeout_seconds: float = Field(default=300.0, gt=0.0, le=3600.0)
+    analysis_max_runs_per_hour: int = Field(default=30, ge=1, le=1000)
+    analysis_queue_timeout_seconds: float = Field(default=5.0, gt=0.0, le=300.0)
+    analysis_state_cache_size: int = Field(default=64, ge=1, le=1024)
+
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8000

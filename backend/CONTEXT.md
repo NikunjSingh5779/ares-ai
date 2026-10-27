@@ -128,13 +128,32 @@ path, so it cannot place/modify/cancel orders, change modes, promote a strategy,
 or touch the kill switch. An exhausted chain, an error envelope (including the
 NoOp client), or empty text returns **503**; the API never fabricates a reply.
 
+## Analysis scheduling boundary
+`POST /api/v1/analyze`, `GET /api/v1/analyze/stream`, and `POST /api/v1/signal`
+share one process-wide gate in `backend/services/analysis_control.py`. The gate
+allows `ANALYSIS_MAX_CONCURRENT` runs (default **1**), rejects extra
+background/stream starts with **429**, waits at most
+`ANALYSIS_QUEUE_TIMEOUT_SECONDS` on the synchronous `/signal` path, and caps
+starts with a rolling `ANALYSIS_MAX_RUNS_PER_HOUR` budget. Every accepted run has
+a stage-start deadline (`ANALYSIS_TIMEOUT_SECONDS`); the deadline is checked before
+each LLM stage and cleared once execution begins, so a timeout cannot cancel a
+committed fill. Timeout, failure, and cancellation mark the run terminal and
+release the slot. Only `AnalysisDeadlineExceededError` maps to **504**; a plain
+`TimeoutError` from logging or the database is a failure (**500**), because
+execution may already have committed a fill. Results live in a bounded per-session
+`AnalysisStateStore`: `/agents/status` reads the latest started run by default
+and `?session_id=...` selects one run. `/risk` and `/journal` keep the latest-run
+contract. The gate only schedules analysis work; it does not alter the kill
+switch, approval, promotion, drawdown, or exposure gates.
+
 ## Known gaps
 - `/execute` trusts the authenticated caller's agent payload; there is no signed or
   expiring signal token. The API key remains the trust boundary.
 - The paper writer lock is database-wide rather than per account; writes serialize
   globally, which is fine for a single seeded paper account.
-- `analysis.py` still owns the module-global `_last_state`; `/agents/status` and `/risk`
-  read it, while `/api/v1/metrics` is now registry-backed.
+- The analysis gate and state store are process-local. A multi-worker API would need
+  shared state (for example Redis) for the concurrency limit, run budget, and
+  per-session reads; Compose runs one uvicorn worker.
 - Prometheus counters are process-local; a multi-worker API would need multiprocess
   registry aggregation. Compose runs one uvicorn worker.
 - Role changes take effect on the next login because the role is a JWT claim; there is no

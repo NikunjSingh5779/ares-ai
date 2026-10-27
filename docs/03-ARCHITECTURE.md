@@ -27,9 +27,14 @@ Monitoring     backend/core/metrics.py   docker/monitoring/ (Prometheus + Grafan
 
 **Analysis** (`POST /api/v1/analyze`, `GET /analyze/stream`, `POST /signal`)
 `backend/routers/analysis.py` builds a `Supervisor`, runs the LangGraph in
-`agents/supervisor.py`, stores the result in the module-global `_last_state`, and
-returns or streams it. The graph order is `PIPELINE_ORDER`; consensus and risk are
-deterministic nodes, not LLM calls.
+`agents/supervisor.py`, and stores each result in a bounded per-session state
+store (`backend/services/analysis_control.py`). The store keeps the most
+recently started run as the dashboard default and lets API callers read a
+specific `session_id`. A process-wide gate allows one pipeline at a time by
+default, rejects extra starts with **429** instead of queueing unbounded
+background tasks, caps starts per rolling hour, and applies a stage-start
+deadline that is cleared once execution begins. The graph order is
+`PIPELINE_ORDER`; consensus and risk are deterministic nodes, not LLM calls.
 
 **Chat** (`POST /api/v1/chat`)
 `backend/routers/chat.py` validates a bounded history, then
@@ -98,8 +103,9 @@ unknown role fails closed to `viewer`. The gate verifies the credential only, so
 answer; otherwise it returns **503** with per-check detail, which is the signal Compose
 healthchecks consume. `/metrics` is the public Prometheus exposition mount. The
 authenticated `/api/v1/metrics` is a JSON summary of the same counters (HTTP requests,
-agent runs/errors/fallbacks, live orders, kill-switch state); it does not read
-`_last_state`. Counters are process-local and cumulative since the API process started.
+agent runs/errors/fallbacks, analysis starts/in-flight, live orders, kill-switch
+state); it does not read the pipeline state store. Counters are process-local and
+cumulative since the API process started.
 
 **Backtest** (`POST /api/v1/backtest/run`)
 `backend/routers/backtest.py` → `backtesting/engine.py` (pure Python; commission and
@@ -126,7 +132,7 @@ A router may validate and delegate; it must not own portfolio state or exchange 
 | Paper portfolio/positions | PostgreSQL `portfolio` and `positions` | `PaperTradingLedger` through `PaperLedgerRepository`, used by API, worker, and runner | writes serialize on an advisory lock; `client_order_id` blocks duplicate requests |
 | Paper cache | in-memory `PaperTradingEngine` | hydrated from the ledger before every action; snapshot-restored on write failure | process-local cache only; never the source of truth |
 | Closed paper trades | `trade_history` table | ledger closures and execution-agent fallback | promotion gate reads this table |
-| Pipeline result | module-global `_last_state` | every `/analyze` call | last writer wins; no per-user isolation |
+| Pipeline result | bounded per-session `AnalysisStateStore` (`backend/services/analysis_control.py`) | `/analyze`, `/analyze/stream`, `/signal` | latest-started run by default; `session_id` selects one run; capacity-bounded; process-local |
 | Live orders | exchange + `OrderAuditor` | `LiveTradingEngine.execute_signal` only | single path; kill switch is shared Redis state |
 | Model roster | `configs/models.yaml` | — | validated free IDs + universal fallback appended by `AgentModelConfig` |
 | Dashboard preferences | singleton `app_settings` JSONB row | `settings_service` through `PUT /api/v1/settings/preferences` | non-safety only; safety limits are computed from `agents.risk`/`agents.consensus`/`configs.settings` (ADR-018) |
@@ -138,8 +144,9 @@ ADR-005 is implemented for paper state; ADR-014 adds the approved `/execute` con
 client-order idempotency; ADR-015 serializes paper writers across processes; ADR-017 fixes
 the Compose bootstrap and Chroma version handshake; ADR-018 keeps dashboard preferences
 durable while safety limits remain read-only; ADR-022 persists improvement history while
-keeping suggestions advisory. The remaining ownership/isolation issue is the pipeline
-result (ADR-006 / Phase 2), not the paper portfolio.
+keeping suggestions advisory. ADR-023 bounds analysis runs and replaces the
+single pipeline global with a per-session store; the remaining ownership issue is
+live-order state, not the pipeline result.
 
 ## 5. Dependency rules (target, enforced by review)
 

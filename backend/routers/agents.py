@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.dependencies import get_db
-from backend.routers.analysis import get_last_state
+from backend.routers.analysis import get_last_state, get_state
 from backend.services import improvement_service
 
 logger = logging.getLogger("ares.api.agents")
@@ -27,14 +27,21 @@ _STORE_ERROR = "Improvement history unavailable"
 
 
 @router.get("/status")
-async def agent_status() -> dict[str, Any]:
-    """Get pipeline execution status from the last run.
+async def agent_status(session_id: str | None = None) -> dict[str, Any]:
+    """Get pipeline execution status from the last run, or from one session.
 
     Returns current_node, completed/failed/skipped agent lists,
-    model chain used for each agent, and degradation status.
+    model chain used for each agent, and degradation status. Pass the
+    ``session_id`` returned by ``POST /analyze`` to read that run instead of
+    the most recently started one.
     """
-    state = get_last_state()
+    state = get_state(session_id) if session_id else get_last_state()
     if state is None:
+        if session_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Analysis session '{session_id}' not found",
+            )
         return {
             "pipeline_status": {
                 "current_node": "",

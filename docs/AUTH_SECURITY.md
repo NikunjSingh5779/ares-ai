@@ -97,8 +97,12 @@ Never weaken a gate to make a test pass or to “speed things up.”
 - **JWT revocation:** no revocation list; role changes apply on next login.
 - **Metrics scope:** Prometheus counters are process-local and cumulative per
   API process; a multi-worker deployment would need multiprocess aggregation.
-- **`/analyze` isolation:** the module-global `_last_state` is last-writer-wins;
-  concurrency, cost budgets, and per-user isolation are Phase 2.
+- **`/analyze` isolation:** runs share a process-wide gate (default one run),
+  a rolling hourly budget, and a stage-start deadline that is cleared before
+  execution so a committed fill is never cancelled. Results are stored per
+  `session_id`; `GET /agents/status?session_id=...` reads a specific run. The
+  gate/store are process-local, so a multi-worker deployment needs shared state.
+  `/api/v1/metrics` remains registry-backed.
 
 ## Incident response
 
