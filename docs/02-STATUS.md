@@ -2,14 +2,14 @@
 # Status — verified state
 
 **Last verified:** 2026-10-28
-**Branch:** `master` at `b1cb068`; the shared Redis kill-switch arm epoch is
-verified in the working tree (not yet committed). PR #127
+**Branch:** `master` — clean, equal to `origin/master` (`742b901`). PR #128
+squash-merged the shared Redis kill-switch arm epoch, closing P1 gap #6. PR #127
 squash-merged the analysis-control slice (`backend/services/analysis_control.py`,
 router, metrics, and tests), closing the P1 `/analyze` concurrency/cost gap. PR #114
 landed the dependency consolidation, #116 ported both charts to `lightweight-charts` v5 (closing
 #82), and #115 ported the superseded feature-PR hunks (paper-only audit, free-only
 guard, router error fallthrough, schema retry, Compose hostname test). Master CI run
-**40253581645** passed all five jobs. Recent verified work adds the real-PostgreSQL
+**40588519570** (merge of #128) passed all five jobs. Recent verified work adds the real-PostgreSQL
 strategy route module, the opt-in local chat fallback, the accessibility audit, the
 improvement metric correction, durable improvement history wired into the pipeline,
 Prometheus alert rules with one tracked monitoring set, branch/Dependabot cleanup,
