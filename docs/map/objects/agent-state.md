@@ -7,7 +7,8 @@ Each node reads its input slice and returns a validated output that is merged ba
 **Home:** `agents/state.py` — `AgentState`, `PipelineStatus`, and one output model per agent.
 
 **Shape (top level):**
-- Input: `request_id`, `session_id`, `symbol`, `request`, `request_type`, `candles`
+- Input: `request_id`, `session_id`, `symbol`, `request`, `request_type`, `execute_trades`,
+  `candles`
 - Outputs: `market_analyst`, `quant`, `news`, `vision`, `consensus`, `risk`, `execution`,
   `journal`, `reflection`, `memory`, `kronos`
 - Metadata: `pipeline_status`, `errors`, `model_chain_used`, `degraded`,

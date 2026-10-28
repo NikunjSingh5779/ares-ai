@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "changeme_in_production"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    # Short-lived signed approval for POST /execute. The token binds the exact
+    # agent payload and expires quickly; re-run /signal with execute=false to
+    # mint a fresh one. Kept short so a leaked token cannot be replayed later.
+    approval_token_expire_minutes: int = Field(default=5, ge=1, le=30)
     api_rate_limit_per_minute: int = 100
     api_cors_origins: str = "http://localhost:3000"
 

@@ -12,10 +12,19 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
 
-from agents.state import AgentState, PipelineStatus
+from agents.state import (
+    AgentState,
+    ConsensusOutput,
+    MarketAnalystOutput,
+    PipelineStatus,
+    QuantOutput,
+    RiskOutput,
+)
 from agents.supervisor import AnalysisDeadlineExceededError, Supervisor
 from backend.core.metrics import get_metrics_snapshot
+from backend.core.security import approval_payload_hash, verify_trade_approval_token
 from backend.routers import analysis as analysis_module
+from backend.schemas.trading import TradeApproval
 from backend.services.analysis_control import (
     get_analysis_gate,
     get_analysis_state_store,
@@ -58,6 +67,50 @@ def _state(session_id: str, symbol: str = "BTC-USD", request: str = "Analyze") -
     )
 
 
+def _approved_state() -> AgentState:
+    """A fully approved long signal with execution intentionally skipped."""
+    return AgentState(
+        symbol="BTC-USD",
+        request="Analyze",
+        request_id="req-approval",
+        session_id="sess-approval",
+        execute_trades=False,
+        market_analyst=MarketAnalystOutput(
+            confidence=85.0,
+            direction="long",
+            bias="bullish",
+            setup="test setup",
+            entry_zone="50000",
+            stop_loss="48000",
+            targets=["51000"],
+            invalidation="test invalidation",
+            confluence="test confluence",
+            indicators={"current_price": 50000.0},
+            rationale="approval test",
+        ),
+        quant=QuantOutput(
+            confidence=85.0,
+            direction="long",
+            strategy_name="trend",
+            rationale="approval test",
+        ),
+        risk=RiskOutput(
+            approved=True,
+            max_position_size=0.04,
+            stop_loss=48000.0,
+            risk_score=40.0,
+            reasons=["test"],
+            rationale="approval test",
+        ),
+        consensus=ConsensusOutput(
+            approved=True,
+            composite_confidence=85.0,
+            rationale="approved",
+        ),
+        pipeline_status=PipelineStatus(current_node=""),
+    )
+
+
 def _make_fake_stream_events(count: int):
     """Yield `count` fake AgentState updates."""
 
@@ -87,11 +140,14 @@ class _FakeSupervisor:
         events: list[AgentState] | None = None,
         delay: float = 0.0,
         error: BaseException | None = None,
+        result_state: AgentState | None = None,
     ) -> None:
         self.events = events or []
         self.delay = delay
         self.error = error
+        self.result_state = result_state
         self.started = asyncio.Event()
+        self.last_execute: bool | None = None
 
     async def stream_analysis(
         self,
@@ -112,12 +168,16 @@ class _FakeSupervisor:
         symbol: str,
         request: str,
         timeout_seconds: float | None = None,
+        execute: bool = True,
     ) -> AgentState:
         self.started.set()
+        self.last_execute = execute
         if self.error is not None:
             raise self.error
         if self.delay:
             await asyncio.sleep(self.delay)
+        if self.result_state is not None:
+            return self.result_state
         return _state("sync-result", symbol=symbol, request=request)
 
 
@@ -584,6 +644,90 @@ class TestSignalControl:
         assert stored is not None
         assert stored.symbol == "BTC-USD"
         assert stored.pipeline_status.end_time is not None
+        assert get_analysis_gate().in_use == 0
+
+
+class TestSignalApprovalIssuance:
+    """POST /signal with execute=false mints a signed approval for /execute."""
+
+    @pytest.mark.asyncio
+    async def test_execute_false_returns_a_signed_approval(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from backend.routers.analysis import signal
+
+        monkeypatch.setattr(settings, "jwt_secret_key", "signal-approval-secret")
+        fake = _FakeSupervisor(result_state=_approved_state())
+        monkeypatch.setattr("backend.routers.analysis._get_supervisor", lambda: fake)
+
+        result = await signal({"symbol": "BTC-USD", "execute": False})
+
+        assert result["approved"] is True
+        assert result["executed"] is False
+        assert result["approval"] is not None
+        assert result["approval"]["market_analyst_output"]["direction"] == "long"
+        assert result["approval_expires_at"] is not None
+        claims = verify_trade_approval_token(result["approval_token"])
+        assert claims.symbol == "BTC-USD"
+        assert claims.side == "long"
+        # /execute re-parses this exact dict and recomputes the digest.
+        submitted = TradeApproval.model_validate(result["approval"])
+        assert approval_payload_hash(submitted) == claims.approval_hash
+        assert fake.last_execute is False
+        assert get_analysis_gate().in_use == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_true_does_not_issue_a_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from backend.routers.analysis import signal
+
+        monkeypatch.setattr(settings, "jwt_secret_key", "signal-approval-secret")
+        fake = _FakeSupervisor(result_state=_approved_state())
+        monkeypatch.setattr("backend.routers.analysis._get_supervisor", lambda: fake)
+
+        result = await signal({"symbol": "BTC-USD"})
+
+        assert result["approval"] is None
+        assert result["approval_token"] is None
+        assert result["approval_expires_at"] is None
+        assert fake.last_execute is True
+
+    @pytest.mark.asyncio
+    async def test_rejected_signal_has_no_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from backend.routers.analysis import signal
+
+        monkeypatch.setattr(settings, "jwt_secret_key", "signal-approval-secret")
+        fake = _FakeSupervisor(result_state=_state("rejected"))
+        monkeypatch.setattr("backend.routers.analysis._get_supervisor", lambda: fake)
+
+        result = await signal({"symbol": "BTC-USD", "execute": False})
+
+        assert result["approved"] is False
+        assert result["approval"] is None
+        assert result["approval_token"] is None
+
+    @pytest.mark.asyncio
+    async def test_non_boolean_execute_is_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from backend.routers.analysis import signal
+
+        monkeypatch.setattr("backend.routers.analysis._get_supervisor", lambda: _FakeSupervisor())
+
+        with pytest.raises(HTTPException) as exc_info:
+            await signal({"symbol": "BTC-USD", "execute": "false"})
+
+        assert exc_info.value.status_code == 422
+        assert "boolean" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_default_signing_key_fails_closed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from backend.routers.analysis import signal
+
+        monkeypatch.setattr(settings, "jwt_secret_key", "changeme_in_production")
+        fake = _FakeSupervisor(result_state=_approved_state())
+        monkeypatch.setattr("backend.routers.analysis._get_supervisor", lambda: fake)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await signal({"symbol": "BTC-USD", "execute": False})
+
+        assert exc_info.value.status_code == 503
+        assert "JWT_SECRET_KEY" in exc_info.value.detail
         assert get_analysis_gate().in_use == 0
 
 

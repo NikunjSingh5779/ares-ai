@@ -49,9 +49,12 @@ fabricated reply.
 
 **Paper execution** (`POST /api/v1/execute`, `POST /api/v1/signal`, `scripts/run_live.py`)
 The normal pipeline path is `ExecutionAgent` (`agents/execution.py`) → `PaperTradingLedger`
-(`paper_trading/ledger.py`). The API path is different: `/execute` accepts only a typed
-`ExecuteTradeRequest` containing Market Analyst, Quant, and Risk outputs plus a
-`client_order_id`. The router re-runs `ConsensusEngine.evaluate`, checks Risk's approval
+(`paper_trading/ledger.py`). The API path is different: `/execute` accepts a typed
+`ExecuteTradeRequest` containing Market Analyst, Quant, and Risk outputs, a
+`client_order_id`, and a short-lived signed `approval_token`. `/signal` with
+`execute=false` runs the pipeline through risk, skips execution, and issues that token
+bound to the symbol, side, and payload digest; `/execute` verifies it before doing any
+work. The router then re-runs `ConsensusEngine.evaluate`, checks Risk's approval
 and score, derives the fill from the approved `current_price`, derives quantity from
 `risk.max_position_size`, and caps notional at 2% of paper equity. It does not accept
 caller-supplied price or quantity and has no manual bypass.

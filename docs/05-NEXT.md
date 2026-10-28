@@ -150,6 +150,10 @@ authenticated route shells; data-populated states remain an optional follow-up.
   `arm:` token. A missing token or a recovered store alone never clears a latch. A
   process that latched before its first read needs one further arm. See ADR-024
   and `02-STATUS.md` gap #6.
+- Signed, expiring `/execute` approvals: **done 2026-10-28** — `/signal` with
+  `execute=false` stops after risk and returns a short-lived JWT bound to the
+  symbol, side, and typed payload digest; `/execute` verifies it before consensus.
+  See ADR-025 and `02-STATUS.md` gap #2.
 - Manual reconciliation of pre-P1-A short positions migrated as long: **open** —
   operational, needs production database access. See `02-STATUS.md` gap #10.
 

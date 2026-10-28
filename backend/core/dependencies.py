@@ -34,6 +34,7 @@ from backend.core.roles import (
     VIEWER,
     normalize_role,
 )
+from backend.core.security import APPROVAL_TOKEN_TYPE
 from backend.db.models import User
 from backend.services import user_service
 from configs.settings import settings
@@ -109,7 +110,24 @@ def _authenticate(token: str | None, api_key: str | None) -> AuthPrincipal:
     jwt_configured = bool(settings.jwt_secret_key) and settings.jwt_secret_key != _DEFAULT_SECRET
     if token and jwt_configured:
         try:
-            payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+            payload = jwt.decode(
+                token,
+                settings.jwt_secret_key,
+                algorithms=[settings.jwt_algorithm],
+                # Login tokens carry no audience; an approval token does. The
+                # claim-type check below rejects approval tokens explicitly, so
+                # audience validation is not the auth boundary here.
+                options={"verify_aud": False},
+            )
+            if payload.get("typ") == APPROVAL_TOKEN_TYPE:
+                # A trade approval token is a capability for /execute only. It
+                # must never authenticate a normal API request, even if a future
+                # change adds a subject claim.
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Trade approval tokens cannot authenticate API requests.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
             email = payload.get("sub")
             if isinstance(email, str) and email:
                 raw_role = payload.get("role")

@@ -74,10 +74,10 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
 
 ## Next — P2 gaps
 
-- [ ] Bind `/execute` to a signed/expiring approval or a stored `signals` row;
-      do not rely only on caller-supplied agent payloads. (Verified 2026-10-28:
-      `ExecuteTradeRequest` still carries `TradeApproval`; no `signal_id` or
-      signed/expiring token.)
+- [x] Bind `/execute` to a signed/expiring approval or a stored `signals` row;
+      do not rely only on caller-supplied agent payloads. (2026-10-28: ADR-025 —
+      `/signal` with `execute=false` issues a short-lived JWT bound to symbol, side,
+      and the typed payload digest; `/execute` verifies it before consensus.)
 - [x] Remove remaining frontend mock data from markets, settings, and the strategy
       builder. (2026-10-22)
 - [x] Fix frontend lint under Next 16 and add the frontend lint/typecheck/test CI job.

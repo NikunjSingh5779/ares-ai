@@ -28,6 +28,9 @@
 | ADR-017 | Compose bootstrap is shared by `init.sql` and Alembic | Fresh volumes stamp 0001 and apply 0002–0006; one migration head |
 | ADR-019 | Strategy drafts reuse `strategies`; lifecycle fields stay server-owned | Authenticated drafts save/load; status, live enablement, and promotion counters reject writes and stay gated |
 | ADR-020 | Chat is stateless, read-only, and client-held | Multi-turn history is sent per request; no tools or execution path; exhausted chain -> 503 |
+| ADR-022 | Improvement history is durable; suggestions stay advisory | `reflection_runs`/`improvement_records` persist across runs; applying a suggestion never mutates a gate |
+| ADR-023 | Analysis runs are bounded and state is per session | One run at a time by default, hourly budget, stage-start deadline; `/agents/status?session_id=` reads one run |
+| ADR-025 | `/execute` requires a signed, expiring approval token | `/signal` with `execute=false` issues a short-lived JWT bound to symbol, side, and payload digest; `/execute` verifies it before consensus |
 
 ## Models, safety, and operations
 
@@ -39,6 +42,8 @@
 | ADR-011 | Live trading is opt-in at every layer | Default off; human approval and promotion gate before autonomous mode |
 | ADR-013 | Production safety is an explicit Compose overlay | `ENVIRONMENT=production` rejects default API/JWT/DB secrets |
 | ADR-018 | Dashboard preferences are durable; safety limits stay read-only | `app_settings` persists non-safety preferences; `PUT /settings` cannot raise a cap or threshold |
+| ADR-021 | Local chat is opt-in, separate, and process-wide gated | `local/` is chat-only, defaults off, and serializes requests; busy local gate skips without tripping the breaker |
+| ADR-024 | One shared kill-switch arm epoch clears every process | One human `/live/arm` clears API and runners that observed the shared token; recovery alone never re-arms |
 
 ## Role authorization
 

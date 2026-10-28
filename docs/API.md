@@ -62,7 +62,7 @@ Public routes: `/health`, `/metrics`, `/docs`, `/redoc`, `/openapi.json`,
 |---|---|---|---|
 | POST | `/api/v1/analyze` | Required | Start the pipeline for a symbol in the background; returns the accepted `session_id` |
 | GET | `/api/v1/analyze/stream` | Required | Server-Sent Events stream of pipeline progress |
-| POST | `/api/v1/signal` | Required | Generate and process a trading signal through the agent path |
+| POST | `/api/v1/signal` | Required | Run the pipeline and return the signal result; `execute=false` stops after risk and returns a signed approval token |
 | GET | `/api/v1/signals/history` | Required | Recent signal history |
 | GET | `/api/v1/agents/status?session_id=...` | Required | Pipeline status for one run; omit `session_id` for the latest started run |
 
@@ -77,6 +77,17 @@ execution starts it is cleared so a committed fill cannot be cancelled. A
 cannot duplicate the fill. The `session_id` from `POST /analyze` can be passed to
 `/agents/status` to read that exact run while a newer run is active. The gate,
 budget, and state store are process-local.
+
+`POST /signal` takes `{symbol, request?, execute?}`. `execute` must be a boolean and
+defaults to `true`, which runs the paper execution stage as before. With
+`execute=false` the graph stops after risk, `executed` is `false`, and an approved
+long/short signal returns `approval` (the typed Market Analyst/Quant/Risk payload),
+`approval_token`, and `approval_expires_at`. The token is a JWT bound to the symbol,
+side, and a SHA-256 digest of that payload; it is valid for
+`APPROVAL_TOKEN_EXPIRE_MINUTES` (default 5, max 30) and is the credential
+`POST /execute` requires. A rejected signal, or one whose direction is `flat`,
+returns `null` for all three fields. If `JWT_SECRET_KEY` is empty or still the
+shipped default, issuance fails closed with **503**.
 
 ### Market data
 
@@ -144,16 +155,19 @@ already exists in the initial schema, so this slice adds no migration.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/api/v1/execute` | Required + trading role | Execute an approved paper trade; requires typed Market Analyst, Quant, and Risk approvals plus `client_order_id` |
+| POST | `/api/v1/execute` | Required + trading role | Execute an approved paper trade; requires a signed `approval_token` from `/signal` plus `client_order_id` |
 | GET | `/api/v1/portfolio` | Required | Hydrated paper portfolio summary |
 | GET | `/api/v1/positions` | Required | Open/closed positions |
 | GET | `/api/v1/orders` | Required | Order history |
 
-`/execute` has no raw price or quantity fields. The server re-runs consensus,
-checks the Risk approval and max position size, derives the fill from the
-approved `current_price`, and caps notional at 2% of paper equity. A duplicate
-`client_order_id` returns `409`; a writer-lock timeout returns `503` with
-`Retry-After: 1`.
+`/execute` has no raw price or quantity fields. The body is
+`{client_order_id, symbol, side, approval, approval_token}`. The server verifies the
+token's signature, expiry, type, audience, issuer, symbol, side, and payload digest
+before re-running consensus, checking the Risk approval and max position size, deriving
+the fill from the approved `current_price`, and capping notional at 2% of paper equity.
+An invalid or expired token returns **401**; a valid token that does not match the
+submitted symbol, side, or payload returns **422**. A duplicate `client_order_id`
+returns `409`; a writer-lock timeout returns `503` with `Retry-After: 1`.
 
 ### Live trading controls
 

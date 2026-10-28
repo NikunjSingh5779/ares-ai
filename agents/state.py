@@ -206,6 +206,9 @@ class AgentState(BaseModel):
     symbol: str = ""
     request: str = ""
     request_type: str = "analysis"
+    # When false, the graph stops after risk and never executes a trade.
+    # ``/signal`` uses this to mint a signed approval for ``POST /execute``.
+    execute_trades: bool = True
     candles: list[Any] | None = None
     # Process-local deadline in monotonic seconds. The supervisor checks it
     # before starting another LLM stage; it is excluded from API serialization.

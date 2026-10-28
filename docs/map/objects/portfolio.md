@@ -59,6 +59,6 @@ before a second position is created.
 
 **Known gaps:** the advisory lock is database-wide rather than per account (fine at
 single-user scale); reads do not take it because each process has its own cache. `/execute`
-trusts the authenticated caller's agent payload and has no signed/expiring signal token.
-No automated PostgreSQL integration test in CI. Old short **positions** cannot be inferred
+requires a signed, expiring approval token from `/signal`; the token is not single-use, so
+`client_order_id` remains the duplicate-order guard. Old short **positions** cannot be inferred
 during migration and default to long.

@@ -55,13 +55,17 @@ imported by domain packages.
 read/write through `paper_trading.ledger.PaperTradingLedger`; PostgreSQL is the durable
 source. `/portfolio`, `/positions`, and `/orders` hydrate before responding and return
 503 when the ledger is unavailable. `/execute` accepts only an `ExecuteTradeRequest`
-containing typed Market Analyst, Quant, and Risk approvals plus a required
-`client_order_id`. The router re-runs consensus, checks Risk approval/score, derives the
+containing typed Market Analyst, Quant, and Risk approvals, a short-lived signed
+`approval_token` issued by `/signal` with `execute=false`, and a required
+`client_order_id`. The router verifies the token's signature, expiry, type, audience,
+issuer, symbol, side, and payload digest before consensus. The router re-runs consensus,
+checks Risk approval/score, derives the
 fill from the approved `current_price`, derives quantity from
 `risk.max_position_size`, and caps notional at 2% of paper equity. It has no raw
 price/quantity fields and no manual bypass. A duplicate `client_order_id` returns 409;
 a writer-lock timeout returns 503 with `Retry-After: 1`; other
-ledger failures return 503. The normal generated-trade path remains `/signal`.
+ledger failures return 503. `/signal` with the default `execute=true` remains the
+generated-trade path; `execute=false` returns the approval and token instead of filling.
 
 ## Market data boundary
 `GET /api/v1/market/candles` is a read-only view over the free source registry in
@@ -147,8 +151,6 @@ contract. The gate only schedules analysis work; it does not alter the kill
 switch, approval, promotion, drawdown, or exposure gates.
 
 ## Known gaps
-- `/execute` trusts the authenticated caller's agent payload; there is no signed or
-  expiring signal token. The API key remains the trust boundary.
 - The paper writer lock is database-wide rather than per account; writes serialize
   globally, which is fine for a single seeded paper account.
 - The analysis gate and state store are process-local. A multi-worker API would need

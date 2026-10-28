@@ -325,6 +325,8 @@ export async function executeTrade(body: {
     risk_output: RiskOutput;
     vision_output?: VisionOutput | null;
   };
+  /** Short-lived token from POST /signal with execute=false. */
+  approval_token: string;
 }): Promise<Record<string, unknown>> {
   return request<Record<string, unknown>>("/api/v1/execute", {
     method: "POST",

@@ -50,6 +50,15 @@ def test_paper_writer_lock_timeout_is_positive() -> None:
         Settings(paper_trading_writer_lock_timeout_seconds=0)
 
 
+def test_approval_token_lifetime_is_short_and_bounded() -> None:
+    """A leaked /execute approval token must expire quickly and stay bounded."""
+    assert Settings.model_fields["approval_token_expire_minutes"].default == 5
+    with pytest.raises(ValidationError):
+        Settings(approval_token_expire_minutes=0)
+    with pytest.raises(ValidationError):
+        Settings(approval_token_expire_minutes=31)
+
+
 def test_production_compose_overlays_enable_production() -> None:
     """Production overlays must actually flip ENVIRONMENT=production."""
     root = Path(__file__).resolve().parent.parent

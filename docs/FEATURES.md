@@ -76,8 +76,9 @@
 
 ## Known gaps that affect feature claims
 
-- `/execute` trusts the authenticated caller's agent payload; a signed or stored
-  approval is a P2 design item.
+- `/execute` requires a short-lived signed approval token from `/signal` with
+  `execute=false`; the token binds the symbol, side, and typed payload digest. It is
+  not single-use, so `client_order_id` remains the duplicate-order guard.
 - `/analyze` runs are bounded by a process-wide gate (default one run), a rolling
   hourly budget, and a stage-start deadline that is cleared once execution
   begins; results are stored per `session_id`. The gate and store are
