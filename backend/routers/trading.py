@@ -12,6 +12,7 @@ The in-memory engine is a calculation cache, not a second source of truth.
 
 from __future__ import annotations
 
+import hmac
 import math
 from typing import Any
 
@@ -20,6 +21,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from agents.consensus import ConsensusEngine
 from agents.risk import MAX_POSITION_SIZE_PCT, MAX_RISK_SCORE
 from backend.core.dependencies import require_trading_access
+from backend.core.security import (
+    ApprovalTokenError,
+    approval_payload_hash,
+    verify_trade_approval_token,
+)
 from backend.schemas.trading import ExecuteTradeRequest
 from configs.settings import settings
 from database.connection import async_session_factory
@@ -112,17 +118,40 @@ async def orders() -> list[dict[str, Any]]:
 async def execute(payload: ExecuteTradeRequest) -> dict[str, Any]:
     """Execute a paper trade only when the upstream agents approved it.
 
-    The request carries the Market Analyst, Quant, and Risk outputs. The
-    server re-runs the deterministic consensus gate, verifies Risk's approval
-    and sizing, derives the fill price from the approved market snapshot, and
-    caps notional exposure at the 2% risk limit. There is no manual bypass in
-    this endpoint; use the normal ``/signal`` pipeline for generated trades.
+    The request carries the Market Analyst, Quant, and Risk outputs plus a
+    short-lived approval token minted by ``POST /signal`` with
+    ``execute=false``. The token binds the exact payload, symbol, and side, so
+    an authenticated caller cannot substitute fabricated agent outputs. The
+    server also re-runs the deterministic consensus gate, verifies Risk's
+    approval and sizing, derives the fill price from the approved market
+    snapshot, and caps notional exposure at the 2% risk limit.
 
     ``client_order_id`` is idempotent per paper account. A duplicate returns
     **409** and never creates a second position.
     """
-    ledger = get_paper_trading_ledger()
     approval = payload.approval
+
+    try:
+        claims = verify_trade_approval_token(payload.approval_token)
+    except ApprovalTokenError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Approval token is invalid or expired; re-run /signal with execute=false",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    if claims.symbol != payload.symbol or claims.side != payload.side:
+        raise HTTPException(
+            status_code=422,
+            detail="Approval token does not match the requested symbol and side",
+        )
+    if not hmac.compare_digest(claims.approval_hash, approval_payload_hash(approval)):
+        raise HTTPException(
+            status_code=422,
+            detail="Approval token does not match the submitted approval payload",
+        )
+
+    ledger = get_paper_trading_ledger()
     market = approval.market_analyst_output
     quant = approval.quant_output
     risk = approval.risk_output

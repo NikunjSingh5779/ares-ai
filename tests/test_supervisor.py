@@ -522,6 +522,21 @@ class TestSupervisorRouting:
         )
         assert _route_from_risk(state) == "execution"
 
+    def test_risk_approved_with_execution_disabled_routes_to_journal(self) -> None:
+        """Approval-only runs stop after risk and never place a trade."""
+        from agents.supervisor import _route_from_risk
+
+        state = AgentState(
+            symbol="BTC-USD",
+            execute_trades=False,
+            risk=RiskOutput(
+                approved=True,
+                risk_score=20.0,
+                rationale="Risk acceptable",
+            ),
+        )
+        assert _route_from_risk(state) == "journal"
+
     def test_risk_rejected_routes_to_journal(self) -> None:
         from agents.supervisor import _route_from_risk
 

@@ -2,7 +2,8 @@
 # Status — verified state
 
 **Last verified:** 2026-10-28
-**Branch:** `master` — clean, equal to `origin/master` (`8a99ae1`). PR #129
+**Branch:** `master` at `ccb6a09` — the signed `/execute` approval slice is
+implemented and verified locally, not yet committed. PR #129
 squash-merged the web collector free-only fix, closing P2 gap #18. PR #128
 squash-merged the shared Redis kill-switch arm epoch, closing P1 gap #6. PR #127
 squash-merged the analysis-control slice (`backend/services/analysis_control.py`,
@@ -39,18 +40,18 @@ five jobs, including `postgres-integration` with all three PostgreSQL modules. T
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1349 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`); 84.09% coverage |
-| Coverage | `pytest tests/ -q` | **84.09%** default (gate 78%); the ledger module adds 5 tests, the strategy module adds 12, and the improvement module adds 6 when the URL is set |
+| Test suite | `pytest tests/ -q` | **1374 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`); 84.23% coverage |
+| Coverage | `pytest tests/ -q` | **84.23%** default (gate 78%); the ledger module adds 5 tests, the strategy module adds 12, and the improvement module adds 6 when the URL is set |
 | Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
 | Health and metrics | `pytest tests/test_monitoring -q` | **34 passed** — 503 on each degraded dependency, 200 only when all answer, Prometheus-backed JSON snapshot, `/metrics` exposition mount |
 | Infra config | `pytest tests/test_infra_config.py -q` | **18 passed** — build args, container service hosts, Chroma pin, LF entrypoint, alert rules, single monitoring set, dashboard JSON |
-| Type check | `mypy .` | **clean, 214 source files** |
+| Type check | `mypy .` | **clean, 215 source files** |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
 | Market candles | `pytest tests/test_market_router.py -q` | **13 passed** — validation, ordering, deduplication, 404/502/504, source selection |
 | Settings | `pytest tests/test_settings_router.py tests/test_settings_service.py -q` | **23 passed** — GET/PUT round-trip, normalization, 422 on safety overrides, 503 when the store is unavailable |
 | Strategy drafts | `pytest tests/test_strategy_router.py tests/test_strategy_service.py -q` | **29 passed** — create/list/get/update, JSON parsing, version bump, 404/409/422/503, and rejection of lifecycle/live fields; the real-PostgreSQL module adds 12 route/service cases |
 | Improvement history | `pytest tests/test_improvement.py tests/test_improvement_service.py tests/test_agents_router.py -q` | **38 passed** — external-history analysis, UUID record IDs, commit/rollback, 503/404/422 API contract, and advisory apply |
-| Supervisor hook | `pytest tests/test_supervisor.py -q` | **30 passed** — the optional post-run hook receives the final state and a hook failure leaves the pipeline result unchanged |
+| Supervisor hook | `pytest tests/test_supervisor.py -q` | **39 passed** — routing, deadline, the optional post-run hook, and approval-only routing (`execute_trades=false`) |
 | Chat | `pytest tests/test_chat_router.py tests/test_chat_service.py -q` | **21 passed** — history bounds, last-user validation, system prompt, fallback metadata, error-envelope/empty checks, free-tier roster, cached service, remote-plus-local and local-only chain selection |
 | Local model gate | `pytest tests/test_local_gate.py tests/test_client.py tests/test_router.py -q` | **27 passed** — process-wide serialization/timeout, prefix stripping, no auth header, `reasoning_effort="off"`, local timeout, busy skip without breaker failure |
 | Lint | `ruff check .` | clean |
@@ -58,7 +59,8 @@ five jobs, including `postgres-integration` with all three PostgreSQL modules. T
 | PostgreSQL integration | `ARES_TEST_POSTGRES_URL=... pytest tests/test_postgres_integration.py tests/test_postgres_strategy_integration.py tests/test_postgres_improvement_integration.py -q` | **23 passed** — real hydrate → fill → restart → close, duplicate ID, concurrent fills, one-winner duplicate race, busy lock → retry, the strategy route → service → JSONB round-trip, and the reflection/improvement run → record → API round-trip |
 | CI PostgreSQL job | GitHub Actions `CI` run 40097868595 | **passed** on `postgres:16-alpine` — all three modules, **23 tests**, no skip (5 ledger, 12 strategy, 6 improvement) |
 | Paper-ledger tests | `pytest tests/test_paper_trading_ledger.py -q` | **34 passed** — hydration, atomic write, duplicate ID, writer lock, rejection/rollback, restart mid-trade |
-| Trading-route tests | `pytest tests/test_trading_router.py -q` | **17 passed** — approval, derivation, 409/422/503, busy-lock retry |
+| Trading-route tests | `pytest tests/test_trading_router.py -q` | **23 passed** — approval, derivation, 409/422/503, busy-lock retry, missing/expired/wrong-key token, symbol/side/payload mismatch |
+| Approval-token tests | `pytest tests/test_security/test_approval_token.py -q` | **12 passed** — round-trip binding, canonical hash, expiry, wrong key, access-token rejection, wrong audience/type/claims, default-secret refusal, auth-route rejection |
 | Schema tests | `pytest tests/test_schema.py -q` | **16 passed** — 21 tables, ledger/idempotency columns, app_settings, init/schema parity, migration splitter |
 | Worker tests | `pytest tests/test_paper_trading_worker.py -q` | **13 passed** — ledger delegation, locked symbol hydration |
 | Alembic | `python -m alembic heads` | **`0006_improvement_history (head)`** |
@@ -118,6 +120,9 @@ lock instead of overwriting each other.
 | Real PostgreSQL proof | Fresh `upgrade head` and P1-A schema → `stamp 0002_paper_ledger` → `upgrade head` both produced the column/index. A duplicate `client_order_id` was rejected before and after restart; exactly one order and one open position remained. |
 | Frontend client | `frontend/src/lib/api.ts::executeTrade` now sends the approved-only shape. It remains unused by pages; no UI bypass exists. |
 
+ADR-025 later added the signed `approval_token`; the wrapper types it as required and is
+still unused, so no page needs a change.
+
 P1-B closes the raw-body `/execute` gap and the duplicate-order half of P1.3. P1-C closes
 the lost-update half.
 
@@ -134,8 +139,8 @@ the lost-update half.
 
 P1-C closes the concurrent-writer gap for paper state. The lock is database-wide, not
 per-account; that is acceptable at single-user scale. Reads do not take the advisory lock
-because each process has its own cache. Role authorization is closed by P1.6; a signed
-signal token (P2) remains open.
+because each process has its own cache. Role authorization is closed by P1.6, and the
+signed signal token is closed by ADR-025.
 
 ## P1.4 — real-PostgreSQL integration in CI (committed, verified 2026-10-21)
 
@@ -416,12 +421,24 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Tests | `pytest tests/test_web_collector.py tests/test_client.py tests/test_config.py -q` → **55 passed**; the roster's free-only shape is also enforced by `tests/test_client.py::TestFreeOnlyModelRoster`. |
 | Runtime scope | The `web-automation` extra installs `browser-use` and `playwright`; CI installs neither a browser nor a live key. The policy and construction are unit-tested with fakes, so a live browser-use run remains an optional, manually verified path. |
 
+## Signed trade approvals (verified 2026-10-28)
+
+| Piece | Evidence |
+|---|---|
+| Approval-only run | `AgentState.execute_trades` defaults to `true`. `Supervisor.run_analysis(..., execute=False)` sets it false, and `_route_from_risk` routes an approved signal to `journal` instead of `execution`, so no fill occurs. |
+| Issuance | `POST /signal` with `execute=false` returns `approval`, `approval_token`, and `approval_expires_at` for an approved long/short signal. `execute` must be a boolean; a rejected or flat signal returns `null`. |
+| Token claims | `backend/core/security.py` signs `typ=trade_approval`, `iss=ares-ai`, `aud=paper-execute`, `iat`, `exp`, `jti`, `symbol`, `side`, and `approval_hash`. The hash is SHA-256 over canonical sorted-key compact JSON of the typed payload. |
+| Lifetime | `APPROVAL_TOKEN_EXPIRE_MINUTES` defaults to **5** and is bounded **1–30**. An empty or shipped-default `JWT_SECRET_KEY` fails issuance with **503** and verification with an error, so a deployment cannot mint forgeable approvals. |
+| Verification | `/execute` checks signature, expiry, type, audience, issuer, symbol, side, and payload digest before consensus or any ledger work. Invalid/expired → **401** with `WWW-Authenticate: Bearer`; a valid token for a different symbol/side/payload → **422**. |
+| Unchanged gates | Consensus, Risk approval, the 2% equity cap, and `client_order_id` idempotency still run after the token check. The token is a bearer capability, not single-use; a duplicate `client_order_id` still returns **409**. |
+| Tests | `pytest tests/test_trading_router.py tests/test_analysis_router.py tests/test_security/test_approval_token.py tests/test_supervisor.py tests/test_config.py -q` → **125 passed** (round-trip, expiry, wrong key, access-token rejection, wrong audience/type/claims, default-secret refusal, symbol/side/payload mismatch, issuance gating, approval-only routing, bounded lifetime, approval token rejected as an API credential). |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
 |---|---|---|---|
 | 1 | ~~Concurrent paper-ledger writes are last-writer-wins~~ | Closed by P1-C: writers serialize on `pg_try_advisory_xact_lock` across API/worker/runner, with an in-process cache lock. Busy writers fail closed with 503. | ~~P1~~ fixed |
-| 2 | `/execute` trusts the authenticated caller's agent payload | The server recomputes consensus and caps size, but an API-key holder can supply synthetic Market Analyst/Quant/Risk outputs. There is no signed or expiring signal token. The API key remains the trust boundary. | P2 |
+| 2 | ~~`/execute` trusts the authenticated caller's agent payload~~ | Closed by ADR-025: `/signal` with `execute=false` stops after risk and returns a short-lived signed JWT bound to the symbol, side, and typed payload digest; `/execute` verifies signature, expiry, type, audience, issuer, and the digest before consensus. Invalid/expired → 401, mismatch → 422. The token is a bearer capability, not single-use; `client_order_id` remains the duplicate-order guard. | ~~P2~~ fixed |
 | 3 | ~~No role-based authorization on trading/live routes~~ | Closed by P1.6: viewer JWTs get 403 on `/execute` and all live controls; operator+ required; JWT role claim and API-key mapping tested on the real routes. | ~~P1~~ fixed |
 | 4 | ~~`mypy` fails~~ | Closed: the 22 errors in 8 test/script files are fixed, `mypy .` is clean on 184 files, and CI run 39742069953 passed `lint`. | ~~P1~~ fixed |
 | 5 | ~~`/analyze` concurrency/cost control absent~~ | Closed 2026-10-28: `backend/services/analysis_control.py` provides a bounded per-session state store, a process-wide semaphore (default one run), a rolling hourly run budget, a stage-start deadline, and idempotent lease release. `/analyze` and `/analyze/stream` reject extra starts with **429**; `/signal` waits up to `ANALYSIS_QUEUE_TIMEOUT_SECONDS` and returns **504** only when the deadline fires before execution starts. `/agents/status?session_id=` reads a specific run. | ~~P1~~ fixed |

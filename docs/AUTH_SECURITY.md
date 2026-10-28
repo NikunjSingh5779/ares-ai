@@ -3,8 +3,8 @@
 
 > The safety rules are non-negotiable: see `docs/01-SPEC.md`. Structural
 > rationale is in `docs/04-DECISIONS.md` (ADR-009 auth, ADR-010 kill switch,
-> ADR-011 live opt-in, ADR-016 roles, ADR-024 shared arm epoch). This file explains the current
-> implementation and its known limits.
+> ADR-011 live opt-in, ADR-016 roles, ADR-024 shared arm epoch, ADR-025 signed
+> approvals). This file explains the current implementation and its known limits.
 
 ## Authentication
 
@@ -41,6 +41,34 @@ role.
   `/live/kill` remains usable during a database outage.
 - Role changes take effect on the next login; there is no token revocation
   list.
+
+## Signed trade approvals
+
+`/execute` is a second gate on top of authentication: a credential alone cannot
+execute a trade. The caller must present an `approval_token` minted by
+`POST /signal` with `execute=false` after the pipeline approved a long or short
+signal.
+
+- The token is a JWT signed with `JWT_SECRET_KEY` (HS256 by default) and carries
+  `typ=trade_approval`, `iss=ares-ai`, `aud=paper-execute`, `iat`, `exp`, `jti`,
+  `symbol`, `side`, and `approval_hash`.
+- `approval_hash` is SHA-256 over canonical sorted-key compact JSON of the typed
+  Market Analyst/Quant/Risk payload. `/execute` recomputes it from the submitted
+  payload and compares in constant time.
+- Lifetime is `APPROVAL_TOKEN_EXPIRE_MINUTES` (default 5, bounded 1–30).
+  Verification rejects expired tokens before any ledger work.
+- A token for a different symbol, side, or payload is rejected even though the
+  signature is valid.
+- Issuance and verification refuse an empty or shipped-default `JWT_SECRET_KEY`.
+  `/signal` returns **503** rather than minting a forgeable approval.
+- Login access tokens do not carry `typ=trade_approval`, so they cannot be
+  replayed against `/execute`; approval tokens carry no `role` claim and are not
+  accepted by normal authenticated routes.
+
+The token is a short-lived **bearer capability, not a single-use nonce**. Anyone
+holding it within the expiry window can submit the bound payload. Treat it like a
+credential, do not log it, and mint a fresh one per execution attempt. Duplicate
+order protection remains `client_order_id`, which is unique per paper account.
 
 ## Secrets
 
@@ -90,12 +118,14 @@ Never weaken a gate to make a test pass or to “speed things up.”
 
 ## Known security gaps
 
-- **`/execute` trust boundary:** the route re-runs consensus and caps size, but
-  an authenticated caller supplies the agent payload. A signed/expiring signal
-  record is a P2 design item.
 - **API key role mapping:** every API-key holder maps to `admin`; use JWTs when
   distinct roles are required.
+- **Approval token replay:** tokens are short-lived but not single-use. Within the
+  expiry window the same token can be submitted again; `client_order_id` prevents
+  a second position for the same key. A single-use store is a deferred hardening
+  step.
 - **JWT revocation:** no revocation list; role changes apply on next login.
+  Rotating `JWT_SECRET_KEY` invalidates every outstanding approval token.
 - **Metrics scope:** Prometheus counters are process-local and cumulative per
   API process; a multi-worker deployment would need multiprocess aggregation.
 - **`/analyze` isolation:** runs share a process-wide gate (default one run),

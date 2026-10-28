@@ -7,11 +7,20 @@ or the runner loop in `scripts/run_live.py`.
 ## Paper path
 Two callers share one ledger:
 
-- **Pipeline:** `agents/execution.py` → `PaperTradingLedger.execute_signal()`.
-- **API:** `POST /api/v1/execute` → validate typed Market Analyst, Quant, and Risk
-  approvals → re-run `ConsensusEngine.evaluate` → derive price from the approved
-  `current_price` and quantity from `risk.max_position_size` → enforce the 2% equity cap
-  → `PaperTradingLedger.execute_signal()`.
+- **Pipeline:** `agents/execution.py` → `PaperTradingLedger.execute_signal()`. The
+  graph reaches this node only when `AgentState.execute_trades` is true (the default).
+- **API:** `POST /api/v1/execute` → verify the signed `approval_token` (signature,
+  expiry, type, audience, issuer, symbol, side, payload digest) → validate typed Market
+  Analyst, Quant, and Risk approvals → re-run `ConsensusEngine.evaluate` → derive price
+  from the approved `current_price` and quantity from `risk.max_position_size` → enforce
+  the 2% equity cap → `PaperTradingLedger.execute_signal()`.
+
+`POST /signal` is the only issuer of approval tokens. With `execute=false` it runs the
+graph through risk, skips this node, and returns the typed approval plus a short-lived
+JWT signed with `JWT_SECRET_KEY` (claims and limits: ADR-025). With the default
+`execute=true` it executes immediately and returns no token. `/execute` rejects an
+invalid or expired token with **401** and a token that does not match the submitted
+symbol, side, or payload with **422**; neither reaches the ledger.
 
 The ledger refreshes the `PaperTradingEngine` cache from `PaperLedgerRepository`, applies
 configured commission and adverse slippage, then writes `positions`, entry/exit orders,
@@ -66,9 +75,11 @@ marks; the ledger writes SL/TP closures so normal exits count and survive restar
 
 ## Known gaps
 `get_open_orders()` returns `[]`; no balance reconciliation. Paper writers serialize on a
-database-wide advisory lock (per account would be finer); `/execute` is approved-only but
-trusts the authenticated caller's agent payload, since there is no signed/expiring signal
-token. `ExecutionAgent` keeps a legacy in-memory/direct-SQL fallback when constructed
+database-wide advisory lock (per account would be finer). `/execute` requires a signed,
+expiring approval token from `/signal` with `execute=false`, so an authenticated caller
+cannot submit a fabricated agent payload; the token is not single-use, and
+`client_order_id` remains the duplicate-order guard. `ExecutionAgent` keeps a legacy
+in-memory/direct-SQL fallback when constructed
 without a `ledger`; production paths (`backend/routers/analysis.py`, `scripts/run_live.py`)
 always pass the ledger, and the fallback bypasses the writer lock — do not use it for paper
 writes. Trading and live controls require `operator` or higher through

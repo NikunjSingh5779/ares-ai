@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,8 +10,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agents.state import MarketAnalystOutput, QuantOutput, RiskOutput
+from backend.core.security import create_trade_approval_token
 from backend.main import app
 from backend.routers import trading
+from backend.schemas.trading import TradeApproval
+from configs.settings import settings
 from paper_trading.engine import PortfolioSummary
 from paper_trading.repository import PaperLedgerBusyError, PaperLedgerError, PaperOrderConflictError
 
@@ -81,13 +85,33 @@ def _body(
     side: str = "long",
     approval: dict[str, Any] | None = None,
     client_order_id: str = "order-1",
+    approval_token: str | None = None,
+    token_symbol: str = "BTC-USD",
+    token_side: str | None = None,
+    expires_delta: timedelta | None = None,
 ) -> dict[str, Any]:
+    resolved_approval = approval or _approval(direction=side)
+    token = approval_token
+    if token is None:
+        token = create_trade_approval_token(
+            symbol=token_symbol,
+            side=token_side or side,
+            approval=TradeApproval.model_validate(resolved_approval),
+            expires_delta=expires_delta,
+        ).token
     return {
         "client_order_id": client_order_id,
         "symbol": "BTC-USD",
         "side": side,
-        "approval": approval or _approval(direction=side),
+        "approval": resolved_approval,
+        "approval_token": token,
     }
+
+
+@pytest.fixture(autouse=True)
+def _configure_approval_signing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mint and verify approval tokens with a non-default test key."""
+    monkeypatch.setattr(settings, "jwt_secret_key", "test-approval-secret")
 
 
 @pytest.fixture
@@ -177,6 +201,78 @@ def test_accepts_approved_long_and_short(
 
     assert response.status_code == 200, response.text
     assert fake_ledger.execute_signal.await_args.kwargs["side"] == side
+
+
+def test_rejects_missing_approval_token(client: TestClient, fake_ledger: MagicMock) -> None:
+    body = _body()
+    body.pop("approval_token")
+
+    response = client.post("/api/v1/execute", json=body)
+
+    assert response.status_code == 422
+    fake_ledger.execute_signal.assert_not_awaited()
+
+
+def test_rejects_expired_approval_token(client: TestClient, fake_ledger: MagicMock) -> None:
+    response = client.post(
+        "/api/v1/execute",
+        json=_body(expires_delta=timedelta(seconds=-1)),
+    )
+
+    assert response.status_code == 401
+    assert "invalid or expired" in response.json()["detail"]
+    fake_ledger.execute_signal.assert_not_awaited()
+
+
+def test_rejects_token_signed_with_a_different_key(
+    client: TestClient,
+    fake_ledger: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = _body()
+    monkeypatch.setattr(settings, "jwt_secret_key", "different-approval-secret")
+
+    response = client.post("/api/v1/execute", json=body)
+
+    assert response.status_code == 401
+    fake_ledger.execute_signal.assert_not_awaited()
+
+
+def test_rejects_token_for_a_different_symbol(client: TestClient, fake_ledger: MagicMock) -> None:
+    response = client.post("/api/v1/execute", json=_body(token_symbol="ETH-USD"))
+
+    assert response.status_code == 422
+    assert "symbol and side" in response.json()["detail"]
+    fake_ledger.execute_signal.assert_not_awaited()
+
+
+def test_rejects_token_for_a_different_side(client: TestClient, fake_ledger: MagicMock) -> None:
+    response = client.post("/api/v1/execute", json=_body(side="long", token_side="short"))
+
+    assert response.status_code == 422
+    assert "symbol and side" in response.json()["detail"]
+    fake_ledger.execute_signal.assert_not_awaited()
+
+
+def test_rejects_token_bound_to_a_different_approval(
+    client: TestClient,
+    fake_ledger: MagicMock,
+) -> None:
+    token = create_trade_approval_token(
+        symbol="BTC-USD",
+        side="long",
+        approval=TradeApproval.model_validate(_approval()),
+    ).token
+    tampered = _approval(risk_score=41.0)
+
+    response = client.post(
+        "/api/v1/execute",
+        json=_body(approval=tampered, approval_token=token),
+    )
+
+    assert response.status_code == 422
+    assert "submitted approval payload" in response.json()["detail"]
+    fake_ledger.execute_signal.assert_not_awaited()
 
 
 def test_rejects_low_confidence_even_if_caller_claims_approval(

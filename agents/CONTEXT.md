@@ -26,6 +26,8 @@ modules gate. This is the controller + model layer of the pipeline.
    falls back to the rule-based result on failure, and records `used_fallback`.
 3. Consensus and Risk are deterministic nodes — they never call an LLM.
 4. Execution delegates to `paper_trading/` or `live_trading/`; Journal/Reflection/Memory persist.
+   When `AgentState.execute_trades` is false (approval-only `/signal`), the graph stops
+   after Risk and no trade is placed.
 5. After the graph, the optional supervisor `post_run_hook` persists the reflection run and
    runs improvement analysis against committed history. It is best-effort: a failure is
    logged and never changes the pipeline result.

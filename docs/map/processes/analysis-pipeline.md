@@ -14,7 +14,7 @@ request
   → fan-out: Market Analyst │ Quant │ News │ Vision   (parallel)
   → Consensus (deterministic: both >80% and same non-flat direction)
   → Risk (deterministic + optional LLM, portfolio/drawdown checks)
-  → Execution (paper or live)
+  → Execution (paper or live) — skipped when `execute_trades` is false
   → Journal (persist outcome + lessons)
   → Reflection (evaluate prediction vs outcome)
   → Memory (Chroma/in-memory recall + consolidation)
@@ -31,6 +31,9 @@ and the outcome is recorded as no-trade.
 ## Outputs
 - `AgentState` with every node’s typed output.
 - Paper/live trade row (via Execution + Journal) when approved.
+- `POST /signal` with `execute=false` returns the typed approval and a short-lived
+  signed `approval_token` for `/execute` instead of placing the trade; the graph stops
+  after risk. Rejected or flat signals return no token.
 - `reflection_runs` + advisory `improvement_records` when the post-run hook succeeds;
   a failure is logged and does not change the result.
 - A bounded per-session `AnalysisStateStore` in the API process
@@ -54,6 +57,10 @@ and the outcome is recorded as no-trade.
   `tests/test_supervisor.py`, this card.
 - Change the deadline check or execution clearing → `agents/supervisor.py`,
   `agents/state.py`, `tests/test_supervisor.py`, this card.
+- Change approval-only mode or token issuance → `agents/state.py`,
+  `agents/supervisor.py`, `backend/core/security.py`, `backend/routers/analysis.py`,
+  `backend/routers/trading.py`, `tests/test_analysis_router.py`,
+  `tests/test_security/test_approval_token.py`, ADR-025, this card.
 - Change the post-run hook → `agents/supervisor.py`, `backend/services/improvement_service.py`,
   `scripts/run_live.py`, `tests/test_supervisor.py`, `tests/test_improvement_service.py`.
 

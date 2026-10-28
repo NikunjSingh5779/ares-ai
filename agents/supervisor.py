@@ -451,10 +451,10 @@ def _route_from_consensus(state: AgentState) -> str:
 
 
 def _route_from_risk(state: AgentState) -> str:
-    """After risk, route based on approval."""
-    if state.risk and state.risk.approved:
+    """After risk, route based on approval and whether execution is enabled."""
+    if state.risk and state.risk.approved and state.execute_trades:
         return "execution"
-    # Rejected — skip execution, go to journal
+    # Rejected or approval-only — skip execution, go to journal
     return "journal"
 
 
@@ -932,13 +932,21 @@ class Supervisor:
         symbol: str,
         request: str,
         timeout_seconds: float | None = None,
+        execute: bool = True,
     ) -> AgentState:
-        """Convenience: run a full analysis pipeline for a symbol."""
+        """Convenience: run a full analysis pipeline for a symbol.
+
+        Args:
+            execute: When false, the graph stops after risk and does not place a
+                paper trade. ``/signal`` uses this to return a signed approval
+                for the separate ``/execute`` endpoint.
+        """
         return await self.run(
             symbol=symbol,
             request=request,
             request_type="analysis",
             timeout_seconds=timeout_seconds,
+            execute_trades=execute,
         )
 
     async def stream_analysis(

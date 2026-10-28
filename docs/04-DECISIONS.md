@@ -256,9 +256,9 @@ A duplicate returns **409 Conflict** and never creates a second position. A fail
 conflicting write restores the hydrated cache snapshot.
 
 **Consequences:** A request without approvals cannot create a position, and an ambiguous
-retry cannot duplicate a fill. The authenticated API key remains the trust boundary: a
-credential holder can still supply synthetic agent outputs, because there is no signed or
-expiring signal token yet. This decision did not add row locking or optimistic versions;
+retry cannot duplicate a fill. The authenticated API key remained the trust boundary at the
+time: a credential holder could still supply synthetic agent outputs until ADR-025 added a
+signed, expiring approval token. This decision did not add row locking or optimistic versions;
 concurrent API/worker/runner writers could still lose an update until ADR-015 (P1-C).
 Existing
 deployments must run `alembic upgrade head` for `0003_order_idempotency`. Generated trades
@@ -723,3 +723,60 @@ One human re-arm must clear every process that shares the store.
 without restarting them. A runner that latched before its first successful read still
 needs a second arm; the switch never auto-arms. Redis cleanup between tests must remove
 the epoch key as well as the active/reason/timestamp keys.
+
+---
+
+## ADR-025 — Signed, expiring approval tokens bind `/execute` to a server-generated signal
+
+**Status:** accepted 2026-10-28.
+
+**Context:** P1-B made `/execute` refuse unapproved payloads, re-run consensus, and cap
+size at 2% of equity. The payload itself still came from the caller, so an authenticated
+API-key holder could synthesize a Market Analyst/Quant/Risk triple that passed every
+check. `docs/02-STATUS.md` tracked this as gap #2. The pipeline already computed a real
+approval in `/signal`; the missing link was proving that a submitted payload was the one
+the server produced.
+
+**Decision:**
+- `POST /signal` accepts `execute` (boolean, default `true`). With `execute=false`, the
+  graph stops after the risk gate (`AgentState.execute_trades=false` routes to journal
+  instead of execution) and the route returns the typed `TradeApproval` plus a signed
+  `approval_token` and `approval_expires_at`.
+- The token is a JWT signed with `JWT_SECRET_KEY` using the configured algorithm. Claims
+  are `typ=trade_approval`, `iss=ares-ai`, `aud=paper-execute`, `iat`, `exp`, `jti`,
+  `symbol`, `side`, and `approval_hash`. The hash is SHA-256 over canonical compact,
+  sorted-key JSON of the typed approval, so field order cannot change it.
+- Lifetime is `APPROVAL_TOKEN_EXPIRE_MINUTES` (default 5, bounded 1–30). A leaked token
+  is therefore useless after a short window; callers mint a fresh one by re-running
+  `/signal` with `execute=false`.
+- `POST /execute` requires `approval_token` and verifies signature, expiry, type,
+  audience, and issuer before any ledger work. It then compares `symbol` and `side`,
+  and finally the payload hash. Invalid/expired tokens return **401** with
+  `WWW-Authenticate: Bearer`; a valid token for a different symbol, side, or payload
+  returns **422**. Consensus, the risk gate, the 2% cap, and `client_order_id`
+  idempotency still run after the token check.
+- Issuance and verification both refuse an empty or shipped-default `JWT_SECRET_KEY`,
+  so an unconfigured deployment cannot mint forgeable approvals. `/signal` returns
+  **503** in that case.
+- `/signal` with the default `execute=true` keeps its previous behavior and executes the
+  paper trade immediately; it does not return an approval token.
+
+**Alternatives considered:**
+- *Persist a `signals` row and reference it by ID.* Rejected for this slice: it adds a
+  migration and a new store dependency for the same binding. A signed capability needs
+  no extra table and no cleanup job.
+- *Single-use tokens backed by Redis.* Deferred: replay of an unexpired token can only
+  repeat the same approved trade, and `client_order_id` already prevents a duplicate
+  position. A single-use store would add a failure mode that can block legitimate
+  retries.
+- *Trust agent-to-agent signatures instead of a server token.* Rejected: agents run
+  in-process; there is no separate agent identity to sign with, and the API caller is
+  the untrusted party.
+
+**Consequences:** `/execute` no longer accepts a hand-built approval even from an
+authenticated operator; it must round-trip a payload issued by `/signal`. The token is a
+short-lived bearer capability, not a single-use nonce, so possession within the window is
+sufficient — treat it like a credential. Rotating `JWT_SECRET_KEY` invalidates all
+outstanding approvals. Login access tokens carry no `typ=trade_approval` claim and are
+rejected by `/execute`. The frontend `executeTrade()` wrapper is unused, so no UI change
+is required; any future caller must send the new field.

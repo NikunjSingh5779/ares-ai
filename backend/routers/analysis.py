@@ -32,6 +32,8 @@ from agents.router import ModelRouter
 from agents.state import AgentState, PipelineStatus
 from agents.supervisor import AnalysisDeadlineExceededError, Supervisor
 from backend.core.metrics import record_analysis_run
+from backend.core.security import ApprovalTokenError, create_trade_approval_token
+from backend.schemas.trading import TradeApproval
 from backend.services.analysis_control import (
     AnalysisBudgetExceededError,
     AnalysisBusyError,
@@ -620,12 +622,22 @@ async def signal(body: dict[str, Any]) -> dict[str, Any]:
     reaches the deadline before execution returns 504. The deadline is checked
     between stages, so it cannot cancel an execution stage after a fill was
     accepted.
+
+    By default the pipeline executes a paper trade. With ``execute=false`` it
+    stops after risk and returns the typed approval plus a short-lived signed
+    ``approval_token`` for the separate ``POST /execute`` endpoint. The token
+    binds the exact payload, symbol, and side; it is only issued for an
+    approved long/short signal.
     """
     symbol = _symbol_from(body)
     request_text = _request_from(body)
 
     if not symbol:
         raise HTTPException(status_code=400, detail="symbol is required")
+
+    execute = body.get("execute", True)
+    if not isinstance(execute, bool):
+        raise HTTPException(status_code=422, detail="execute must be a boolean")
 
     # Build the supervisor before consuming a run slot so a transient
     # configuration failure does not burn the hourly budget.
@@ -653,6 +665,7 @@ async def signal(body: dict[str, Any]) -> dict[str, Any]:
                 symbol=symbol,
                 request=request_text,
                 timeout_seconds=gate.timeout_seconds,
+                execute=execute,
             )
         except AnalysisDeadlineExceededError as exc:
             status = "timeout"
@@ -682,6 +695,21 @@ async def signal(body: dict[str, Any]) -> dict[str, Any]:
         # We must convert to dict because previous logic expected state to be a dict
         state_dict = _state_to_dict(state)
 
+        approval = _trade_approval_from_state(state) if not execute else None
+        approval_token = None
+        approval_expires_at = None
+        if approval is not None:
+            try:
+                issued = create_trade_approval_token(
+                    symbol=state.symbol,
+                    side=approval.market_analyst_output.direction,
+                    approval=approval,
+                )
+            except ApprovalTokenError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            approval_token = issued.token
+            approval_expires_at = issued.expires_at.isoformat()
+
         return {
             "status": "ok",
             "approved": state_dict.get("consensus", {}).get("approved", False)
@@ -700,12 +728,35 @@ async def signal(body: dict[str, Any]) -> dict[str, Any]:
             "rationale": state_dict.get("execution", {}).get("rationale", "No trade")
             if state_dict.get("execution")
             else "No trade",
+            "approval": approval.model_dump(mode="json") if approval is not None else None,
+            "approval_token": approval_token,
+            "approval_expires_at": approval_expires_at,
             "pipeline_status": state_dict.get("pipeline_status", {}),
             "errors": state_dict.get("errors", []),
         }
     finally:
         lease.release()
         record_analysis_run(status)
+
+
+def _trade_approval_from_state(state: AgentState) -> TradeApproval | None:
+    """Build a typed approval only for a fully approved long/short signal."""
+    market = state.market_analyst
+    quant = state.quant
+    risk = state.risk
+    consensus = state.consensus
+    if market is None or quant is None or risk is None or consensus is None:
+        return None
+    if not consensus.approved or not risk.approved:
+        return None
+    if market.direction not in {"long", "short"} or quant.direction != market.direction:
+        return None
+    return TradeApproval(
+        market_analyst_output=market,
+        quant_output=quant,
+        risk_output=risk,
+        vision_output=state.vision,
+    )
 
 
 def _state_to_dict(state: AgentState) -> dict[str, Any]:

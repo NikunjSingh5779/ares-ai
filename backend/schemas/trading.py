@@ -119,7 +119,9 @@ class ExecuteTradeRequest(BaseModel):
 
     Price and quantity are intentionally absent: they are derived from the
     approved Market Analyst/Risk payload so a caller cannot submit a favorable
-    fill or an oversized order.
+    fill or an oversized order. ``approval_token`` is a short-lived signed
+    token issued by ``POST /signal`` with ``execute=false``; it binds the exact
+    payload so a caller cannot fabricate agent outputs.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -134,3 +136,9 @@ class ExecuteTradeRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=20)
     side: Literal["long", "short"]
     approval: TradeApproval
+    approval_token: str = Field(
+        ...,
+        min_length=1,
+        max_length=4096,
+        description="Short-lived signed approval token issued by POST /signal with execute=false",
+    )
