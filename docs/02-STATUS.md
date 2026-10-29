@@ -1,9 +1,10 @@
 <!-- docs/02-STATUS.md -->
 # Status — verified state
 
-**Last verified:** 2026-10-28
-**Branch:** `master` — clean, equal to `origin/master` (`4583f6f`). PR #130
-squash-merged the signed `/execute` approval token, closing P2 gap #2. PR #129
+**Last verified:** 2026-10-30
+**Branch:** `master` at `3c36292` — the scheduled model-catalog workflow is
+implemented and verified locally, not yet committed. PR #130 squash-merged the
+signed `/execute` approval token, closing P2 gap #2. PR #129
 squash-merged the web collector free-only fix, closing P2 gap #18. PR #128
 squash-merged the shared Redis kill-switch arm epoch, closing P1 gap #6. PR #127
 squash-merged the analysis-control slice (`backend/services/analysis_control.py`,
@@ -41,11 +42,11 @@ five jobs, including `postgres-integration` with all three PostgreSQL modules. T
 
 | Check | Command | Result |
 |---|---|---|
-| Test suite | `pytest tests/ -q` | **1374 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`); 84.23% coverage |
+| Test suite | `pytest tests/ -q` | **1379 passed, 3 skipped** (all three PostgreSQL integration modules skip without `ARES_TEST_POSTGRES_URL`); 84.23% coverage |
 | Coverage | `pytest tests/ -q` | **84.23%** default (gate 78%); the ledger module adds 5 tests, the strategy module adds 12, and the improvement module adds 6 when the URL is set |
 | Role authorization | `pytest tests/test_security/test_role_auth.py -q` | **18 passed** — viewer/operator/admin matrix, API-key mapping, missing/unknown role denial, real-route viewer 403s |
 | Health and metrics | `pytest tests/test_monitoring -q` | **34 passed** — 503 on each degraded dependency, 200 only when all answer, Prometheus-backed JSON snapshot, `/metrics` exposition mount |
-| Infra config | `pytest tests/test_infra_config.py -q` | **18 passed** — build args, container service hosts, Chroma pin, LF entrypoint, alert rules, single monitoring set, dashboard JSON |
+| Infra config | `pytest tests/test_infra_config.py -q` | **24 passed** — build args, container service hosts, Chroma pin, LF entrypoint, alert rules, single monitoring set, dashboard JSON, scheduled model-catalog workflow contract |
 | Type check | `mypy .` | **clean, 215 source files** |
 | Structure | `pytest tests/test_icm_structure.py -q` | **20 passed** — contracts exist, entry file small, links resolve |
 | Market candles | `pytest tests/test_market_router.py -q` | **13 passed** — validation, ordering, deduplication, 404/502/504, source selection |
@@ -292,7 +293,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Frontend chat | `frontend/src/app/chat/page.tsx` keeps the conversation in React state, sends the last 20 turns per request, shows model/fallback metadata, keeps a failed user turn visible, offers retry, and uses an empty state that states the read-only boundary. The log has `role="log"`/`aria-live`, errors have `role="alert"`, the input has a real label and `aria-describedby`, the log exposes `aria-busy`, and Enter sends. |
 | Tests | `pytest tests/test_chat_router.py tests/test_chat_service.py -q` — **17 passed**; `tests/test_security/test_route_auth.py` adds the unauthenticated **401**. `pnpm test` — **18 passed** in 4 files, including a chat-page test that proves the second request contains the prior user and assistant turns. |
 | Verification (at that slice) | `pytest tests/ -q` — **1214 passed, 1 skipped / 81.31%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **203 source files**; `pnpm lint`, `pnpm typecheck`, `pnpm test` (**18 passed**), and `pnpm build` pass. No safety gate, live default, promotion rule, or test assertion changed. |
-| Not yet run | No live OpenRouter request was made from this slice; model availability is still checked by the existing roster probe rather than by a real request in tests. Catalog drift remains gap #9. |
+| Not yet run | No live OpenRouter request was made from this slice; model availability is still checked by the existing roster probe rather than by a real request in tests. Catalog drift is now covered by the scheduled workflow (gap #9). |
 
 ## Phase 2 — seventh slice: opt-in local chat fallback (verified 2026-10-24)
 
@@ -434,6 +435,17 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Unchanged gates | Consensus, Risk approval, the 2% equity cap, and `client_order_id` idempotency still run after the token check. The token is a bearer capability, not single-use; a duplicate `client_order_id` still returns **409**. |
 | Tests | `pytest tests/test_trading_router.py tests/test_analysis_router.py tests/test_security/test_approval_token.py tests/test_supervisor.py tests/test_config.py -q` → **125 passed** (round-trip, expiry, wrong key, access-token rejection, wrong audience/type/claims, default-secret refusal, symbol/side/payload mismatch, issuance gating, approval-only routing, bounded lifetime, approval token rejected as an API credential). |
 
+## Scheduled model-catalog validation (verified 2026-10-30)
+
+| Piece | Evidence |
+|---|---|
+| Workflow | `.github/workflows/model-catalog.yml` runs every Monday at **06:17 UTC** (`17 6 * * 1`) and on `workflow_dispatch`. It is separate from `ci.yml`, so PR feedback stays fast. |
+| Probe | The job runs `uv run python scripts/test_free_models.py` with no `--quiet-warn-only`: it exits **1** only when a critical agent (`market_analyst`, `quant`, `risk`, `supervisor`) has no working primary or fallback. |
+| Credential | The job requires the `OPENROUTER_API_KEY` repository secret. A missing secret fails at an explicit `::error::` guard instead of producing 43 misleading `NO_KEY` rows. |
+| Timeout | The job allows **45 minutes**. A full 43-entry run is normally ~11 minutes at `rate_limit_rpm: 4`, with up to 30 s per probe. |
+| Tests | `pytest tests/test_infra_config.py -q` → **24 passed**, including the schedule/dispatch triggers, the single probe command, the secret wiring and missing-secret guard, and the job timeout. |
+| Not yet run | The scheduled workflow has not executed on GitHub Actions. The first run is a manual `workflow_dispatch` after merge; it needs the `OPENROUTER_API_KEY` repository secret. |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
@@ -446,7 +458,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 6 | ~~Kill-switch latch is process-local~~ | Closed 2026-10-28: `arm()` publishes an `arm:` token at `ares:kill_switch:arm_epoch` atomically with clearing the active state; a latched process clears only on an `arm:` token different from its observed baseline. Recovery, a missing token, a republished `baseline:`, or a flushed store never clears the latch. A process that latched before its first successful read needs one further human arm (fail-closed). | ~~P1~~ fixed |
 | 7 | ~~No automated PostgreSQL integration test in CI~~ | Closed by P1.4/P1.4b: `postgres-integration` runs hydrate → fill → restart → close, duplicate IDs, concurrent fills, and the busy lock, plus the strategy route → service → JSONB round-trip on `postgres:16-alpine`; the local default suite skips all three modules without `ARES_TEST_POSTGRES_URL`. | ~~P2~~ fixed |
 | 8 | ~~Remaining UI polling and accessibility gaps~~ | Closed 2026-10-22: `/live` fetches status/audit concurrently, pauses when hidden, guards in-flight refreshes, aborts on unmount, and force-refreshes after controls; `usePipelinePolling` single-polls with abort/backoff; `api.ts` has bounded timeouts and typed errors; skip link, navigation/dialog ARIA, labelled controls, and stronger muted-text contrast are in place. The 2026-10-24 audit (Lighthouse 13.5.0, axe-core 4.14.0) found and closed five more issues across the route shells. | ~~P2~~ fixed |
-| 9 | Live model-catalog removals are not checked in CI | the roster's free-only shape is now CI-tested (`tests/test_client.py::TestFreeOnlyModelRoster`), but `scripts/test_free_models.py` (live availability) is still manual and no workflow is scheduled | P2 |
+| 9 | ~~Live model-catalog removals are not checked in CI~~ | Closed 2026-10-30: `.github/workflows/model-catalog.yml` runs `scripts/test_free_models.py` weekly and on demand, fails when a critical agent has no working model, and requires the `OPENROUTER_API_KEY` repository secret. `tests/test_infra_config.py` pins the triggers, probe, secret guard, and timeout. The first GitHub Actions run is still pending. | ~~P2~~ fixed |
 | 10 | Existing deployments need a migration | `alembic upgrade head` is required for `0003_order_idempotency`, `0004_role_hierarchy`, `0005_app_settings`, and `0006_improvement_history` (plus P1-A columns). `0004` rewrites legacy `user` → `operator` and makes `viewer` the default; `0005` creates the singleton `app_settings` row and its trigger, so `/api/v1/settings` returns **503** until it is applied; `0006` creates `reflection_runs`/`improvement_records`, so improvement list/metrics return **503** until it is applied. `init.sql` only runs on first container start; the backend entrypoint stamps `0001` when `init.sql` initialized the schema, then applies the later idempotent revisions. Old short **positions** still cannot be inferred and default to long. | Operational |
 | 11 | ~~Local `.env` API key is the default placeholder~~ | Closed locally: a unique `API_SECRET_KEY` is set in `.env` (never committed), and authenticated `/api/v1/*` returns 200. Other environments must set their own key. | ~~Operational~~ fixed locally |
 | 12 | ~~Frontend lint/typecheck/test is not a CI job~~ | Closed 2026-10-22: ESLint 9 flat config (`pnpm lint`, zero warnings), `pnpm typecheck` (`tsc --noEmit`), and Vitest/Testing Library (**18 tests**) run in the `frontend` CI job before `pnpm build`. | ~~P2~~ fixed |

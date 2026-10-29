@@ -84,9 +84,12 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
       (2026-10-22; ESLint 9 + `tsc --noEmit` + Vitest, 18 tests now)
 - [x] CI validates the roster's free-only policy. (2026-10-26: #115 adds
       `tests/test_client.py::TestFreeOnlyModelRoster`, which runs in the `test` job.)
-- [ ] Scheduled live-catalog validation of the model roster so removals are
-      caught. (Verified 2026-10-28: `scripts/test_free_models.py` exists and is
-      documented, but `ci.yml` has no `schedule:` trigger and does not run it.)
+- [x] Scheduled live-catalog validation of the model roster so removals are
+      caught. (2026-10-30: `.github/workflows/model-catalog.yml` runs
+      `scripts/test_free_models.py` weekly and on `workflow_dispatch`, requires
+      the `OPENROUTER_API_KEY` repository secret, and fails when a critical agent
+      has no working model. `tests/test_infra_config.py` pins the trigger, probe,
+      secret guard, and timeout.)
 - [ ] Paper realism: gap-through stop fills, partial fills/liquidity,
       borrow/funding costs, per-symbol slippage. (Verified 2026-10-28: commission
       plus one global `paper_trading_slippage_pct` only; see

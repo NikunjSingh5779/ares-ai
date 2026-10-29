@@ -95,16 +95,19 @@ connectors or signals must not add another order call site.
 ---
 
 ## ADR-007 — The model roster has a universal fallback
-**Date:** 2026-10-20 · **Status:** **implemented at runtime** (2026-10-21); CI catalog check still pending
+**Date:** 2026-10-20 · **Status:** **implemented at runtime** (2026-10-21); scheduled catalog check added 2026-10-30
 
 **Decision:** `configs/models.yaml` contains only validated free IDs and declares
 `defaults.universal_fallback: open_router/openrouter/free`. `AgentModelConfig`
 appends that model after every explicit fallback (deduplicated). A catalog check
-(`scripts/test_free_models.py`) remains the manual validation tool.
+(`scripts/test_free_models.py`) remains the validation tool; `.github/workflows/model-catalog.yml`
+now runs it weekly and on demand.
 
 **Consequences:** A dead chain still reaches one validated free model. The roster was
 checked against the live OpenRouter catalog on 2026-10-21 (14 unique free models,
-all present). A CI job that detects future catalog removals remains Phase 3 work.
+all present). The scheduled workflow now detects future catalog removals: it requires
+the `OPENROUTER_API_KEY` repository secret and fails the run when a critical agent has
+no working primary or fallback. Its first GitHub Actions run is still pending.
 
 ---
 

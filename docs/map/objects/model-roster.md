@@ -40,7 +40,9 @@ rather than walking the router chain.
   gate skips the model without recording a breaker failure.
 
 **Change impact:**
-- Swap a model → YAML only; run the live-catalog check before merging.
+- Swap a model → YAML only. `.github/workflows/model-catalog.yml` probes the live
+  catalog weekly and on demand; run `scripts/test_free_models.py` locally before
+  merging a roster change.
 - Change retry/breaker → `agents/retry.py`, `circuit_breaker.py`, and their tests.
 - Add a provider → `agents/client.py` provider map + env var + `.env.example`.
 - Change local concurrency → `agents/local_gate.py` and `LOCAL_LLM_*` settings; keep
@@ -48,11 +50,14 @@ rather than walking the router chain.
 
 **Tests:** `tests/test_router.py`, `test_retry.py`, `test_circuit_breaker.py`,
 `test_queue.py`, `test_models.py`, `test_local_gate.py`, `test_client.py`,
-`test_chat_service.py`, `test_web_collector.py`, `tests/test_test_free_models.py`.
+`test_chat_service.py`, `test_web_collector.py`, `tests/test_test_free_models.py`,
+and the workflow contract in `tests/test_infra_config.py`.
 
-**Known gaps:** catalog removals are not yet checked in CI. The roster was validated
-against the live OpenRouter catalog on 2026-10-21 (14 unique free models, all
-present). Rule-based fallbacks still hide model failures; the universal fallback
+**Known gaps:** catalog removals are checked weekly by
+`.github/workflows/model-catalog.yml` (requires the `OPENROUTER_API_KEY` repository
+secret), but that job has not yet run on GitHub Actions. The roster was last
+validated against the live OpenRouter catalog on 2026-10-21 (14 unique free models,
+all present). Rule-based fallbacks still hide model failures; the universal fallback
 only guarantees one last model attempt. The local model is chat-only for now; its
 `qwen3.6-35b-a3b-ud-q4_k_m` ID was smoke-tested against a live Strata server on
 2026-10-24.

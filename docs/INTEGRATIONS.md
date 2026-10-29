@@ -26,7 +26,9 @@ uv run python scripts/test_free_models.py
 ```
 
 Free models are routinely deprecated or rate-limited; a full chain failure
-rejects the trade rather than approving it.
+rejects the trade rather than approving it. CI runs the same probe weekly in
+`.github/workflows/model-catalog.yml` (requires the `OPENROUTER_API_KEY`
+repository secret).
 
 ## Market and research data
 
