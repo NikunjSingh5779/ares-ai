@@ -326,3 +326,87 @@ def test_fullstack_compose_uses_internal_service_hostnames() -> None:
     assert backend_env["REDIS_HOST"] == "redis"
     assert backend_env["CHROMA_HOST"] == "chromadb"
     assert backend_env["CHROMA_PORT"] == 8000
+
+
+# ── Scheduled model-catalog workflow ────────────────────────────────────
+
+MODEL_CATALOG_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "model-catalog.yml"
+
+
+def _workflow(path: Path) -> dict[Any, Any]:
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(data, dict), f"{path} must be a YAML mapping"
+    return data
+
+
+def _workflow_triggers(workflow: dict[Any, Any]) -> dict[Any, Any]:
+    # PyYAML resolves the YAML 1.1 key ``on`` to the boolean True.
+    triggers = workflow.get("on", workflow.get(True))
+    assert isinstance(triggers, dict), "the workflow must declare triggers"
+    return triggers
+
+
+def _workflow_steps(workflow: dict[Any, Any]) -> list[dict[Any, Any]]:
+    return [step for job in workflow["jobs"].values() for step in job.get("steps", [])]
+
+
+def _probe_steps(workflow: dict[Any, Any]) -> list[dict[Any, Any]]:
+    return [step for step in _workflow_steps(workflow) if "scripts/test_free_models.py" in str(step.get("run", ""))]
+
+
+def _job_for_step(workflow: dict[Any, Any], step: dict[Any, Any]) -> dict[Any, Any]:
+    return next(
+        job for job in workflow["jobs"].values() if any(candidate is step for candidate in job.get("steps", []))
+    )
+
+
+def test_model_catalog_workflow_is_scheduled_and_manual() -> None:
+    triggers = _workflow_triggers(_workflow(MODEL_CATALOG_WORKFLOW))
+
+    assert triggers.get("schedule") == [{"cron": "17 6 * * 1"}], "the weekly check must stay on Monday 06:17 UTC"
+    assert "workflow_dispatch" in triggers
+    # The job reads a repository secret; it must not run for PRs or every push.
+    assert "push" not in triggers
+    assert "pull_request" not in triggers
+
+
+def test_model_catalog_workflow_runs_the_probe_once() -> None:
+    workflow = _workflow(MODEL_CATALOG_WORKFLOW)
+    probes = _probe_steps(workflow)
+
+    assert len(probes) == 1, "the workflow must run the roster probe exactly once"
+    probe = probes[0]
+    assert probe["run"].strip() == "uv run python scripts/test_free_models.py"
+    assert not probe.get("continue-on-error"), "a failing probe must fail the job"
+    assert "if" not in probe, "the probe must not be conditional"
+    assert not _job_for_step(workflow, probe).get("continue-on-error"), "a failing probe must fail the job"
+
+
+def test_model_catalog_workflow_uses_the_repository_secret() -> None:
+    workflow = _workflow(MODEL_CATALOG_WORKFLOW)
+    probes = _probe_steps(workflow)
+
+    assert len(probes) == 1
+    job = _job_for_step(workflow, probes[0])
+    # The secret may be set at job or step level; both are valid.
+    env = {**job.get("env", {}), **probes[0].get("env", {})}
+    assert "secrets.OPENROUTER_API_KEY" in str(env.get("OPENROUTER_API_KEY", ""))
+    assert workflow.get("permissions") == {"contents": "read"}
+
+
+def test_model_catalog_workflow_fails_clearly_without_the_secret() -> None:
+    workflow = _workflow(MODEL_CATALOG_WORKFLOW)
+    steps = _workflow_steps(workflow)
+    guards = [step for step in steps if "OPENROUTER_API_KEY is not set" in str(step.get("run", ""))]
+
+    assert guards, "a missing secret must fail with an explicit error"
+    assert "::error::" in guards[0]["run"]
+    assert "exit 1" in guards[0]["run"]
+    assert steps.index(guards[0]) < steps.index(_probe_steps(workflow)[0]), "fail before the probe starts"
+
+
+def test_model_catalog_workflow_allows_the_full_probe_to_finish() -> None:
+    workflow = _workflow(MODEL_CATALOG_WORKFLOW)
+
+    for job in workflow["jobs"].values():
+        assert job.get("timeout-minutes", 0) >= 45, "the full probe plus install can exceed 30 minutes"

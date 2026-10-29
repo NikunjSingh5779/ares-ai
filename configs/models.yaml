@@ -5,9 +5,10 @@
 # Configured exclusively with working free-tier OpenRouter models, matching
 # the best model size/capabilities to each agent's purpose.
 #
-# Validated 2026-10-21 against the live OpenRouter catalog:
+# Last full live validation: 2026-10-21 against the live OpenRouter catalog:
 #   https://openrouter.ai/api/v1/models
-# Re-run `python scripts/test_free_models.py` after editing to probe the chain.
+# `.github/workflows/model-catalog.yml` re-probes the chains weekly; run
+# `python scripts/test_free_models.py` after editing to probe them locally.
 # `--dry-run` only prints the configured chains; it does not validate them.
 # =============================================================================
 

@@ -8,7 +8,8 @@ business logic, no secrets.
 - `run_live.py` — market poll loop: build pipeline, feed candles, evaluate SL/TP, execute.
 - `run_backtest.py` — CLI backtest.
 - `simulate_pipeline.py` — offline end-to-end smoke run.
-- `test_free_models.py` — validate the roster against the live catalog.
+- `test_free_models.py` — validate the roster against the live catalog; also run weekly by
+  `.github/workflows/model-catalog.yml`.
 - `seed.py` — seed demo data.
 - `daily_report.py`, `daily_report_loop.py` — reporting.
 - `load_test.py` — API load test.
@@ -25,5 +26,6 @@ business logic, no secrets.
 the gate decisions for each signal.
 
 ## Known gaps
-`run_live.py` rebuilds the pipeline per candle and owns a second paper engine; the model
-roster check is manual, not in CI.
+`run_live.py` rebuilds the pipeline per candle and owns a second paper engine. The model
+roster check is scheduled weekly, but its first GitHub Actions run is still pending; it
+needs the `OPENROUTER_API_KEY` repository secret.

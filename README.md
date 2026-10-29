@@ -231,14 +231,16 @@ DEFAULT_TRADING_MODE=human_approval
 
 ### When a Free Model Goes Stale
 
-Free models come and go. Run `test_free_models.py` periodically — it fetches
-OpenRouter's live free-model list and cross-references every agent's configured
-models. If a critical agent's entire chain (primary + all fallbacks) is dead,
-the script exits non-zero.
+Free models come and go. The `Model catalog` GitHub Actions workflow
+(`.github/workflows/model-catalog.yml`) runs `test_free_models.py` every Monday
+and on demand. It fetches OpenRouter's live free-model list and cross-references
+every agent's configured models; if a critical agent's entire chain (primary +
+all fallbacks) is dead, the job fails. It needs the `OPENROUTER_API_KEY`
+repository secret.
 
+You can run the same check locally with `uv run python scripts/test_free_models.py`.
 Replace dead model IDs in `configs/models.yaml` with working ones from the
-OpenRouter free list. This is a periodic manual task — there is no automated
-model-discovery mechanism.
+OpenRouter free list; there is no automated model-discovery mechanism.
 
 ---
 

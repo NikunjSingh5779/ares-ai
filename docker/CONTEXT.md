@@ -11,6 +11,7 @@
   config, `alert-rules.yml`, Grafana datasource/dashboard provisioning, and two
   dashboards. Both compose files mount these files.
 - `.github/workflows/ci.yml` — lint, tests, real-PostgreSQL integration, compose validation, image builds.
+- `.github/workflows/model-catalog.yml` — weekly live model-catalog probe (requires the `OPENROUTER_API_KEY` secret).
 
 ## Invariants
 - Production compose sets `ENVIRONMENT=production` and real secrets (currently missing).

@@ -75,7 +75,10 @@ uv run python scripts/test_free_models.py
 ```
 
 The free-model probe skips `local/` entries; they are opt-in and are not part of
-the remote free-tier chain.
+the remote free-tier chain. CI runs the same probe weekly in
+`.github/workflows/model-catalog.yml` (requires the `OPENROUTER_API_KEY`
+repository secret) and fails when a critical agent has no working primary or
+fallback.
 
 ## Optional: local chat model (Strata)
 

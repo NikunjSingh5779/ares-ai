@@ -59,6 +59,17 @@ improvement fixture deletes only `improvement_records` then `reflection_runs`.
 On a disposable PostgreSQL 16 container the combined run was **23 passed**
 (5 ledger, 12 strategy, and 6 improvement).
 
+## Scheduled model catalog
+
+`.github/workflows/model-catalog.yml` runs `scripts/test_free_models.py` every
+Monday at 06:17 UTC and on `workflow_dispatch`. It needs the
+`OPENROUTER_API_KEY` repository secret; without it the job fails at an explicit
+guard instead of marking every model `NO_KEY`. The probe exits non-zero only when
+a critical agent (`market_analyst`, `quant`, `risk`, `supervisor`) has no working
+primary or fallback. `tests/test_infra_config.py` pins the schedule, the probe
+command, the secret wiring, the missing-secret guard, and the 45-minute timeout.
+The first GitHub Actions run is still pending.
+
 ## Local model tests
 
 The `local/` provider tests use `pytest-httpx` and a fake async gate; they do not
