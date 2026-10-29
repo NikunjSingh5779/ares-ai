@@ -2,9 +2,9 @@
 # Status — verified state
 
 **Last verified:** 2026-10-30
-**Branch:** `master` at `3c36292` — the scheduled model-catalog workflow is
-implemented and verified locally, not yet committed. PR #130 squash-merged the
-signed `/execute` approval token, closing P2 gap #2. PR #129
+**Branch:** `master` — clean, equal to `origin/master` (`d29f9c7`). PR #131
+squash-merged the scheduled model-catalog workflow, closing P2 gap #9. PR #130
+squash-merged the signed `/execute` approval token, closing P2 gap #2. PR #129
 squash-merged the web collector free-only fix, closing P2 gap #18. PR #128
 squash-merged the shared Redis kill-switch arm epoch, closing P1 gap #6. PR #127
 squash-merged the analysis-control slice (`backend/services/analysis_control.py`,
@@ -13,7 +13,8 @@ landed the dependency consolidation, #116 ported both charts to `lightweight-cha
 #82), and #115 ported the superseded feature-PR hunks (paper-only audit, free-only
 guard, router error fallthrough, schema retry, Compose hostname test). Master CI run
 **40671121835** (merge of #130) passed all five jobs; run **40595388382** (merge of #129)
-also passed all five. Recent verified work adds the real-PostgreSQL
+also passed all five; run **40958539616** (merge of #131) passed all five. Recent
+verified work adds the scheduled model-catalog workflow, the real-PostgreSQL
 strategy route module, the opt-in local chat fallback, the accessibility audit, the
 improvement metric correction, durable improvement history wired into the pipeline,
 Prometheus alert rules with one tracked monitoring set, branch/Dependabot cleanup,
@@ -444,7 +445,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Credential | The job requires the `OPENROUTER_API_KEY` repository secret. A missing secret fails at an explicit `::error::` guard instead of producing 43 misleading `NO_KEY` rows. |
 | Timeout | The job allows **45 minutes**. A full 43-entry run is normally ~11 minutes at `rate_limit_rpm: 4`, with up to 30 s per probe. |
 | Tests | `pytest tests/test_infra_config.py -q` → **24 passed**, including the schedule/dispatch triggers, the single probe command, the secret wiring and missing-secret guard, and the job timeout. |
-| Not yet run | The scheduled workflow has not executed on GitHub Actions. The first run is a manual `workflow_dispatch` after merge; it needs the `OPENROUTER_API_KEY` repository secret. |
+| Not yet run | The scheduled workflow has not executed on GitHub Actions. The first run is a manual `workflow_dispatch`; it needs the `OPENROUTER_API_KEY` repository secret. |
 
 ## Red / known gaps
 
