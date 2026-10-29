@@ -2,8 +2,8 @@
 # Status — verified state
 
 **Last verified:** 2026-10-28
-**Branch:** `master` at `ccb6a09` — the signed `/execute` approval slice is
-implemented and verified locally, not yet committed. PR #129
+**Branch:** `master` — clean, equal to `origin/master` (`4583f6f`). PR #130
+squash-merged the signed `/execute` approval token, closing P2 gap #2. PR #129
 squash-merged the web collector free-only fix, closing P2 gap #18. PR #128
 squash-merged the shared Redis kill-switch arm epoch, closing P1 gap #6. PR #127
 squash-merged the analysis-control slice (`backend/services/analysis_control.py`,
@@ -11,7 +11,8 @@ router, metrics, and tests), closing the P1 `/analyze` concurrency/cost gap. PR 
 landed the dependency consolidation, #116 ported both charts to `lightweight-charts` v5 (closing
 #82), and #115 ported the superseded feature-PR hunks (paper-only audit, free-only
 guard, router error fallthrough, schema retry, Compose hostname test). Master CI run
-**40595388382** (merge of #129) passed all five jobs. Recent verified work adds the real-PostgreSQL
+**40671121835** (merge of #130) passed all five jobs; run **40595388382** (merge of #129)
+also passed all five. Recent verified work adds the real-PostgreSQL
 strategy route module, the opt-in local chat fallback, the accessibility audit, the
 improvement metric correction, durable improvement history wired into the pipeline,
 Prometheus alert rules with one tracked monitoring set, branch/Dependabot cleanup,
