@@ -54,6 +54,7 @@ def get_paper_trading_ledger() -> PaperTradingLedger:
             initial_capital=settings.paper_trading_initial_capital,
             commission_pct=settings.paper_trading_commission_pct,
             slippage_pct=settings.paper_trading_slippage_pct,
+            slippage_by_symbol=settings.paper_trading_slippage_by_symbol,
         )
         _ledger = PaperTradingLedger(
             engine=_engine,

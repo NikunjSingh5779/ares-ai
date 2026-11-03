@@ -21,11 +21,14 @@ LLM, no exchange.
 - For API `/execute`, a typed approval payload plus `client_order_id`; the router derives
   quantity, price, and stop-loss before calling the ledger.
 - Candles for marks and SL/TP checks.
-- `paper_trading_initial_capital`, `paper_trading_commission_pct`, and
-  `paper_trading_slippage_pct` from settings. The application constructs its engine
-  with 10 bps each by default; direct engine construction defaults to zero for unit
-  tests. Fee/slippage settings are configuration, not persisted state, so every
-  process that hydrates the ledger must construct its engine with the same settings.
+- `paper_trading_initial_capital`, `paper_trading_commission_pct`,
+  `paper_trading_slippage_pct`, and optional `paper_trading_slippage_by_symbol`
+  overrides (JSON object, e.g. `{"BTC-USD": 0.002}`) from settings. The application
+  constructs its engine with 10 bps each by default; direct engine construction
+  defaults to zero for unit tests. Fee/slippage settings are configuration, not
+  persisted state, so every process that hydrates the ledger must construct its
+  engine with the same settings. A symbol missing from the override map uses the
+  global slippage rate.
 - `paper_trading_writer_lock_timeout_seconds` (default 10 s) bounds how long a write
   waits for the cross-process advisory lock.
 
@@ -38,9 +41,11 @@ LLM, no exchange.
    the open position, entry order with its client ID, any reversal close/history, and
    portfolio in one transaction. Exit orders carry no client ID.
 2. `PaperTradingLedger.process_candle` takes the same two locks, refreshes, checks SL/TP
-   first (stop first when a
-   candle spans both levels), marks any remaining open position, and persists the
-   closure and/or mark.
+   first (stop first when a candle spans both levels), marks any remaining open position,
+   and persists the closure and/or mark. The worker and runner pass the candle open:
+   when it is already beyond a stop, the stop fills at the open (gap-through) and then
+   takes the usual adverse slippage; take-profit still fills at its configured level.
+   Callers that pass no open keep the stop-level fill.
 3. `mark_to_market` updates the latest price and appends equity on every bar;
    `close_position` applies exit slippage and commission, computes net PnL, and appends
    equity.
@@ -57,7 +62,9 @@ hydrate before responding. Promotion reads `trade_history` and the portfolio dra
 - A fill, mark, or closure writes one transaction. On failure or rejection, the
   pre-action engine snapshot is restored. An accepted fill with no seeded paper account
   is rejected. A rejected reversal must leave the old position open.
-- Fills apply configured commission and adverse slippage.
+- Fills apply configured commission and adverse slippage; a per-symbol slippage
+  override replaces the global rate for that symbol and every other symbol falls back
+  to the global rate. Gap-through stops fill at the candle open, not the stop level.
 - Equity marks open positions at the latest price; `total_pnl = equity - initial`.
 - Shorts credit proceeds, report 100% notional margin, and subtract the liability from
   equity. Cash and reported PnL reconcile after every fill.
@@ -83,9 +90,8 @@ returns empty state; writes return 503 rather than persisting in memory.
 
 ## Known gaps
 The advisory lock is database-wide rather than per account (fine for one seeded paper
-account). `/execute` trusts the authenticated caller's agent
-payload (no signed/expiring token); the `postgres-integration` CI job covers the
-ledger; the engine must be constructed with the same fee settings after restart. Stop
-fills still use the stop price on a gap, and there are no partial fills or
-borrow/funding costs. No manual paper-trade path exists; a future one must be labeled
-and excluded from promotion.
+account). The `postgres-integration` CI job covers the ledger; the engine must be
+constructed with the same fee/slippage settings after restart, including the per-symbol
+override map. There are no partial fills/liquidity limits and no borrow/funding costs.
+No manual paper-trade path exists; a future one must be labeled and excluded from
+promotion.

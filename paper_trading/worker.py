@@ -120,12 +120,14 @@ class PaperTradingWorker:
                     high=float(candle.high),
                     low=float(candle.low),
                     close=float(candle.close),
+                    open_price=float(candle.open),
                 )
             else:
                 closed = self.engine.check_sl_tp(
                     symbol=result.symbol,
                     high=float(candle.high),
                     low=float(candle.low),
+                    open_price=float(candle.open),
                 )
                 self.engine.mark_to_market(result.symbol, float(candle.close))
             if closed:

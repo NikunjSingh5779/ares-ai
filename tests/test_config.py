@@ -43,6 +43,31 @@ def test_paper_accounting_defaults_are_realistic() -> None:
     assert fields["paper_trading_slippage_pct"].default == 0.001
 
 
+def test_paper_symbol_slippage_defaults_to_global_only() -> None:
+    """An unset override map must not change the global slippage path."""
+    field = Settings.model_fields["paper_trading_slippage_by_symbol"]
+    assert field.default_factory is dict
+    assert Settings().paper_trading_slippage_by_symbol == {}
+
+
+def test_paper_symbol_slippage_reads_json_env_and_normalizes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The documented .env form is a JSON object and symbols are case-insensitive."""
+    monkeypatch.setenv("PAPER_TRADING_SLIPPAGE_BY_SYMBOL", '{"btc-usd": 0.002}')
+
+    assert Settings().paper_trading_slippage_by_symbol == {"BTC-USD": 0.002}
+
+
+@pytest.mark.parametrize("bad_pct", [-0.001, 1.0, 1.5])
+def test_paper_symbol_slippage_rejects_invalid_rates(bad_pct: float) -> None:
+    with pytest.raises(ValidationError, match="between 0 and 1"):
+        Settings(paper_trading_slippage_by_symbol={"BTC-USD": bad_pct})
+
+
+def test_paper_symbol_slippage_rejects_blank_symbol() -> None:
+    with pytest.raises(ValidationError, match="non-empty"):
+        Settings(paper_trading_slippage_by_symbol={"  ": 0.001})
+
+
 def test_paper_writer_lock_timeout_is_positive() -> None:
     """A non-positive lock timeout would make every paper write fail busy."""
     assert Settings.model_fields["paper_trading_writer_lock_timeout_seconds"].default == 10.0

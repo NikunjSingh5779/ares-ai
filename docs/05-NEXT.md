@@ -32,7 +32,7 @@ slice `c322f23` passed run **40097868595** on all five jobs, including
 | 0.1 | Auth on every non-public route + frontend session/API-key flow | `backend/core/dependencies.py`, `backend/main.py`, `backend/routers/**`, `frontend/src/lib/api.ts`, `frontend/src/components/AuthGate.tsx`, `frontend/src/app/login/page.tsx` | Route test enumerates `/api/v1` and fails on any unprotected path; UI sends the header; default/empty key returns 503 | **Done** |
 | 0.2 | One fail-closed kill switch across API and runner; route all live orders through `execute_signal` | `live_trading/safety.py`, `live_trading/engine.py`, `agents/execution.py`, `scripts/run_live.py`, `backend/routers/live.py` | Integration test: Redis down → rejected; recovery still requires human re-arm; agent never calls `exchange.create_order`. Shared arm epoch: one `/live/arm` clears every process that had observed the store | **Done** |
 | 0.3 | Refresh model roster + universal fallback | `configs/models.yaml`, `agents/models.py` | Every configured ID resolves in the live free catalog; exhausted chain reaches `openrouter/free` | **Done** — the free-only shape is CI-tested, and `.github/workflows/model-catalog.yml` probes the live catalog weekly (requires the `OPENROUTER_API_KEY` secret) |
-| 0.4 | Realistic paper accounting: fees, slippage, mark-to-market, short proceeds | `paper_trading/engine.py`, `paper_trading/worker.py`, `agents/execution.py`, `configs/settings.py`, `backend/routers/trading.py` | Tests for fee-adjusted fill, intra-trade drawdown, and a profitable short; agent persists actual fill/quantity | **Done** |
+| 0.4 | Realistic paper accounting: fees, slippage, mark-to-market, short proceeds; gap-through stops and per-symbol slippage | `paper_trading/engine.py`, `paper_trading/worker.py`, `paper_trading/ledger.py`, `agents/execution.py`, `configs/settings.py`, `backend/routers/trading.py`, `scripts/run_live.py` | Tests for fee-adjusted fill, intra-trade drawdown, and a profitable short; agent persists actual fill/quantity; a gapped stop fills at the candle open and a per-symbol override falls back to the global rate | **Done** — extended 2026-11-03 |
 | 0.5 | Enforce production config | `docker-compose.prod.yml`, `docker/docker-compose.prod.yml`, `configs/settings.py`, `.env.example` | Compose overlay sets `ENVIRONMENT=production`; validator rejects default API/JWT/DB secrets | **Done** |
 
 ## Phase 1 — one source of truth
@@ -159,6 +159,11 @@ authenticated route shells; data-populated states remain an optional follow-up.
   and on demand, and fails when a critical agent has no working model. The first
   GitHub Actions run is still pending; it needs the `OPENROUTER_API_KEY`
   repository secret. See `02-STATUS.md` gap #9.
+- Paper realism slice 1 — gap-through stop fills and per-symbol slippage: **done
+  2026-11-03** — `check_sl_tp` accepts the candle open and fills a gapped stop at
+  that open; `PAPER_TRADING_SLIPPAGE_BY_SYMBOL` overrides the global rate with
+  global fallback. Remaining paper realism: partial fills/liquidity and
+  borrow/funding costs.
 - Manual reconciliation of pre-P1-A short positions migrated as long: **open** —
   operational, needs production database access. See `02-STATUS.md` gap #10.
 

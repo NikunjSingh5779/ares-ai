@@ -239,6 +239,129 @@ class TestStopLossTakeProfit:
         assert closed[0].exit_reason == "stop_loss"
 
 
+class TestGapThroughStops:
+    """A candle that opens beyond the stop fills at the open, not the level."""
+
+    def test_long_stop_gap_fills_at_open(self, engine: PaperTradingEngine) -> None:
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=49000.0)
+
+        closed = engine.check_sl_tp(
+            "BTC-USD",
+            high=48500.0,
+            low=47000.0,
+            open_price=48000.0,
+        )
+
+        assert len(closed) == 1
+        assert closed[0].exit_reason == "stop_loss"
+        assert closed[0].exit_price == pytest.approx(48000.0)
+        assert closed[0].pnl == pytest.approx(-2000.0)
+
+    def test_long_stop_without_gap_keeps_stop_level(self, engine: PaperTradingEngine) -> None:
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=49000.0)
+
+        closed = engine.check_sl_tp(
+            "BTC-USD",
+            high=50000.0,
+            low=48000.0,
+            open_price=49500.0,
+        )
+
+        assert len(closed) == 1
+        assert closed[0].exit_price == pytest.approx(49000.0)
+        assert closed[0].pnl == pytest.approx(-1000.0)
+
+    def test_short_stop_gap_fills_at_open(self, engine: PaperTradingEngine) -> None:
+        engine.execute_signal("ETH-USD", "short", 10.0, 3000.0, stop_loss=3100.0)
+
+        closed = engine.check_sl_tp(
+            "ETH-USD",
+            high=3300.0,
+            low=3150.0,
+            open_price=3200.0,
+        )
+
+        assert len(closed) == 1
+        assert closed[0].exit_reason == "stop_loss"
+        assert closed[0].exit_price == pytest.approx(3200.0)
+        assert closed[0].pnl == pytest.approx(-2000.0)
+
+    def test_short_stop_without_gap_keeps_stop_level(self, engine: PaperTradingEngine) -> None:
+        engine.execute_signal("ETH-USD", "short", 10.0, 3000.0, stop_loss=3100.0)
+
+        closed = engine.check_sl_tp(
+            "ETH-USD",
+            high=3150.0,
+            low=3000.0,
+            open_price=3050.0,
+        )
+
+        assert len(closed) == 1
+        assert closed[0].exit_price == pytest.approx(3100.0)
+        assert closed[0].pnl == pytest.approx(-1000.0)
+
+    def test_gap_stop_wins_when_candle_spans_both_levels(self, engine: PaperTradingEngine) -> None:
+        """The adverse gap fill must win over an optimistic take-profit."""
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=49000.0, take_profit=51000.0)
+
+        closed = engine.check_sl_tp(
+            "BTC-USD",
+            high=52000.0,
+            low=47000.0,
+            open_price=48000.0,
+        )
+
+        assert len(closed) == 1
+        assert closed[0].exit_reason == "stop_loss"
+        assert closed[0].exit_price == pytest.approx(48000.0)
+
+    def test_take_profit_stays_at_level_on_favourable_gap(self, engine: PaperTradingEngine) -> None:
+        """A favourable gap must not credit more than the configured target."""
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=48000.0, take_profit=55000.0)
+
+        closed = engine.check_sl_tp(
+            "BTC-USD",
+            high=57000.0,
+            low=55000.0,
+            open_price=56000.0,
+        )
+
+        assert len(closed) == 1
+        assert closed[0].exit_reason == "take_profit"
+        assert closed[0].exit_price == pytest.approx(55000.0)
+        assert closed[0].pnl == pytest.approx(5000.0)
+
+    @pytest.mark.parametrize("bad_open", [0.0, -1.0])
+    def test_non_positive_open_falls_back_to_stop_level(
+        self,
+        engine: PaperTradingEngine,
+        bad_open: float,
+    ) -> None:
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=49000.0)
+
+        closed = engine.check_sl_tp("BTC-USD", high=49500.0, low=48000.0, open_price=bad_open)
+
+        assert len(closed) == 1
+        assert closed[0].exit_price == pytest.approx(49000.0)
+
+    def test_gap_fill_applies_adverse_slippage_once(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, slippage_pct=0.01)
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=49000.0)
+
+        closed = engine.check_sl_tp(
+            "BTC-USD",
+            high=48500.0,
+            low=47000.0,
+            open_price=48000.0,
+        )
+
+        assert len(closed) == 1
+        # Gap reference 48,000 sold 1% lower, not the 49,000 stop level.
+        assert closed[0].exit_price == pytest.approx(47520.0)
+        # Entry filled at 50,500 after 1% slippage.
+        assert closed[0].pnl == pytest.approx(-2980.0)
+
+
 # ---------------------------------------------------------------------------
 # Reversal signals
 # ---------------------------------------------------------------------------
@@ -424,6 +547,73 @@ class TestRealisticAccounting:
         assert summary.margin_used == pytest.approx(0.0)
         assert summary.equity == pytest.approx(103000.0)
         assert summary.total_pnl == pytest.approx(3000.0)
+
+
+class TestPerSymbolSlippage:
+    """A per-symbol override replaces the global rate; everything else falls back."""
+
+    def test_entry_uses_override_and_global_fallback(self) -> None:
+        engine = PaperTradingEngine(
+            initial_capital=100000.0,
+            slippage_pct=0.001,
+            slippage_by_symbol={"btc-usd": 0.01},
+        )
+
+        btc = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+        eth = engine.execute_signal("ETH-USD", "short", 1.0, 3000.0)
+
+        assert btc["fill_price"] == pytest.approx(50500.0)
+        assert eth["fill_price"] == pytest.approx(2997.0)
+
+    def test_exit_uses_position_symbol_override(self) -> None:
+        engine = PaperTradingEngine(
+            initial_capital=100000.0,
+            slippage_pct=0.001,
+            slippage_by_symbol={"BTC-USD": 0.01},
+        )
+        result = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+
+        trade = engine.close_position(result["position_id"], 55000.0)
+
+        assert trade is not None
+        assert trade.entry_price == pytest.approx(50500.0)
+        assert trade.exit_price == pytest.approx(54450.0)
+        assert trade.pnl == pytest.approx(3950.0)
+
+    def test_short_round_trip_uses_override_on_both_legs(self) -> None:
+        engine = PaperTradingEngine(
+            initial_capital=100000.0,
+            slippage_pct=0.001,
+            slippage_by_symbol={"ETH-USD": 0.02},
+        )
+        result = engine.execute_signal("ETH-USD", "short", 10.0, 3000.0)
+
+        trade = engine.close_position(result["position_id"], 2700.0)
+
+        assert result["fill_price"] == pytest.approx(2940.0)
+        assert trade is not None
+        assert trade.exit_price == pytest.approx(2754.0)
+        assert trade.pnl == pytest.approx(1860.0)
+
+    def test_zero_override_disables_slippage_for_symbol(self) -> None:
+        engine = PaperTradingEngine(
+            initial_capital=100000.0,
+            slippage_pct=0.01,
+            slippage_by_symbol={"BTC-USD": 0.0},
+        )
+
+        result = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+
+        assert result["fill_price"] == pytest.approx(50000.0)
+
+    @pytest.mark.parametrize("bad_pct", [-0.001, 1.0, 1.5])
+    def test_invalid_override_rate_is_rejected(self, bad_pct: float) -> None:
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            PaperTradingEngine(slippage_by_symbol={"BTC-USD": bad_pct})
+
+    def test_blank_symbol_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            PaperTradingEngine(slippage_by_symbol={"  ": 0.001})
 
 
 # ---------------------------------------------------------------------------

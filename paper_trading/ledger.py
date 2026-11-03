@@ -158,11 +158,22 @@ class PaperTradingLedger:
         high: float,
         low: float,
         close: float,
+        open_price: float | None = None,
     ) -> list[ClosedTrade]:
-        """Check exits, mark the position, and persist the resulting state."""
+        """Check exits, mark the position, and persist the resulting state.
+
+        ``open_price`` lets a gap-through stop fill at the candle open; it is
+        optional so callers with only high/low keep the stop-level fill.
+        """
         async with self._cache_lock:
             async with self.repository.writer_lock(timeout_seconds=self.writer_timeout_seconds):
-                return await self._process_candle_locked(symbol=symbol, high=high, low=low, close=close)
+                return await self._process_candle_locked(
+                    symbol=symbol,
+                    high=high,
+                    low=low,
+                    close=close,
+                    open_price=open_price,
+                )
 
     async def _process_candle_locked(
         self,
@@ -171,10 +182,11 @@ class PaperTradingLedger:
         high: float,
         low: float,
         close: float,
+        open_price: float | None,
     ) -> list[ClosedTrade]:
         await self._hydrate()
         snapshot = self.engine.snapshot()
-        closed = self.engine.check_sl_tp(symbol=symbol, high=high, low=low)
+        closed = self.engine.check_sl_tp(symbol=symbol, high=high, low=low, open_price=open_price)
         self.engine.mark_to_market(symbol, close)
         try:
             persisted = await self.repository.persist(self.engine, closed_trades=closed)

@@ -524,8 +524,28 @@ class TestPaperTradingLedgerService:
 
         assert len(closed) == 1
         assert closed[0].exit_reason == "stop_loss"
+        # Without an open price the engine keeps the stop-level fill.
+        assert closed[0].exit_price == pytest.approx(49000.0)
         repository.persist.assert_awaited_once()
         assert repository.persist.await_args.kwargs["closed_trades"] == closed
+
+    async def test_process_candle_fills_gap_stop_at_open(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=49000.0)
+        ledger, repository = self._ledger(engine)
+
+        closed = await ledger.process_candle(
+            symbol="BTC-USD",
+            high=48500.0,
+            low=47000.0,
+            close=47500.0,
+            open_price=48000.0,
+        )
+
+        assert len(closed) == 1
+        assert closed[0].exit_reason == "stop_loss"
+        assert closed[0].exit_price == pytest.approx(48000.0)
+        repository.persist.assert_awaited_once()
 
     async def test_process_candle_rolls_back_marks_when_persist_fails(self) -> None:
         engine = PaperTradingEngine(initial_capital=100000.0)

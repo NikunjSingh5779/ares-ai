@@ -23,9 +23,10 @@ invalid or expired token with **401** and a token that does not match the submit
 symbol, side, or payload with **422**; neither reaches the ledger.
 
 The ledger refreshes the `PaperTradingEngine` cache from `PaperLedgerRepository`, applies
-configured commission and adverse slippage, then writes `positions`, entry/exit orders,
-reversal `trade_history`, and `portfolio` in one transaction. Every write holds an
-in-process cache lock and a PostgreSQL transaction-scoped advisory lock
+configured commission and adverse slippage (per-symbol override or global fallback),
+then writes `positions`, entry/exit orders, reversal `trade_history`, and `portfolio` in
+one transaction. Every write holds an in-process cache lock and a PostgreSQL
+transaction-scoped advisory lock
 (`pg_try_advisory_xact_lock`) across hydrate → mutate → persist, so API, worker, and runner
 serialize instead of overwriting each other. A writer that cannot get the lock within
 `PAPER_TRADING_WRITER_LOCK_TIMEOUT_SECONDS` fails with **503** and no mutation.
@@ -35,9 +36,10 @@ required on the API path and checked before mutation; a partial unique index on
 **409** and never creates a second position. A failed or conflicting write restores the
 cache snapshot; an accepted fill with no seeded account is rejected.
 `PaperTradingLedger.process_candle()` (used by `paper_trading/worker.py` and the
-runner) checks SL/TP, marks the remaining position, and persists the result. PnL is
-equity-based, including open marks and fees. There is no manual `/execute` bypass;
-manual trades would need a separately designed label that excludes them from promotion.
+runner) checks SL/TP, fills a gapped stop at the candle open, marks the remaining
+position, and persists the result. PnL is equity-based, including open marks and fees.
+There is no manual `/execute` bypass; manual trades would need a separately designed
+label that excludes them from promotion.
 
 ## Live path
 `ExecutionAgent` → `LiveTradingEngine.execute_signal()` →
@@ -74,7 +76,8 @@ marks; the ledger writes SL/TP closures so normal exits count and survive restar
 `tests/test_agents/test_execution_live_routing.py`, `tests/test_paper_trading.py`.
 
 ## Known gaps
-`get_open_orders()` returns `[]`; no balance reconciliation. Paper writers serialize on a
+`get_open_orders()` returns `[]`; no balance reconciliation. Paper fills have no
+partial fills/liquidity limits or borrow/funding costs. Paper writers serialize on a
 database-wide advisory lock (per account would be finer). `/execute` requires a signed,
 expiring approval token from `/signal` with `execute=false`, so an authenticated caller
 cannot submit a fabricated agent payload; the token is not single-use, and

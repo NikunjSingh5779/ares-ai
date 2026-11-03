@@ -1,8 +1,9 @@
 <!-- docs/02-STATUS.md -->
 # Status — verified state
 
-**Last verified:** 2026-10-30
-**Branch:** `master` — clean, equal to `origin/master` (`d29f9c7`). PR #131
+**Last verified:** 2026-11-03
+**Branch:** `master` — clean, equal to `origin/master` (`409da96`); the paper-realism
+slice below is on `feat/paper-realism-fills` pending merge. PR #131
 squash-merged the scheduled model-catalog workflow, closing P2 gap #9. PR #130
 squash-merged the signed `/execute` approval token, closing P2 gap #2. PR #129
 squash-merged the web collector free-only fix, closing P2 gap #18. PR #128
@@ -85,7 +86,7 @@ five jobs, including `postgres-integration` with all three PostgreSQL modules. T
 | One live-order path | `agents/execution.py` calls `LiveTradingEngine.execute_signal()`; the only production `exchange.create_order` call site is `live_trading/engine.py`. Tests assert the agent never calls the exchange directly. |
 | Paper-only by default | `settings.live_trading_enabled=False`; `/live/start`, `set_mode(auto\|semi)`, the agent, and the engine all refuse. Even when enabled, kill switch + mode + promotion + connection must pass. |
 | Validated free roster + universal fallback | 14 unique OpenRouter free models checked against the live catalog on 2026-10-21; `defaults.universal_fallback: open_router/openrouter/free` is appended (deduplicated) by `AgentModelConfig.model_chain`. |
-| Realistic paper fills and marks | `paper_trading/engine.py` applies configured commission/slippage, marks open positions with `mark_to_market`, and derives `total_pnl` from equity. The application engine wires 10 bps per side from `configs/settings.py`; direct test engines stay frictionless. |
+| Realistic paper fills and marks | `paper_trading/engine.py` applies configured commission/slippage, marks open positions with `mark_to_market`, and derives `total_pnl` from equity. The application engine wires 10 bps per side from `configs/settings.py`; direct test engines stay frictionless. Per-symbol overrides fall back to the global rate, and a gapped stop fills at the candle open. |
 | Correct short and fee accounting | Shorts credit proceeds, report 100% notional margin, and subtract the liability from equity. Closed trades carry entry/exit commissions; `tests/test_paper_trading.py::TestRealisticAccounting` covers fee-adjusted fills, intra-trade drawdown, and a profitable short. |
 | Actual agent fill/size + promotion records | `agents/execution.py` reports/persists the engine's fill and quantity, maps long/short to `buy`/`sell` for `trade_history`, and `paper_trading/worker.py` marks each candle and inserts SL/TP closures so the promotion gate counts them. |
 | Production overlay enforces secrets | `docker-compose.prod.yml` and `docker/docker-compose.prod.yml` set `ENVIRONMENT=production` for app services; the existing settings validator then refuses default API/JWT/DB secrets. Verified with `docker compose -f docker-compose.yml -f docker-compose.prod.yml config` and `tests/test_config.py`. |
@@ -446,6 +447,16 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Timeout | The job allows **45 minutes**. A full 43-entry run is normally ~11 minutes at `rate_limit_rpm: 4`, with up to 30 s per probe. |
 | Tests | `pytest tests/test_infra_config.py -q` → **24 passed**, including the schedule/dispatch triggers, the single probe command, the secret wiring and missing-secret guard, and the job timeout. |
 | Not yet run | The scheduled workflow has not executed on GitHub Actions. The first run is a manual `workflow_dispatch`; it needs the `OPENROUTER_API_KEY` repository secret. |
+
+## Paper realism slice 1 — gap stops and per-symbol slippage (verified 2026-11-03)
+
+| Piece | Evidence |
+|---|---|
+| Gap-through stops | `PaperTradingEngine.check_sl_tp` accepts an optional `open_price`. When a long opens at/below its stop (or a short at/above), the exit reference is the open, then the usual adverse slippage applies. Take-profit still fills at its configured level. `open_price=None` keeps the stop-level behavior. |
+| Candle wiring | `PaperTradingLedger.process_candle` forwards `open_price`; `paper_trading/worker.py` and `scripts/run_live.py` pass `candle.open`. Stop-first precedence still applies when a candle spans both levels. |
+| Per-symbol slippage | `PAPER_TRADING_SLIPPAGE_BY_SYMBOL` is a JSON object (e.g. `{"BTC-USD": 0.002}`) validated to `0 <= rate < 1` and normalized to upper-case symbols. `PaperTradingEngine` resolves the symbol override on entry and exit, falling back to `PAPER_TRADING_SLIPPAGE_PCT`. `get_paper_trading_ledger()` passes the map to the shared engine. |
+| Tests | `tests/test_paper_trading.py` covers long/short gaps, no-gap fills, stop-first precedence, favourable gaps, slippage-on-gap, override/fallback/zero override, and invalid rates; `tests/test_paper_trading_ledger.py` covers the gap fill through the ledger; `tests/test_paper_trading_worker.py` pins the forwarded open; `tests/test_config.py` covers JSON env parsing and validation; `tests/test_trading_router.py` covers factory wiring. |
+| Scope | No schema change. Partial fills/liquidity and borrow/funding costs remain open. |
 
 ## Red / known gaps
 

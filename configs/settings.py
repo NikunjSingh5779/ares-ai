@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 # Root project directory (two levels up from this file)
@@ -102,6 +102,10 @@ class Settings(BaseSettings):
     # 0.001 = 10 bps. Direct engine construction defaults to zero for unit tests.
     paper_trading_commission_pct: float = Field(default=0.001, ge=0.0, lt=1.0)
     paper_trading_slippage_pct: float = Field(default=0.001, ge=0.0, lt=1.0)
+    # Optional per-symbol overrides for illiquid or high-volatility markets.
+    # JSON object in the environment, e.g. '{"BTC-USD": 0.002}'. Symbols not
+    # listed fall back to paper_trading_slippage_pct.
+    paper_trading_slippage_by_symbol: dict[str, float] = Field(default_factory=dict)
     # How long a paper-ledger writer waits for the cross-process advisory lock
     # before the operation fails with 503 instead of mutating stale state.
     paper_trading_writer_lock_timeout_seconds: float = Field(default=10.0, gt=0.0)
@@ -151,6 +155,22 @@ class Settings(BaseSettings):
     prometheus_port: int = 9090
     grafana_port: int = 3001
     health_check_interval_seconds: int = 30
+
+    # ── Paper-fill validators ────────────────────────────────────────
+
+    @field_validator("paper_trading_slippage_by_symbol")
+    @classmethod
+    def _validate_slippage_by_symbol(cls, value: dict[str, float]) -> dict[str, float]:
+        """Reject impossible rates and normalize symbols for case-safe lookup."""
+        normalized: dict[str, float] = {}
+        for raw_symbol, pct in value.items():
+            symbol = str(raw_symbol).strip().upper()
+            if not symbol:
+                raise ValueError("paper_trading_slippage_by_symbol keys must be non-empty symbols")
+            if not 0.0 <= float(pct) < 1.0:
+                raise ValueError(f"paper_trading_slippage_by_symbol[{raw_symbol!r}] must be between 0 and 1")
+            normalized[symbol] = float(pct)
+        return normalized
 
     # ── Production-safety validator ──────────────────────────────────
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 import copy
 import math
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
@@ -104,6 +105,7 @@ class PaperTradingEngine:
         initial_capital: float = 100000.0,
         commission_pct: float = 0.0,
         slippage_pct: float = 0.0,
+        slippage_by_symbol: Mapping[str, float] | None = None,
     ) -> None:
         """Create a paper portfolio.
 
@@ -111,6 +113,9 @@ class PaperTradingEngine:
         (0.001 = 10 bps). They default to zero so direct unit tests can model
         frictionless fills; the application wires the configured defaults from
         ``configs.settings`` into its shared engine.
+
+        ``slippage_by_symbol`` overrides the global ``slippage_pct`` for named
+        symbols; symbols not in the mapping fall back to the global value.
         """
         if not 0.0 <= commission_pct < 1.0:
             raise ValueError("commission_pct must be between 0 and 1")
@@ -121,6 +126,7 @@ class PaperTradingEngine:
         self._cash: float = self._initial_capital
         self._commission_pct = commission_pct
         self._slippage_pct = slippage_pct
+        self._slippage_by_symbol = self._normalize_slippage_by_symbol(slippage_by_symbol)
         self._positions: list[PaperPosition] = []
         self._closed_trades: list[ClosedTrade] = []
         self._equity_curve: list[float] = [self._initial_capital]
@@ -179,10 +185,10 @@ class PaperTradingEngine:
 
         # Apply adverse slippage to the signal price before mutating anything.
         # A long pays up; a short receives less. This is the actual fill
-        # recorded on the position.
-        fill_price = (
-            entry_price * (1.0 + self._slippage_pct) if side == "long" else entry_price * (1.0 - self._slippage_pct)
-        )
+        # recorded on the position. Per-symbol slippage overrides the global
+        # rate when configured.
+        slippage_pct = self._slippage_for(symbol)
+        fill_price = entry_price * (1.0 + slippage_pct) if side == "long" else entry_price * (1.0 - slippage_pct)
         if fill_price <= 0:
             return {"accepted": False, "reason": "Invalid fill price after slippage"}
 
@@ -293,10 +299,11 @@ class PaperTradingEngine:
                 self._positions.pop(i)
 
                 # Exit fills are adverse: a long sells lower; a short buys higher.
+                # Use the position's symbol so entry and exit costs cannot drift
+                # apart when a per-symbol override is configured.
+                slippage_pct = self._slippage_for(pos.symbol)
                 exit_fill = (
-                    exit_price * (1.0 - self._slippage_pct)
-                    if pos.side == "long"
-                    else exit_price * (1.0 + self._slippage_pct)
+                    exit_price * (1.0 - slippage_pct) if pos.side == "long" else exit_price * (1.0 + slippage_pct)
                 )
                 if exit_fill <= 0:
                     # Restore the position rather than recording an invalid fill.
@@ -342,19 +349,32 @@ class PaperTradingEngine:
 
         return None
 
-    def check_sl_tp(self, symbol: str, high: float, low: float) -> list[ClosedTrade]:
-        """Check open positions for a symbol against a candle's high/low for SL/TP.
+    def check_sl_tp(
+        self,
+        symbol: str,
+        high: float,
+        low: float,
+        open_price: float | None = None,
+    ) -> list[ClosedTrade]:
+        """Check open positions for a symbol against a candle's high/low/open for SL/TP.
 
         Args:
             symbol: Ticker symbol.
             high: Current candle's high price.
             low: Current candle's low price.
+            open_price: Optional candle open. When the candle opens beyond the
+                stop, the stop fills at the open instead of the stop level.
+                ``None`` keeps the stop-level fill for callers that only have
+                high/low data.
 
         Returns:
             List of ``ClosedTrade`` records for any positions that were
             stopped out or took profit.
         """
         closed: list[ClosedTrade] = []
+        # A non-positive open is unusable; fall back to the stop level rather
+        # than recording an invalid fill.
+        gap_open = open_price if open_price is not None and open_price > 0 else None
 
         for pos in list(self._positions):
             if pos.symbol != symbol:
@@ -366,9 +386,12 @@ class PaperTradingEngine:
             # If a candle spans both levels, the intra-candle path is unknown.
             # Assume the adverse level was reached first; optimistic ordering
             # would inflate paper results and distort the promotion gate.
+            # Take-profit always fills at its level, even on a favourable gap.
             if pos.side == "long":
                 if pos.stop_loss is not None and low <= pos.stop_loss:
                     exit_price = pos.stop_loss
+                    if gap_open is not None and gap_open <= pos.stop_loss:
+                        exit_price = gap_open
                     reason = "stop_loss"
                 elif pos.take_profit is not None and high >= pos.take_profit:
                     exit_price = pos.take_profit
@@ -376,6 +399,8 @@ class PaperTradingEngine:
             else:  # short
                 if pos.stop_loss is not None and high >= pos.stop_loss:
                     exit_price = pos.stop_loss
+                    if gap_open is not None and gap_open >= pos.stop_loss:
+                        exit_price = gap_open
                     reason = "stop_loss"
                 elif pos.take_profit is not None and low <= pos.take_profit:
                     exit_price = pos.take_profit
@@ -527,6 +552,24 @@ class PaperTradingEngine:
             if pos.symbol == symbol:
                 return pos
         return None
+
+    @staticmethod
+    def _normalize_slippage_by_symbol(mapping: Mapping[str, float] | None) -> dict[str, float]:
+        """Validate and case-normalize per-symbol slippage overrides."""
+        normalized: dict[str, float] = {}
+        for raw_symbol, raw_pct in (mapping or {}).items():
+            symbol = str(raw_symbol).strip().upper()
+            if not symbol:
+                raise ValueError("slippage_by_symbol keys must be non-empty symbols")
+            pct = float(raw_pct)
+            if not 0.0 <= pct < 1.0:
+                raise ValueError(f"slippage_by_symbol[{raw_symbol!r}] must be between 0 and 1")
+            normalized[symbol] = pct
+        return normalized
+
+    def _slippage_for(self, symbol: str) -> float:
+        """Return the symbol override or the global slippage rate."""
+        return self._slippage_by_symbol.get(symbol.upper(), self._slippage_pct)
 
     def _compute_equity(self) -> float:
         """Compute total portfolio equity at the latest marks.
