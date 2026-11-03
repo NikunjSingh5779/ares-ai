@@ -210,6 +210,9 @@ long/short positions and their cost basis survive restart. The engine still requ
 the process to be constructed with the same configured fee/slippage settings; those
 settings are configuration, not part of the persisted portfolio state. Concurrent
 writers were last-writer-wins through P1-B; ADR-015 (P1-C) now serializes them.
+A 2026-11-03 extension adds gap-through stop fills (the candle open is the exit
+reference when it is already beyond the stop) and per-symbol slippage overrides with
+the global rate as fallback; partial fills and borrow/funding costs remain out of scope.
 
 ---
 

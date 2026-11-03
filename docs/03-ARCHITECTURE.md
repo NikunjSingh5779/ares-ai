@@ -61,9 +61,11 @@ caller-supplied price or quantity and has no manual bypass.
 
 The ledger refreshes the in-memory `PaperTradingEngine` cache from
 `PaperLedgerRepository` (`paper_trading/repository.py`), lets the engine fill with
-configured commission and adverse slippage, then writes the position, orders, trade
-history, and portfolio in one PostgreSQL transaction. Every write runs inside two locks:
-an in-process `asyncio.Lock` around the shared cache, and a PostgreSQL
+configured commission and adverse slippage (per-symbol override or global fallback),
+then writes the position, orders, trade history, and portfolio in one PostgreSQL
+transaction. Candle exits pass the open, so a stop that gaps fills at the open.
+Every write runs inside two locks: an in-process `asyncio.Lock` around the shared
+cache, and a PostgreSQL
 transaction-scoped advisory lock (`pg_try_advisory_xact_lock`) held across
 hydrate → mutate → persist. The API, worker, and runner therefore serialize instead of
 overwriting each other's committed state; a writer that cannot get the lock within

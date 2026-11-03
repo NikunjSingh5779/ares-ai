@@ -119,6 +119,18 @@ def client() -> TestClient:
     return TestClient(app)
 
 
+def test_ledger_factory_wires_per_symbol_slippage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The shared engine must receive the configured per-symbol overrides."""
+    monkeypatch.setattr(settings, "paper_trading_slippage_by_symbol", {"BTC-USD": 0.004})
+    monkeypatch.setattr(trading, "_engine", None)
+    monkeypatch.setattr(trading, "_ledger", None)
+
+    ledger = trading.get_paper_trading_ledger()
+    result = ledger.engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+
+    assert result["fill_price"] == pytest.approx(50200.0)
+
+
 @pytest.fixture
 def fake_ledger(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     ledger = MagicMock()

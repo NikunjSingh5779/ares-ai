@@ -90,10 +90,14 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
       the `OPENROUTER_API_KEY` repository secret, and fails when a critical agent
       has no working model. `tests/test_infra_config.py` pins the trigger, probe,
       secret guard, and timeout.)
-- [ ] Paper realism: gap-through stop fills, partial fills/liquidity,
-      borrow/funding costs, per-symbol slippage. (Verified 2026-10-28: commission
-      plus one global `paper_trading_slippage_pct` only; see
-      `paper_trading/CONTEXT.md` Known gaps.)
+- [x] Paper realism — gap-through stop fills and per-symbol slippage. (2026-11-03:
+      the worker and runner pass the candle open, so a stop that gaps fills at the
+      open; take-profit stays at its level. `PAPER_TRADING_SLIPPAGE_BY_SYMBOL`
+      overrides the global rate per symbol with global fallback. Tests cover long/
+      short gaps, stop-first precedence, favourable gaps, invalid rates, and factory
+      wiring.)
+- [ ] Paper realism — partial fills/liquidity and borrow/funding costs. (Still
+      missing; both need schema/persistence changes beyond the current fill model.)
 - [x] Close the paid-model bypass in `agents/web_collector.py`. (2026-10-28:
       the optional `browser_use` path now builds browser-use's native
       `ChatOpenRouter` only from the free-only `web_collector` roster entry,

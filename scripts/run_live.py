@@ -116,6 +116,7 @@ async def main():
                 high=high_price,
                 low=low_price,
                 close=float(latest_candle.close),
+                open_price=float(latest_candle.open),
             )
             if live_engine:
                 summary = engine.get_summary()

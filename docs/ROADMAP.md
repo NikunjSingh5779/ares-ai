@@ -65,9 +65,9 @@
 ## Open product decisions
 
 - Keep the custom pure-Python backtest engine or adopt VectorBT/Backtrader.
-- Signed/stored approval for `/execute` versus the current API-key trust
-  boundary.
-- Paper realism depth: gap-through stops, partial fills, funding/borrow costs.
+- Whether `/execute` approval tokens should be stored and single-use rather than
+  short-lived bearer capabilities.
+- Paper realism depth: partial fills/liquidity and funding/borrow costs.
 
 ## Read next
 

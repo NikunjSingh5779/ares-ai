@@ -41,10 +41,11 @@ lock, so a second process waits for the first commit instead of overwriting it; 
 rollback on failure or
 rejection (a failed reversal keeps the old position); an accepted fill with no seeded
 paper account is rejected; configured fees and adverse
-slippage apply; a candle spanning both levels resolves to the stop;
-`total_pnl = equity - initial_capital`; shorts carry side/margin explicitly. The API
-cannot supply its own price or quantity, and a duplicate `client_order_id` returns 409
-before a second position is created.
+slippage apply (a per-symbol override replaces the global rate, otherwise the global
+rate applies); a candle spanning both levels resolves to the stop; a stop that gaps
+beyond its level fills at the candle open; `total_pnl = equity - initial_capital`;
+shorts carry side/margin explicitly. The API cannot supply its own price or quantity,
+and a duplicate `client_order_id` returns 409 before a second position is created.
 
 **Change impact:**
 - Add a field → DB column + migration + Pydantic model + `to_dict` + frontend type + tests.
@@ -61,4 +62,5 @@ before a second position is created.
 single-user scale); reads do not take it because each process has its own cache. `/execute`
 requires a signed, expiring approval token from `/signal`; the token is not single-use, so
 `client_order_id` remains the duplicate-order guard. Old short **positions** cannot be inferred
-during migration and default to long.
+during migration and default to long. Paper fills still have no partial fills/liquidity
+limits or borrow/funding costs.

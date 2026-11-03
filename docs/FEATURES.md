@@ -24,7 +24,7 @@
 | Feature | Status | Notes |
 |---|---|---|
 | Paper portfolio, positions, orders | Working | PostgreSQL is the durable source; API reads hydrate |
-| Paper fills with commission and slippage | Working | Equity-based PnL; marks open positions |
+| Paper fills with commission and slippage | Working | Equity-based PnL; marks open positions; per-symbol slippage overrides; gap-through stops fill at the candle open |
 | Concurrent paper writers | Working | In-process + transaction-scoped advisory lock; busy writer -> 503 |
 | Duplicate order protection | Working | Required `client_order_id`; duplicate -> 409 |
 | Restart-safe paper state | Working | Phase 1 Compose exit passed on 2026-10-21 |
@@ -84,8 +84,7 @@
   begins; results are stored per `session_id`. The gate and store are
   process-local, so a multi-worker deployment needs shared state.
 - Pre-P1-A short positions migrated as long need manual reconciliation.
-- Paper realism lacks gap-through stop fills, partial fills/liquidity,
-  borrow/funding costs, and per-symbol slippage.
+- Paper realism still lacks partial fills/liquidity and borrow/funding costs.
 
 ## Read next
 
