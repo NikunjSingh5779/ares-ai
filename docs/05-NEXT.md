@@ -157,8 +157,9 @@ authenticated route shells; data-populated states remain an optional follow-up.
 - Scheduled live-catalog validation: **done 2026-10-30** —
   `.github/workflows/model-catalog.yml` runs `scripts/test_free_models.py` weekly
   and on demand, and fails when a critical agent has no working model. The first
-  GitHub Actions run is still pending; it needs the `OPENROUTER_API_KEY`
-  repository secret. See `02-STATUS.md` gap #9.
+  scheduled run (2026-11-02, **41478654653**) failed closed because the
+  `OPENROUTER_API_KEY` repository secret is missing; add it, then run
+  `workflow_dispatch`. See `02-STATUS.md` gap #9.
 - Paper realism slice 1 — gap-through stop fills and per-symbol slippage: **done
   2026-11-03** — `check_sl_tp` accepts the candle open and fills a gapped stop at
   that open; `PAPER_TRADING_SLIPPAGE_BY_SYMBOL` overrides the global rate with

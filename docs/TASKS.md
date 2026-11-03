@@ -89,7 +89,9 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
       `scripts/test_free_models.py` weekly and on `workflow_dispatch`, requires
       the `OPENROUTER_API_KEY` repository secret, and fails when a critical agent
       has no working model. `tests/test_infra_config.py` pins the trigger, probe,
-      secret guard, and timeout.)
+      secret guard, and timeout. The first scheduled run (2026-11-02,
+      **41478654653**) failed closed at the missing-secret guard; the secret and a
+      `workflow_dispatch` run are still needed.)
 - [x] Paper realism — gap-through stop fills and per-symbol slippage. (2026-11-03:
       the worker and runner pass the candle open, so a stop that gaps fills at the
       open; take-profit stays at its level. `PAPER_TRADING_SLIPPAGE_BY_SYMBOL`
