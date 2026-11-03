@@ -2,8 +2,9 @@
 # Status — verified state
 
 **Last verified:** 2026-11-03
-**Branch:** `master` — clean, equal to `origin/master` (`409da96`); the paper-realism
-slice below is on `feat/paper-realism-fills` pending merge. PR #131
+**Branch:** `master` — clean, equal to `origin/master` (`779f2ad`). PR #135
+squash-merged the paper-realism slice (gap-through stops and per-symbol slippage),
+closing that P2 item. PR #131
 squash-merged the scheduled model-catalog workflow, closing P2 gap #9. PR #130
 squash-merged the signed `/execute` approval token, closing P2 gap #2. PR #129
 squash-merged the web collector free-only fix, closing P2 gap #18. PR #128
@@ -448,7 +449,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Tests | `pytest tests/test_infra_config.py -q` → **24 passed**, including the schedule/dispatch triggers, the single probe command, the secret wiring and missing-secret guard, and the job timeout. |
 | Not yet run | The scheduled workflow has not executed on GitHub Actions. The first run is a manual `workflow_dispatch`; it needs the `OPENROUTER_API_KEY` repository secret. |
 
-## Paper realism slice 1 — gap stops and per-symbol slippage (verified 2026-11-03)
+## Paper realism slice 1 — gap stops and per-symbol slippage (merged as `779f2ad`, verified 2026-11-03)
 
 | Piece | Evidence |
 |---|---|
@@ -456,6 +457,8 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Candle wiring | `PaperTradingLedger.process_candle` forwards `open_price`; `paper_trading/worker.py` and `scripts/run_live.py` pass `candle.open`. Stop-first precedence still applies when a candle spans both levels. |
 | Per-symbol slippage | `PAPER_TRADING_SLIPPAGE_BY_SYMBOL` is a JSON object (e.g. `{"BTC-USD": 0.002}`) validated to `0 <= rate < 1` and normalized to upper-case symbols. `PaperTradingEngine` resolves the symbol override on entry and exit, falling back to `PAPER_TRADING_SLIPPAGE_PCT`. `get_paper_trading_ledger()` passes the map to the shared engine. |
 | Tests | `tests/test_paper_trading.py` covers long/short gaps, no-gap fills, stop-first precedence, favourable gaps, slippage-on-gap, override/fallback/zero override, and invalid rates; `tests/test_paper_trading_ledger.py` covers the gap fill through the ledger; `tests/test_paper_trading_worker.py` pins the forwarded open; `tests/test_config.py` covers JSON env parsing and validation; `tests/test_trading_router.py` covers factory wiring. |
+| Local verification | `pytest tests/ -q` → **1404 passed, 3 skipped, 84.27%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on 215 source files; `pytest tests/test_icm_structure.py tests/test_infra_config.py -q --no-cov` → **44 passed**. |
+| CI | GitHub Actions runs **41672449680** (push) and **41672484107** (pull request) passed all five jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`. |
 | Scope | No schema change. Partial fills/liquidity and borrow/funding costs remain open. |
 
 ## Red / known gaps
