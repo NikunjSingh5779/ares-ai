@@ -37,8 +37,10 @@
 - **`orders.client_order_id` is unique** through a partial unique index
   (`uq_orders_client_order_id`); duplicates return `409` and cannot create a
   second position.
-- **`positions.side`** records long/short, and cost, margin, and the equity
-  curve are persisted with the P1-A ledger.
+- **`positions.side`** records long/short, and cost, margin, accrued carry
+  (`carry_cost` plus the `last_accrual_at` clock), and the equity curve are
+  persisted with the P1-A ledger. `trade_history.carry_cost` keeps the settled
+  amount after close.
 - **Schema changes are atomic.** One change updates the DDL, the ORM mapping
   where applicable, a migration, and tests.
 - **`app_settings` is one non-safety row.** `id` is constrained to `1`; preferences
@@ -46,7 +48,7 @@
   gates stay in code/configuration and are exposed read-only by the settings API.
 - **`init.sql` is a bootstrap copy, not a second schema.** After `init.sql`
   creates the schema, the entrypoint stamps Alembic `0001` and applies the
-  idempotent `0002`–`0006` revisions (ADR-017).
+  idempotent `0002`–`0007` revisions (ADR-017).
 - **Improvement suggestions are advisory.** `improvement_records.applied` records
   operator review only; applying a record never mutates configuration, a safety
   threshold, a position cap, or the promotion gate (ADR-022).
@@ -62,9 +64,10 @@
 | `0004_role_hierarchy.py` | Role column and legacy-user handling |
 | `0005_app_settings.py` | Singleton `app_settings` row and `updated_at` trigger |
 | `0006_improvement_history.py` | `reflection_runs` and advisory `improvement_records` |
+| `0007_carry_costs.py` | `positions.carry_cost`/`last_accrual_at`, `trade_history.carry_cost`, clock backfill |
 
-`0006` is the current head. A fresh Compose volume lands on `0001` after
-`init.sql`, then applies `0002`–`0006`.
+`0007` is the current head. A fresh Compose volume lands on `0001` after
+`init.sql`, then applies `0002`–`0007`.
 
 ## Common commands
 

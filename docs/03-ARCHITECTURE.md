@@ -143,7 +143,7 @@ A router may validate and delegate; it must not own portfolio state or exchange 
 | Dashboard preferences | singleton `app_settings` JSONB row | `settings_service` through `PUT /api/v1/settings/preferences` | non-safety only; safety limits are computed from `agents.risk`/`agents.consensus`/`configs.settings` (ADR-018) |
 | Strategy drafts | PostgreSQL `strategies` | `strategy_service` through `/api/v1/strategies` | draft/paused edits only; status, live enablement, and promotion counters are server-owned and never written by this surface |
 | Reflection/improvement history | PostgreSQL `reflection_runs`, `improvement_records` | `improvement_service` through the best-effort supervisor post-run hook and `/api/v1/agents/improvements` | advisory only; applying a record never mutates configuration or a safety limit; a history outage leaves the pipeline result unchanged |
-| Schema | `database/schema.sql`, `database/init.sql`, tracked `migrations/versions/` | Alembic / Compose bootstrap | `init.sql` is a byte-identical bootstrap copy; `0001`–`0006` are the migration chain; a fresh volume stamps `0001` after `init.sql`, then applies the idempotent later revisions (ADR-017) |
+| Schema | `database/schema.sql`, `database/init.sql`, tracked `migrations/versions/` | Alembic / Compose bootstrap | `init.sql` is a byte-identical bootstrap copy; `0001`–`0007` are the migration chain; a fresh volume stamps `0001` after `init.sql`, then applies the idempotent later revisions (ADR-017) |
 
 ADR-005 is implemented for paper state; ADR-014 adds the approved `/execute` contract and
 client-order idempotency; ADR-015 serializes paper writers across processes; ADR-017 fixes

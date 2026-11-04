@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 # Root project directory (two levels up from this file)
@@ -106,6 +106,14 @@ class Settings(BaseSettings):
     # JSON object in the environment, e.g. '{"BTC-USD": 0.002}'. Symbols not
     # listed fall back to paper_trading_slippage_pct.
     paper_trading_slippage_by_symbol: dict[str, float] = Field(default_factory=dict)
+    # Annualized carry, expressed as a decimal (0.10 = 10% per year). Borrow is
+    # charged on short notional; funding is charged on long notional. Both are
+    # costs only (no funding credits). JSON per-symbol maps override the global
+    # rate, with the global rate as fallback.
+    paper_trading_borrow_rate_pct: float = Field(default=0.10, ge=0.0, lt=10.0)
+    paper_trading_funding_rate_pct: float = Field(default=0.0, ge=0.0, lt=10.0)
+    paper_trading_borrow_rate_by_symbol: dict[str, float] = Field(default_factory=dict)
+    paper_trading_funding_rate_by_symbol: dict[str, float] = Field(default_factory=dict)
     # How long a paper-ledger writer waits for the cross-process advisory lock
     # before the operation fails with 503 instead of mutating stale state.
     paper_trading_writer_lock_timeout_seconds: float = Field(default=10.0, gt=0.0)
@@ -170,6 +178,28 @@ class Settings(BaseSettings):
             if not 0.0 <= float(pct) < 1.0:
                 raise ValueError(f"paper_trading_slippage_by_symbol[{raw_symbol!r}] must be between 0 and 1")
             normalized[symbol] = float(pct)
+        return normalized
+
+    @field_validator(
+        "paper_trading_borrow_rate_by_symbol",
+        "paper_trading_funding_rate_by_symbol",
+    )
+    @classmethod
+    def _validate_carry_rates_by_symbol(
+        cls,
+        value: dict[str, float],
+        info: ValidationInfo,
+    ) -> dict[str, float]:
+        """Reject impossible annual rates and normalize symbols."""
+        field_name = info.field_name
+        normalized: dict[str, float] = {}
+        for raw_symbol, rate in value.items():
+            symbol = str(raw_symbol).strip().upper()
+            if not symbol:
+                raise ValueError(f"{field_name} keys must be non-empty symbols")
+            if not 0.0 <= float(rate) < 10.0:
+                raise ValueError(f"{field_name}[{raw_symbol!r}] must be between 0 and 10")
+            normalized[symbol] = float(rate)
         return normalized
 
     # ── Production-safety validator ──────────────────────────────────

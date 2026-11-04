@@ -19,8 +19,12 @@ import math
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
+
+# Carry rates are annualized decimals (0.10 = 10% per year). Using a fixed
+# 365-day year keeps accrual deterministic across calendar boundaries.
+SECONDS_PER_YEAR = 365.0 * 24.0 * 60.0 * 60.0
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -42,6 +46,9 @@ class PaperPosition:
     strategy_name: str = ""
     entry_commission: float = 0.0
     margin: float = 0.0
+    # Accrued borrow (short) or funding (long) cost, settled into cash on close.
+    carry_cost: float = 0.0
+    last_accrual_at: datetime | None = None
 
 
 @dataclass
@@ -61,6 +68,7 @@ class ClosedTrade:
     strategy_name: str = ""
     entry_commission: float = 0.0
     exit_commission: float = 0.0
+    carry_cost: float = 0.0
     position_id: str = ""
 
 
@@ -85,6 +93,7 @@ class PortfolioSummary:
     max_drawdown_pct: float = 0.0
     equity: float = 0.0
     margin_used: float = 0.0
+    carry_cost: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +115,10 @@ class PaperTradingEngine:
         commission_pct: float = 0.0,
         slippage_pct: float = 0.0,
         slippage_by_symbol: Mapping[str, float] | None = None,
+        borrow_rate_pct: float = 0.0,
+        funding_rate_pct: float = 0.0,
+        borrow_rate_by_symbol: Mapping[str, float] | None = None,
+        funding_rate_by_symbol: Mapping[str, float] | None = None,
     ) -> None:
         """Create a paper portfolio.
 
@@ -116,17 +129,31 @@ class PaperTradingEngine:
 
         ``slippage_by_symbol`` overrides the global ``slippage_pct`` for named
         symbols; symbols not in the mapping fall back to the global value.
+
+        ``borrow_rate_pct`` and ``funding_rate_pct`` are annualized decimals
+        (0.10 = 10% per year). Borrow accrues on short notional and funding on
+        long notional. Both default to zero for frictionless unit tests; the
+        application wires the configured defaults. Per-symbol maps override the
+        global annual rate for the named symbol.
         """
         if not 0.0 <= commission_pct < 1.0:
             raise ValueError("commission_pct must be between 0 and 1")
         if not 0.0 <= slippage_pct < 1.0:
             raise ValueError("slippage_pct must be between 0 and 1")
+        if not 0.0 <= borrow_rate_pct < 10.0:
+            raise ValueError("borrow_rate_pct must be between 0 and 10")
+        if not 0.0 <= funding_rate_pct < 10.0:
+            raise ValueError("funding_rate_pct must be between 0 and 10")
 
         self._initial_capital = max(initial_capital, 1000.0)
         self._cash: float = self._initial_capital
         self._commission_pct = commission_pct
         self._slippage_pct = slippage_pct
         self._slippage_by_symbol = self._normalize_slippage_by_symbol(slippage_by_symbol)
+        self._borrow_rate_pct = borrow_rate_pct
+        self._funding_rate_pct = funding_rate_pct
+        self._borrow_rate_by_symbol = self._normalize_rate_by_symbol(borrow_rate_by_symbol, "borrow_rate_by_symbol")
+        self._funding_rate_by_symbol = self._normalize_rate_by_symbol(funding_rate_by_symbol, "funding_rate_by_symbol")
         self._positions: list[PaperPosition] = []
         self._closed_trades: list[ClosedTrade] = []
         self._equity_curve: list[float] = [self._initial_capital]
@@ -196,16 +223,20 @@ class PaperTradingEngine:
         # new position's buying power. Keep a light rollback of the fields
         # close_position() touches so a rejected reversal cannot leave the
         # existing position silently closed.
+        entry_at = self._utc_now()
         reversal_state: tuple[float, list[PaperPosition], int, int, dict[str, float]] | None = None
         if existing is not None:
+            # Deep-copy the positions: closing the existing position accrues its
+            # carry in place, so a shallow list would leak that mutation into a
+            # restored snapshot when the new fill is rejected.
             reversal_state = (
                 self._cash,
-                list(self._positions),
+                copy.deepcopy(self._positions),
                 len(self._closed_trades),
                 len(self._equity_curve),
                 dict(self._last_prices),
             )
-            closed = self.close_position(existing.id, entry_price, exit_reason="signal")
+            closed = self.close_position(existing.id, entry_price, exit_reason="signal", exit_at=entry_at)
             if closed is None:
                 self._restore_reversal_state(reversal_state)
                 return {"accepted": False, "reason": "Could not close existing position"}
@@ -243,12 +274,13 @@ class PaperTradingEngine:
             side=side,  # type: ignore[arg-type]
             quantity=actual_quantity,
             entry_price=fill_price,
-            entry_at=datetime.now(),
+            entry_at=entry_at,
             stop_loss=stop_loss,
             take_profit=take_profit,
             strategy_name=strategy_name,
             entry_commission=entry_commission,
             margin=margin,
+            last_accrual_at=entry_at,
         )
         self._positions.append(pos)
         self._last_prices[symbol] = fill_price
@@ -278,6 +310,7 @@ class PaperTradingEngine:
         position_id: str,
         exit_price: float,
         exit_reason: str = "signal",
+        exit_at: datetime | None = None,
     ) -> ClosedTrade | None:
         """Close an open position and record the trade.
 
@@ -287,6 +320,9 @@ class PaperTradingEngine:
                 adverse slippage and commission are applied to the fill.
             exit_reason: Reason for closing (``"signal"``, ``"stop_loss"``,
                 ``"take_profit"``).
+            exit_at: Optional exit timestamp. Carry is accrued from the
+                position's ``last_accrual_at`` to this time and settled into
+                cash and PnL. Defaults to the current UTC time.
 
         Returns:
             The ``ClosedTrade`` record, or ``None`` if position not found.
@@ -294,9 +330,13 @@ class PaperTradingEngine:
         if exit_price <= 0:
             return None
 
+        exit_time = self._normalize_utc(exit_at) if exit_at is not None else self._utc_now()
+
         for i, pos in enumerate(self._positions):
             if pos.id == position_id:
-                self._positions.pop(i)
+                # Accrue before removing the position so the final partial
+                # period is charged exactly once.
+                self._accrue_position(pos, exit_time)
 
                 # Exit fills are adverse: a long sells lower; a short buys higher.
                 # Use the position's symbol so entry and exit costs cannot drift
@@ -306,20 +346,20 @@ class PaperTradingEngine:
                     exit_price * (1.0 - slippage_pct) if pos.side == "long" else exit_price * (1.0 + slippage_pct)
                 )
                 if exit_fill <= 0:
-                    # Restore the position rather than recording an invalid fill.
-                    self._positions.insert(i, pos)
+                    # Keep the position rather than recording an invalid fill.
                     return None
 
+                self._positions.pop(i)
                 exit_value = pos.quantity * exit_fill
                 exit_commission = exit_value * self._commission_pct
                 if pos.side == "long":
                     price_pnl = pos.quantity * (exit_fill - pos.entry_price)
-                    self._cash += exit_value - exit_commission
+                    self._cash += exit_value - exit_commission - pos.carry_cost
                 else:
                     price_pnl = pos.quantity * (pos.entry_price - exit_fill)
-                    self._cash -= exit_value + exit_commission
+                    self._cash -= exit_value + exit_commission + pos.carry_cost
 
-                pnl = price_pnl - pos.entry_commission - exit_commission
+                pnl = price_pnl - pos.entry_commission - exit_commission - pos.carry_cost
                 entry_value = pos.quantity * pos.entry_price
                 pnl_pct = (pnl / entry_value * 100.0) if entry_value > 0 else 0.0
 
@@ -330,13 +370,14 @@ class PaperTradingEngine:
                     entry_price=pos.entry_price,
                     exit_price=exit_fill,
                     entry_at=pos.entry_at,
-                    exit_at=datetime.now(),
+                    exit_at=exit_time,
                     pnl=round(pnl, 2),
                     pnl_pct=round(pnl_pct, 4),
                     exit_reason=exit_reason,
                     strategy_name=pos.strategy_name,
                     entry_commission=pos.entry_commission,
                     exit_commission=exit_commission,
+                    carry_cost=pos.carry_cost,
                     position_id=pos.id,
                 )
                 self._closed_trades.append(trade)
@@ -355,6 +396,7 @@ class PaperTradingEngine:
         high: float,
         low: float,
         open_price: float | None = None,
+        as_of: datetime | None = None,
     ) -> list[ClosedTrade]:
         """Check open positions for a symbol against a candle's high/low/open for SL/TP.
 
@@ -366,12 +408,15 @@ class PaperTradingEngine:
                 stop, the stop fills at the open instead of the stop level.
                 ``None`` keeps the stop-level fill for callers that only have
                 high/low data.
+            as_of: Optional candle timestamp. Carry is accrued to this time
+                before a position closes. ``None`` uses the current UTC time.
 
         Returns:
             List of ``ClosedTrade`` records for any positions that were
             stopped out or took profit.
         """
         closed: list[ClosedTrade] = []
+        exit_time = self._normalize_utc(as_of) if as_of is not None else None
         # A non-positive open is unusable; fall back to the stop level rather
         # than recording an invalid fill.
         gap_open = open_price if open_price is not None and open_price > 0 else None
@@ -407,25 +452,40 @@ class PaperTradingEngine:
                     reason = "take_profit"
 
             if reason is not None and exit_price is not None:
-                trade = self.close_position(pos.id, exit_price, exit_reason=reason)
+                trade = self.close_position(pos.id, exit_price, exit_reason=reason, exit_at=exit_time)
                 if trade is not None:
                     closed.append(trade)
 
         return closed
 
-    def mark_to_market(self, symbol: str, price: float) -> None:
+    def mark_to_market(self, symbol: str, price: float, as_of: datetime | None = None) -> None:
         """Mark open positions for ``symbol`` at the latest market price.
 
-        Appending the resulting equity to the curve is what makes intra-trade
-        drawdown measurable. Calling this with a symbol that has no open
-        position is a no-op.
+        Carry is accrued for every open position up to ``as_of`` (or now), so a
+        mark also captures the cost of holding. Appending the resulting equity
+        to the curve is what makes intra-trade drawdown measurable. Calling
+        this with a symbol that has no open position still accrues carry but
+        does not append a duplicate curve point.
         """
         if price <= 0:
             return
+        self.accrue_carry(as_of)
         if not any(pos.symbol == symbol for pos in self._positions):
             return
         self._last_prices[symbol] = price
         self._equity_curve.append(self._compute_equity())
+
+    def accrue_carry(self, as_of: datetime | None = None) -> float:
+        """Accrue borrow/funding on every open position up to ``as_of``.
+
+        The charge is based on entry notional and elapsed time since each
+        position's ``last_accrual_at``, so repeated calls with the same
+        timestamp (or an older one) do not double-charge. A zero rate still
+        advances the clock, which keeps later accruals from replaying the
+        entire holding period. Returns the total cost accrued by this call.
+        """
+        when = self._normalize_utc(as_of) if as_of is not None else self._utc_now()
+        return sum(self._accrue_position(pos, when) for pos in self._positions)
 
     def get_summary(self) -> PortfolioSummary:
         """Compute portfolio-level metrics at the latest marks.
@@ -445,6 +505,7 @@ class PaperTradingEngine:
         win_rate = (len(wins) / n * 100.0) if n > 0 else 0.0
         max_dd = self._compute_max_drawdown()
         margin_used = sum(pos.margin for pos in self._positions)
+        carry_cost = sum(pos.carry_cost for pos in self._positions) + sum(t.carry_cost for t in self._closed_trades)
 
         return PortfolioSummary(
             initial_capital=self._initial_capital,
@@ -459,6 +520,7 @@ class PaperTradingEngine:
             max_drawdown_pct=round(max_dd, 4),
             equity=round(equity, 2),
             margin_used=round(margin_used, 2),
+            carry_cost=round(carry_cost, 2),
         )
 
     # ------------------------------------------------------------------
@@ -571,14 +633,59 @@ class PaperTradingEngine:
         """Return the symbol override or the global slippage rate."""
         return self._slippage_by_symbol.get(symbol.upper(), self._slippage_pct)
 
+    @staticmethod
+    def _normalize_rate_by_symbol(mapping: Mapping[str, float] | None, label: str) -> dict[str, float]:
+        """Validate and case-normalize per-symbol annual carry rates."""
+        normalized: dict[str, float] = {}
+        for raw_symbol, raw_rate in (mapping or {}).items():
+            symbol = str(raw_symbol).strip().upper()
+            if not symbol:
+                raise ValueError(f"{label} keys must be non-empty symbols")
+            rate = float(raw_rate)
+            if not 0.0 <= rate < 10.0:
+                raise ValueError(f"{label}[{raw_symbol!r}] must be between 0 and 10")
+            normalized[symbol] = rate
+        return normalized
+
+    def _carry_rate_for(self, symbol: str, side: str) -> float:
+        """Return the annualized borrow (short) or funding (long) rate."""
+        if side == "short":
+            return self._borrow_rate_by_symbol.get(symbol.upper(), self._borrow_rate_pct)
+        return self._funding_rate_by_symbol.get(symbol.upper(), self._funding_rate_pct)
+
+    @staticmethod
+    def _normalize_utc(value: datetime) -> datetime:
+        """Normalize a timestamp to aware UTC; naive values are assumed UTC."""
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    @staticmethod
+    def _utc_now() -> datetime:
+        return datetime.now(UTC)
+
+    def _accrue_position(self, position: PaperPosition, as_of: datetime) -> float:
+        """Accrue one position's carry up to ``as_of`` and return the delta."""
+        last = self._normalize_utc(position.last_accrual_at or position.entry_at)
+        if as_of <= last:
+            return 0.0
+        elapsed_seconds = (as_of - last).total_seconds()
+        notional = position.quantity * position.entry_price
+        cost = notional * self._carry_rate_for(position.symbol, position.side) * elapsed_seconds / SECONDS_PER_YEAR
+        position.carry_cost += cost
+        position.last_accrual_at = as_of
+        return cost
+
     def _compute_equity(self) -> float:
         """Compute total portfolio equity at the latest marks.
 
         Longs add market value to cash. Shorts subtract their liability, while
-        their credited proceeds remain in cash. At entry this reduces equity by
-        the entry commission only, which is the correct accounting identity.
+        their credited proceeds remain in cash. Accrued carry is a liability
+        until the position closes, so it is subtracted here and settled into
+        cash by :meth:`close_position`. At entry this reduces equity by the
+        entry commission only, which is the correct accounting identity.
         """
-        equity = self._cash
+        equity = self._cash - sum(pos.carry_cost for pos in self._positions)
         for pos in self._positions:
             mark = self._last_prices.get(pos.symbol, pos.entry_price)
             if pos.side == "long":
@@ -621,5 +728,6 @@ class PaperTradingEngine:
             "strategy_name": trade.strategy_name,
             "entry_commission": round(trade.entry_commission, 8),
             "exit_commission": round(trade.exit_commission, 8),
+            "carry_cost": round(trade.carry_cost, 8),
             "fees": round(trade.entry_commission + trade.exit_commission, 2),
         }

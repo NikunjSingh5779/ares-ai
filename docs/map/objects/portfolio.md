@@ -7,7 +7,7 @@
 
 **Homes:**
 - `paper_trading/engine.py` — `PaperPosition`, `ClosedTrade`, `PortfolioSummary`,
-  cash, equity, marks, commissions, margin, snapshot/restore.
+  cash, equity, marks, commissions, margin, borrow/funding carry, snapshot/restore.
 - `paper_trading/repository.py` — `PaperLedgerRepository`; hydration, one-transaction
   writes for portfolio/positions/orders/history, and `writer_lock()` (transaction-scoped
   PostgreSQL advisory lock that serializes API/worker/runner writers).
@@ -21,9 +21,10 @@
   cost/margin/equity fields, and `orders.client_order_id`.
 
 **Shape:** position = `{id, symbol, side, quantity, entry_price, entry_at, stop_loss,
-take_profit, entry_commission, margin}`; closed trade adds `exit_price`, `pnl`,
-`pnl_pct`, `entry_commission`, `exit_commission`, `exit_reason`; summary adds cash,
-equity, `margin_used`, return %, win rate, max drawdown.
+take_profit, entry_commission, margin, carry_cost, last_accrual_at}`; closed trade adds
+`exit_price`, `pnl`, `pnl_pct`, `entry_commission`, `exit_commission`, `carry_cost`,
+`exit_reason`; summary adds cash, equity, `margin_used`, `carry_cost`, return %, win
+rate, max drawdown.
 
 **Writers:** `PaperTradingLedger.execute_signal` / `process_candle`; `agents/execution.py`
 uses the ledger for paper fills (direct-SQL fallback only when no ledger is wired);
@@ -42,14 +43,18 @@ rollback on failure or
 rejection (a failed reversal keeps the old position); an accepted fill with no seeded
 paper account is rejected; configured fees and adverse
 slippage apply (a per-symbol override replaces the global rate, otherwise the global
-rate applies); a candle spanning both levels resolves to the stop; a stop that gaps
-beyond its level fills at the candle open; `total_pnl = equity - initial_capital`;
-shorts carry side/margin explicitly. The API cannot supply its own price or quantity,
-and a duplicate `client_order_id` returns 409 before a second position is created.
+rate applies); annualized borrow (shorts) and funding (longs) accrue from
+`last_accrual_at` on entry notional and are subtracted from equity while open; a
+close accrues the final period and settles the total into cash and PnL; a timestamp
+at or before the stored clock is ignored and a zero rate still advances it; a candle
+spanning both levels resolves to the stop; a stop that gaps beyond its level fills at
+the candle open; `total_pnl = equity - initial_capital`; shorts carry side/margin
+explicitly. The API cannot supply its own price or quantity, and a duplicate
+`client_order_id` returns 409 before a second position is created.
 
 **Change impact:**
 - Add a field → DB column + migration + Pydantic model + `to_dict` + frontend type + tests.
-- Change fill logic → `paper_trading/engine.py`, fee/slippage tests, promotion thresholds.
+- Change fill logic → `paper_trading/engine.py`, fee/slippage/carry tests, promotion thresholds.
 - Change persistence → `repository.py`, `ledger.py`, `worker.py`, `run_live.py`, schema.
 - Change lock scope or timeout → `repository.py::writer_lock`, `paper_trading_writer_lock_timeout_seconds`,
   ADR-015, ledger tests; keep the writer paths (execute, candle, worker) inside the lock.
@@ -63,4 +68,6 @@ single-user scale); reads do not take it because each process has its own cache.
 requires a signed, expiring approval token from `/signal`; the token is not single-use, so
 `client_order_id` remains the duplicate-order guard. Old short **positions** cannot be inferred
 during migration and default to long. Paper fills still have no partial fills/liquidity
-limits or borrow/funding costs.
+limits. Carry is charged on entry notional only (not mark-to-market notional), has no
+funding credits, and legacy `agents/execution.py`/worker direct-SQL fallbacks bypass the
+repository, so they do not persist carry.

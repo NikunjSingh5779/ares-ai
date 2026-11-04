@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -111,11 +111,16 @@ async def test_worker_marks_open_position_on_every_tick(engine, ingestor, sessio
 
 @pytest.mark.asyncio
 async def test_persist_closed_trade_writes_history_and_engine_snapshot(ingestor):
-    """SL/TP closures must be countable and use buy/sell in trade_history."""
-    engine = PaperTradingEngine(initial_capital=100000.0)
+    """SL/TP closures must be countable and carry must survive the fallback write."""
+    engine = PaperTradingEngine(initial_capital=100000.0, funding_rate_pct=0.10)
     result = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
-    trade = engine.close_position(result["position_id"], 55000.0)
+    position = engine.get_open_positions()[0]
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    position.last_accrual_at = start
+    trade = engine.close_position(result["position_id"], 55000.0, exit_at=start + timedelta(days=1))
     assert trade is not None
+    carry = 50000.0 * 0.10 / 365.0
+    assert trade.carry_cost == pytest.approx(carry)
 
     session = _CapturingSession()
     worker = PaperTradingWorker(engine, ingestor, _CapturingSessionFactory(session))  # type: ignore[arg-type]
@@ -124,19 +129,21 @@ async def test_persist_closed_trade_writes_history_and_engine_snapshot(ingestor)
     history = [params for sql, params in session.calls if "INSERT INTO trade_history" in sql]
     assert len(history) == 1
     assert history[0]["side"] == "buy"
-    assert history[0]["pnl"] == pytest.approx(5000.0)
+    assert history[0]["pnl"] == pytest.approx(5000.0 - carry)
+    assert history[0]["carry_cost"] == pytest.approx(carry)
 
     portfolio = [params for sql, params in session.calls if "UPDATE portfolio" in sql]
     assert len(portfolio) == 1
-    assert portfolio[0]["total_value"] == pytest.approx(105000.0)
-    assert portfolio[0]["realized_pnl"] == pytest.approx(5000.0)
+    assert portfolio[0]["total_value"] == pytest.approx(105000.0 - carry)
+    assert portfolio[0]["realized_pnl"] == pytest.approx(5000.0 - carry)
     assert portfolio[0]["max_drawdown_pct"] == pytest.approx(0.0)
     assert session.committed is True
 
     # Guard the exact schema mismatches found during review: positions has no
     # realized_pnl column, and orders has no strategy_name/reason columns.
-    positions_sql = next(sql for sql, _ in session.calls if "UPDATE positions" in sql)
+    positions_sql, positions_params = next((sql, params) for sql, params in session.calls if "UPDATE positions" in sql)
     assert re.search(r"\brealized_pnl\b", positions_sql) is None
+    assert positions_params["carry_cost"] == pytest.approx(carry)
     orders_sql = next(sql for sql, _ in session.calls if "INSERT INTO orders" in sql)
     assert "agent_rationale" in orders_sql
     assert "strategy_name" not in orders_sql
@@ -375,12 +382,14 @@ async def test_worker_delegates_candle_processing_to_ledger(engine, ingestor, se
     await worker._tick()
 
     ledger.get_open_position_symbols.assert_awaited_once()
+    candle = ingestor.ingest_batch.return_value[0].candles[-1]
     ledger.process_candle.assert_awaited_once_with(
         symbol="BTC-USD",
         high=56000.0,
         low=49000.0,
         close=55000.0,
         open_price=50000.0,
+        as_of=candle.timestamp,
     )
     session = session_factory.return_value.__aenter__.return_value
     session.execute.assert_not_called()

@@ -147,6 +147,13 @@ def test_paper_ledger_columns_present() -> None:
     assert "initial_capital NUMERIC" in content
 
 
+def test_carry_cost_columns_present() -> None:
+    """Borrow/funding accrual must survive a restart."""
+    content = SCHEMA_PATH.read_text()
+    assert "carry_cost NUMERIC(20, 8) NOT NULL DEFAULT 0" in content
+    assert "last_accrual_at TIMESTAMPTZ" in content
+
+
 def test_order_idempotency_columns_present() -> None:
     """Paper orders need a per-account client ID for duplicate protection."""
     content = SCHEMA_PATH.read_text()

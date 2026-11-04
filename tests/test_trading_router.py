@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,11 +15,11 @@ from backend.main import app
 from backend.routers import trading
 from backend.schemas.trading import TradeApproval
 from configs.settings import settings
-from paper_trading.engine import PortfolioSummary
+from paper_trading.engine import ClosedTrade, PaperPosition, PortfolioSummary
 from paper_trading.repository import PaperLedgerBusyError, PaperLedgerError, PaperOrderConflictError
 
 
-def _summary(equity: float = 100000.0) -> PortfolioSummary:
+def _summary(equity: float = 100000.0, carry_cost: float = 0.0) -> PortfolioSummary:
     return PortfolioSummary(
         initial_capital=100000.0,
         cash=equity,
@@ -31,6 +31,7 @@ def _summary(equity: float = 100000.0) -> PortfolioSummary:
         losing_trades=0,
         open_positions=0,
         equity=equity,
+        carry_cost=carry_cost,
     )
 
 
@@ -129,6 +130,64 @@ def test_ledger_factory_wires_per_symbol_slippage(monkeypatch: pytest.MonkeyPatc
     result = ledger.engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
 
     assert result["fill_price"] == pytest.approx(50200.0)
+
+
+def test_ledger_factory_wires_carry_rates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The shared engine must receive global and per-symbol carry rates."""
+    monkeypatch.setattr(settings, "paper_trading_borrow_rate_pct", 0.25)
+    monkeypatch.setattr(settings, "paper_trading_funding_rate_pct", 0.05)
+    monkeypatch.setattr(settings, "paper_trading_borrow_rate_by_symbol", {"BTC-USD": 0.30})
+    monkeypatch.setattr(settings, "paper_trading_funding_rate_by_symbol", {"ETH-USD": 0.06})
+    monkeypatch.setattr(trading, "_engine", None)
+    monkeypatch.setattr(trading, "_ledger", None)
+
+    engine = trading.get_paper_trading_ledger().engine
+
+    assert engine._carry_rate_for("BTC-USD", "short") == pytest.approx(0.30)
+    assert engine._carry_rate_for("SOL-USD", "short") == pytest.approx(0.25)
+    assert engine._carry_rate_for("ETH-USD", "long") == pytest.approx(0.06)
+    assert engine._carry_rate_for("BTC-USD", "long") == pytest.approx(0.05)
+
+
+def test_portfolio_exposes_carry_cost(client: TestClient, fake_ledger: MagicMock) -> None:
+    fake_ledger.get_summary = AsyncMock(return_value=_summary(carry_cost=12.5))
+
+    response = client.get("/api/v1/portfolio")
+
+    assert response.status_code == 200
+    assert response.json()["carry_cost"] == pytest.approx(12.5)
+
+
+def test_position_and_trade_dicts_include_carry() -> None:
+    position = PaperPosition(
+        id="position-1",
+        symbol="BTC-USD",
+        side="short",
+        quantity=1.0,
+        entry_price=50000.0,
+        entry_at=datetime(2026, 1, 1, tzinfo=UTC),
+        carry_cost=1.25,
+        last_accrual_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    trade = ClosedTrade(
+        symbol="BTC-USD",
+        side="short",
+        quantity=1.0,
+        entry_price=50000.0,
+        exit_price=49000.0,
+        entry_at=datetime(2026, 1, 1, tzinfo=UTC),
+        exit_at=datetime(2026, 1, 2, tzinfo=UTC),
+        pnl=987.5,
+        pnl_pct=1.975,
+        carry_cost=12.5,
+    )
+
+    position_dict = trading._position_to_dict(position)
+    trade_dict = trading._trade_to_dict(trade)
+
+    assert position_dict["carry_cost"] == pytest.approx(1.25)
+    assert position_dict["last_accrual_at"] == "2026-01-02T00:00:00+00:00"
+    assert trade_dict["carry_cost"] == pytest.approx(12.5)
 
 
 @pytest.fixture

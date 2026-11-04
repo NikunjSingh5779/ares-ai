@@ -29,6 +29,12 @@ LLM, no exchange.
   persisted state, so every process that hydrates the ledger must construct its
   engine with the same settings. A symbol missing from the override map uses the
   global slippage rate.
+- Annualized carry: `paper_trading_borrow_rate_pct` (default `0.10` = 10%/year,
+  charged on short notional), `paper_trading_funding_rate_pct` (default `0.0`,
+  charged on long notional), and optional `paper_trading_borrow_rate_by_symbol` /
+  `paper_trading_funding_rate_by_symbol` JSON overrides. Rates are non-negative
+  decimals; there are no funding credits. A symbol missing from a map falls back
+  to the global rate. Carry settings are configuration, not persisted state.
 - `paper_trading_writer_lock_timeout_seconds` (default 10 s) bounds how long a write
   waits for the cross-process advisory lock.
 
@@ -41,16 +47,17 @@ LLM, no exchange.
    the open position, entry order with its client ID, any reversal close/history, and
    portfolio in one transaction. Exit orders carry no client ID.
 2. `PaperTradingLedger.process_candle` takes the same two locks, refreshes, checks SL/TP
-   first (stop first when a candle spans both levels), marks any remaining open position,
-   and persists the closure and/or mark. The worker and runner pass the candle open:
-   when it is already beyond a stop, the stop fills at the open (gap-through) and then
-   takes the usual adverse slippage; take-profit still fills at its configured level.
-   Callers that pass no open keep the stop-level fill.
-3. `mark_to_market` updates the latest price and appends equity on every bar;
-   `close_position` applies exit slippage and commission, computes net PnL, and appends
-   equity.
-4. `get_summary` returns cash, equity, margin used, all-in PnL, return %, win rate, and
-   drawdown from the persisted equity curve.
+   first (stop first when a candle spans both levels), accrues carry to the candle
+   timestamp, marks any remaining open position, and persists the closure and/or mark.
+   The worker and runner pass the candle open: when it is already beyond a stop, the
+   stop fills at the open (gap-through) and then takes the usual adverse slippage;
+   take-profit still fills at its configured level. Callers that pass no open keep the
+   stop-level fill. Repeated calls with the same timestamp do not double-charge carry.
+3. `mark_to_market` accrues carry for every open position, updates the latest price, and
+   appends equity on every bar. `close_position` accrues the final partial period, applies
+   exit slippage and commission, settles carry into cash and PnL, and appends equity.
+4. `get_summary` returns cash, equity, margin used, all-in PnL, return %, win rate,
+   drawdown, and total carry (open plus closed) from the persisted state.
 
 ## Outputs
 Durable rows in `portfolio`, `positions`, `orders`, and `trade_history`; the in-memory
@@ -66,8 +73,14 @@ hydrate before responding. Promotion reads `trade_history` and the portfolio dra
   override replaces the global rate for that symbol and every other symbol falls back
   to the global rate. Gap-through stops fill at the candle open, not the stop level.
 - Equity marks open positions at the latest price; `total_pnl = equity - initial`.
+  Accrued carry is a liability: it is subtracted from equity while the position is open
+  and settled into cash and realized PnL when the position closes.
 - Shorts credit proceeds, report 100% notional margin, and subtract the liability from
   equity. Cash and reported PnL reconcile after every fill.
+- Carry accrues on entry notional at the annual rate for elapsed time since
+  `last_accrual_at` (365-day year). It is a cost only: borrow applies to shorts, funding
+  to longs, and neither is ever credited. A timestamp at or before the stored clock is
+  ignored; a zero rate still advances the clock.
 - One open position per symbol (the engine closes an opposite position on reversal).
 - `orders.client_order_id` is unique per paper account through a partial unique index.
   Duplicate API requests return 409 and never create a second position.
@@ -91,7 +104,8 @@ returns empty state; writes return 503 rather than persisting in memory.
 ## Known gaps
 The advisory lock is database-wide rather than per account (fine for one seeded paper
 account). The `postgres-integration` CI job covers the ledger; the engine must be
-constructed with the same fee/slippage settings after restart, including the per-symbol
-override map. There are no partial fills/liquidity limits and no borrow/funding costs.
-No manual paper-trade path exists; a future one must be labeled and excluded from
+constructed with the same fee/slippage/carry settings after restart, including the
+per-symbol override maps. There are no partial fills/liquidity limits. Carry is charged
+on entry notional only (not mark-to-market notional) and has no funding credits. No
+manual paper-trade path exists; a future one must be labeled and excluded from
 promotion.

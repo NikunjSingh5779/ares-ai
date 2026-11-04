@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Any
 
 from paper_trading.engine import ClosedTrade, PaperPosition, PaperTradingEngine, PortfolioSummary
@@ -159,11 +160,14 @@ class PaperTradingLedger:
         low: float,
         close: float,
         open_price: float | None = None,
+        as_of: datetime | None = None,
     ) -> list[ClosedTrade]:
         """Check exits, mark the position, and persist the resulting state.
 
         ``open_price`` lets a gap-through stop fill at the candle open; it is
         optional so callers with only high/low keep the stop-level fill.
+        ``as_of`` is the candle timestamp used to accrue carry; repeated calls
+        with the same timestamp do not double-charge.
         """
         async with self._cache_lock:
             async with self.repository.writer_lock(timeout_seconds=self.writer_timeout_seconds):
@@ -173,6 +177,7 @@ class PaperTradingLedger:
                     low=low,
                     close=close,
                     open_price=open_price,
+                    as_of=as_of,
                 )
 
     async def _process_candle_locked(
@@ -183,11 +188,18 @@ class PaperTradingLedger:
         low: float,
         close: float,
         open_price: float | None,
+        as_of: datetime | None,
     ) -> list[ClosedTrade]:
         await self._hydrate()
         snapshot = self.engine.snapshot()
-        closed = self.engine.check_sl_tp(symbol=symbol, high=high, low=low, open_price=open_price)
-        self.engine.mark_to_market(symbol, close)
+        closed = self.engine.check_sl_tp(
+            symbol=symbol,
+            high=high,
+            low=low,
+            open_price=open_price,
+            as_of=as_of,
+        )
+        self.engine.mark_to_market(symbol, close, as_of=as_of)
         try:
             persisted = await self.repository.persist(self.engine, closed_trades=closed)
         except Exception:

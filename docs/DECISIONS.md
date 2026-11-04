@@ -25,12 +25,13 @@
 | ADR-012 | Paper PnL is equity-based, with costs and marks | Fees, slippage, short proceeds, and mark-to-market are part of paper results |
 | ADR-014 | API paper execution requires upstream approvals and idempotency | `/execute` needs typed approvals; duplicates return 409 |
 | ADR-015 | Paper writes serialize on a transaction-scoped advisory lock | API/worker/runner cannot lose each other's updates; busy writer -> 503 |
-| ADR-017 | Compose bootstrap is shared by `init.sql` and Alembic | Fresh volumes stamp 0001 and apply 0002–0006; one migration head |
+| ADR-017 | Compose bootstrap is shared by `init.sql` and Alembic | Fresh volumes stamp 0001 and apply 0002–0007; one migration head |
 | ADR-019 | Strategy drafts reuse `strategies`; lifecycle fields stay server-owned | Authenticated drafts save/load; status, live enablement, and promotion counters reject writes and stay gated |
 | ADR-020 | Chat is stateless, read-only, and client-held | Multi-turn history is sent per request; no tools or execution path; exhausted chain -> 503 |
 | ADR-022 | Improvement history is durable; suggestions stay advisory | `reflection_runs`/`improvement_records` persist across runs; applying a suggestion never mutates a gate |
 | ADR-023 | Analysis runs are bounded and state is per session | One run at a time by default, hourly budget, stage-start deadline; `/agents/status?session_id=` reads one run |
 | ADR-025 | `/execute` requires a signed, expiring approval token | `/signal` with `execute=false` issues a short-lived JWT bound to symbol, side, and payload digest; `/execute` verifies it before consensus |
+| ADR-026 | Paper carry is annualized, non-negative, and settled at close | Borrow charges shorts, funding charges longs; open carry is an equity liability and settles into cash/PnL on close |
 
 ## Models, safety, and operations
 

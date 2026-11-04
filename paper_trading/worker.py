@@ -121,6 +121,7 @@ class PaperTradingWorker:
                     low=float(candle.low),
                     close=float(candle.close),
                     open_price=float(candle.open),
+                    as_of=candle.timestamp,
                 )
             else:
                 closed = self.engine.check_sl_tp(
@@ -128,8 +129,9 @@ class PaperTradingWorker:
                     high=float(candle.high),
                     low=float(candle.low),
                     open_price=float(candle.open),
+                    as_of=candle.timestamp,
                 )
-                self.engine.mark_to_market(result.symbol, float(candle.close))
+                self.engine.mark_to_market(result.symbol, float(candle.close), as_of=candle.timestamp)
             if closed:
                 all_closed_trades.extend(closed)
 
@@ -174,7 +176,8 @@ class PaperTradingWorker:
                             """
                             UPDATE positions
                             SET is_open=False, closed_at=:closed_at, current_price=:exit_price,
-                                unrealized_pnl=0, unrealized_pnl_pct=0, market_value=0
+                                unrealized_pnl=0, unrealized_pnl_pct=0, market_value=0,
+                                carry_cost=:carry_cost, last_accrual_at=:closed_at
                             WHERE portfolio_id=:portfolio_id AND symbol=:symbol
                               AND side=:side AND is_open=True
                             """
@@ -182,6 +185,7 @@ class PaperTradingWorker:
                         {
                             "closed_at": trade.exit_at,
                             "exit_price": trade.exit_price,
+                            "carry_cost": trade.carry_cost,
                             "portfolio_id": portfolio_id,
                             "symbol": trade.symbol,
                             "side": trade.side,
@@ -232,12 +236,12 @@ class PaperTradingWorker:
                                 account_id, symbol, position_side, side, quantity,
                                 entry_price, exit_price, entry_at, exit_at, pnl,
                                 pnl_pct, is_closed, strategy_name, entry_commission,
-                                exit_commission, exit_reason
+                                exit_commission, carry_cost, exit_reason
                             ) VALUES (
                                 :account_id, :symbol, :position_side, :side, :quantity,
                                 :entry_price, :exit_price, :entry_at, :exit_at, :pnl,
                                 :pnl_pct, true, :strategy_name, :entry_commission,
-                                :exit_commission, :exit_reason
+                                :exit_commission, :carry_cost, :exit_reason
                             )
                             """
                         ),
@@ -256,6 +260,7 @@ class PaperTradingWorker:
                             "strategy_name": trade.strategy_name,
                             "entry_commission": trade.entry_commission,
                             "exit_commission": trade.exit_commission,
+                            "carry_cost": trade.carry_cost,
                             "exit_reason": trade.exit_reason,
                         },
                     )
