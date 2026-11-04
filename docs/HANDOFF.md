@@ -10,18 +10,15 @@ the code disagree, the code wins.
 | Item | Value |
 |---|---|
 | Root | `C:\Users\ASUS\ares-ai` (Windows, PowerShell) |
-| Branch | `master` at `7b9761f` (`docs: record the catalog workflow's first run`) |
-| Working tree | **Dirty** — paper-realism slice 2 (borrow/funding carry) is implemented but uncommitted, plus this handoff; run `git status` for the exact list |
+| Branch | `master` at `b49223a` (`feat(paper): accrue and settle borrow/funding carry (#136)`) |
+| Working tree | **Clean** — slice 2 is merged; only this post-merge docs bookkeeping may be pending |
 | Alembic head | `0007_carry_costs` |
-| Last merged slice | PR #135, squash-merged as `779f2ad` (gap-through stops + per-symbol slippage) |
+| Last merged slice | PR #136, squash-merged as `b49223a` (paper-realism slice 2: borrow/funding carry) |
+| Prior merged slice | PR #135, squash-merged as `779f2ad` (gap-through stops + per-symbol slippage) |
 
-The uncommitted slice touches: `paper_trading/{engine,repository,ledger,worker}.py`,
+Slice 2 landed across `paper_trading/{engine,repository,ledger,worker}.py`,
 `configs/settings.py`, `backend/routers/trading.py`, `frontend/src/types/api.ts`,
-`database/{schema,init}.sql`, migration `0007`, `.env.example`, tests, and docs
-(`02-STATUS`, `05-NEXT`, `03-ARCHITECTURE`, `04-DECISIONS`, `DATABASE`, `DECISIONS`,
-`DEBUGGING`, `DEPLOYMENT`, `FEATURES`, `IMPLEMENTATION`, `ROADMAP`, `TASKS`, `API`,
-`PRD`, `TESTING`, the `paper_trading`/`database` contracts, two map cards, and this
-handoff).
+`database/{schema,init}.sql`, migration `0007`, `.env.example`, tests, and docs.
 
 ## What was just built (do not redo)
 
@@ -60,33 +57,26 @@ Paper realism slice 2 adds borrow/funding **carry** to paper trading:
 | `uv run pytest tests/test_icm_structure.py tests/test_infra_config.py -q --no-cov` | **44 passed** |
 | `uv run alembic heads` | `0007_carry_costs (head)` |
 | Targeted slice run | **199 passed** across paper/config/router/schema modules |
-
-**Not yet run:** the new real-PostgreSQL carry round-trip in
-`tests/test_postgres_integration.py`. It is written and will run in CI's
-`postgres-integration` job (the local default suite skips it without
-`ARES_TEST_POSTGRES_URL`). Do not claim it passed until CI or a local disposable
-PostgreSQL run says so.
+| Local PostgreSQL suite | **24 passed** (6 ledger, 12 strategy, 6 improvement) on a disposable PostgreSQL 16 container |
 
 ## What to do next, in order
 
-1. **Review the uncommitted diff** for accounting and safety correctness. Do not weaken
-   safety gates, kill switches, approvals, promotion gates, drawdown/exposure checks, or
-   test assertions.
-2. **Commit and open a PR for the carry slice.** Create a feature branch (for example
-   `feat/paper-carry-costs`), commit with a focused message, push, and open a PR.
-   **Push and PR creation require explicit user approval.** Watch all five CI jobs;
-   confirm `postgres-integration` runs the new carry case.
-3. **After merge:** update `docs/02-STATUS.md` with the merge commit, CI run IDs, and
-   remove the "uncommitted" wording; update `docs/05-NEXT.md` if priorities shift.
-4. **Next paper-realism slice: partial fills/liquidity.** Design it before coding:
+1. **Nothing is pending on slice 2.** PR #136 is merged as `b49223a`, the remote
+   `feat/paper-carry-costs` branch is deleted, and the merge was verified by runs
+   **41856026984** (branch push), **41856038721** (PR), and **41856711393**
+   (post-merge master). All five jobs were green in each; `postgres-integration`
+   reported **24 passed**, including
+   `test_carry_survives_restart_and_settles_on_close`. Do not re-review or re-merge it.
+2. **Next paper-realism slice: partial fills/liquidity.** Design it before coding:
    order status, volume-limited fills, partial closes, and persistence changes. It is
-   the only remaining item in the paper-realism sequence.
-5. **Operational gaps (need credentials/production access, not code):**
+   the only remaining item in the paper-realism sequence. **Do not start it until the
+   user agrees.**
+3. **Operational gaps (need credentials/production access, not code):**
    - Add the `OPENROUTER_API_KEY` repository secret and run the model-catalog workflow
      via `workflow_dispatch` (gap #9; the first scheduled run failed closed at the guard).
    - Reconcile pre-P1-A short positions that migrated as long (gap #10; needs production
      database access).
-6. **Optional P2/P3:** local chat is chat-only/process-gated (gap #14); the accessibility
+4. **Optional P2/P3:** local chat is chat-only/process-gated (gap #14); the accessibility
    audit did not exercise data-populated states (gap #16).
 
 ## Key files
@@ -146,30 +136,26 @@ Read these before touching anything, in this order:
 1. AGENTS.md (repo root) — entry catalog and hard rules.
 2. docs/02-STATUS.md — verified state and known gaps.
 3. docs/05-NEXT.md — priorities; start with "Immediate next move".
-4. docs/HANDOFF.md — this handoff, including the exact uncommitted slice.
+4. docs/HANDOFF.md — this handoff, including the merged slice and next move.
 5. The CONTEXT.md for the folder you are about to edit.
 
 Current state (2026-11-04):
-- master is at 7b9761f.
-- The working tree contains the UNCOMMITTED paper-realism slice 2 (borrow/funding carry):
-  engine accrual/settlement, repository SQL, schema + migration 0007, settings, API
-  fields, frontend types, tests, and docs.
-- Verified locally: pytest tests/ -q -> 1434 passed, 3 skipped, 84.44%; ruff check . and
-  ruff format --check . clean; mypy . clean on 216 files; ICM+infra 44 passed;
-  alembic heads -> 0007_carry_costs.
-- Not committed, pushed, or CI-tested. The new PostgreSQL carry round-trip will run in
-  CI's postgres-integration job on the PR.
+- master is at b49223a. Paper-realism slice 2 (borrow/funding carry) is MERGED as
+  PR #136 (b49223a); its remote branch is deleted.
+- All five CI jobs passed on the branch push (41856026984), the PR (41856038721), and
+  the post-merge master push (41856711393). postgres-integration ran 24 tests,
+  including test_carry_survives_restart_and_settles_on_close.
+- Verified locally before merge: pytest tests/ -q -> 1434 passed, 3 skipped, 84.44%;
+  ruff check . and ruff format --check . clean; mypy . clean on 216 files; ICM+infra
+  44 passed; alembic heads -> 0007_carry_costs; local PostgreSQL suite 24 passed.
 
 Your first task:
-1. Review the uncommitted diff for accounting and safety correctness. Do not weaken
-   safety gates, kill switches, approvals, promotion gates, drawdown/exposure checks, or
-   test assertions.
-2. Create a feature branch (for example feat/paper-carry-costs), commit with a focused
-   message, and open a PR. Do NOT push or open the PR until I explicitly approve it.
-3. Watch all five CI jobs; confirm postgres-integration runs the new carry test. Fix any
-   failures without weakening a gate.
-4. After merge, update docs/02-STATUS.md with the merge commit and CI run IDs, remove the
-   "uncommitted" wording, and update docs/05-NEXT.md if priorities shift.
+1. Read the docs above and confirm the working tree is clean (git status).
+2. Do not redo the carry slice or its review.
+3. The next paper-realism slice is partial fills/liquidity. Design it before coding,
+   but do NOT start it until I explicitly agree.
+4. Nothing else is queued in code; the remaining items are operational gaps #9 and
+   #10, which need credentials or production database access.
 
 Constraints:
 - Paper-only. Never weaken a safety gate to make a test pass.
@@ -179,6 +165,5 @@ Constraints:
 - Definition of done: tests pass, ruff + mypy clean, docs updated in the same change.
 - Update docs/02-STATUS.md when state changes.
 
-After the carry PR is merged, the next paper-realism slice is partial fills/liquidity.
-Do not start it until the carry PR is merged and I agree.
+Do not start partial fills/liquidity until I agree.
 ```

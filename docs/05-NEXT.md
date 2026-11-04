@@ -6,13 +6,13 @@ Do not start a phase before the previous exit criterion is met unless a human sa
 
 ## Immediate next move (2026-11-04)
 
-Paper-realism slice 2 (borrow/funding carry) is implemented and verified locally but
-**uncommitted** on `master` at `7b9761f`. First: review the diff, create a feature
-branch, commit, push, open a PR, and watch CI — especially `postgres-integration`,
-which now includes the carry restart/settlement case. After merge, the next
-paper-realism slice is **partial fills/liquidity**. Operational items remain in
-`02-STATUS.md` gap #9 (`OPENROUTER_API_KEY` + catalog dispatch) and gap #10
-(pre-P1-A short-position reconciliation).
+Paper-realism slice 2 (borrow/funding carry) is **merged** as `b49223a` via PR #136.
+The branch/PR runs **41856026984** and **41856038721** and the post-merge master run
+**41856711393** passed all five jobs; `postgres-integration` ran the carry
+restart/settlement case and reported **24 passed**. The next paper-realism slice is
+**partial fills/liquidity**: design it before coding and do not start it until a human
+agrees. Operational items remain in `02-STATUS.md` gap #9 (`OPENROUTER_API_KEY` +
+catalog dispatch) and gap #10 (pre-P1-A short-position reconciliation).
 
 ## Phase 0 — capital safety (block release)
 
@@ -174,7 +174,7 @@ authenticated route shells; data-populated states remain an optional follow-up.
   2026-11-03** — `check_sl_tp` accepts the candle open and fills a gapped stop at
   that open; `PAPER_TRADING_SLIPPAGE_BY_SYMBOL` overrides the global rate with
   global fallback.
-- Paper realism slice 2 — borrow/funding carry: **done 2026-11-03** — annualized
+- Paper realism slice 2 — borrow/funding carry: **merged 2026-11-04 as `b49223a`** — annualized
   `PAPER_TRADING_BORROW_RATE_PCT` (shorts) and `PAPER_TRADING_FUNDING_RATE_PCT`
   (longs), with per-symbol JSON overrides, accrue from `last_accrual_at`, show as
   an equity liability while open, and settle into cash/PnL at close. Persistence:

@@ -2,10 +2,11 @@
 # Status — verified state
 
 **Last verified:** 2026-11-04
-**Branch:** `master` at `7b9761f`. The working tree contains the **uncommitted**
-paper-realism slice 2 (borrow/funding carry) across the engine, repository, schema,
-migration `0007`, settings, API, frontend types, tests, and docs. It is verified
-locally but not yet committed, pushed, or reviewed. PR #135 squash-merged slice 1
+**Branch:** `master` at `b49223a`. PR #136 squash-merged paper-realism slice 2
+(borrow/funding carry) as `b49223a`; its branch/PR runs **41856026984** (push) and
+**41856038721** (pull request) passed all five jobs, and the post-merge master run
+**41856711393** passed all five, including the 24-test PostgreSQL job with the new
+carry round-trip. PR #135 squash-merged slice 1
 (gap-through stops and per-symbol slippage) as `779f2ad`, closing that P2 item. PR #131
 squash-merged the scheduled model-catalog workflow, closing P2 gap #9. PR #130
 squash-merged the signed `/execute` approval token, closing P2 gap #2. PR #129
@@ -64,8 +65,8 @@ five jobs, including `postgres-integration` with all three PostgreSQL modules. T
 | Local model gate | `pytest tests/test_local_gate.py tests/test_client.py tests/test_router.py -q` | **27 passed** — process-wide serialization/timeout, prefix stripping, no auth header, `reasoning_effort="off"`, local timeout, busy skip without breaker failure |
 | Lint | `ruff check .` | clean |
 | Format | `ruff format --check .` | clean |
-| PostgreSQL integration | `ARES_TEST_POSTGRES_URL=... pytest tests/test_postgres_integration.py tests/test_postgres_strategy_integration.py tests/test_postgres_improvement_integration.py -q` | **23 passed** at the last local run (2026-10-24) — real hydrate → fill → restart → close, duplicate ID, concurrent fills, one-winner duplicate race, busy lock → retry, the strategy route → service → JSONB round-trip, and the reflection/improvement run → record → API round-trip. Slice 2 adds a carry restart/settlement round-trip to the ledger module (24 when run). |
-| CI PostgreSQL job | GitHub Actions `CI` run 40097868595 | **passed** on `postgres:16-alpine` — all three modules, **23 tests**, no skip (5 ledger, 12 strategy, 6 improvement). Slice 2's carry case runs in the same job on the next PR. |
+| PostgreSQL integration | `ARES_TEST_POSTGRES_URL=... pytest tests/test_postgres_integration.py tests/test_postgres_strategy_integration.py tests/test_postgres_improvement_integration.py -q` | **24 passed** on 2026-11-04 against a disposable PostgreSQL 16 database — real hydrate → fill → restart → close, duplicate ID, concurrent fills, one-winner duplicate race, busy lock → retry, the carry restart/settlement round-trip (6 ledger tests), the strategy route → service → JSONB round-trip (12), and the reflection/improvement run → record → API round-trip (6). |
+| CI PostgreSQL job | GitHub Actions `CI` run 41856711393 | **passed** on `postgres:16-alpine` — all three modules, **24 tests**, no skip (6 ledger, 12 strategy, 6 improvement), including `test_carry_survives_restart_and_settles_on_close`; the PR runs 41856026984 and 41856038721 also passed the same job. |
 | Paper-ledger tests | `pytest tests/test_paper_trading_ledger.py -q` | **38 passed** — hydration, atomic write, duplicate ID, writer lock, rejection/rollback, restart mid-trade, carry hydration/clock, candle-timestamp accrual |
 | Trading-route tests | `pytest tests/test_trading_router.py -q` | **27 passed** — approval, derivation, 409/422/503, busy-lock retry, missing/expired/wrong-key token, symbol/side/payload mismatch, carry factory wiring and response fields |
 | Approval-token tests | `pytest tests/test_security/test_approval_token.py -q` | **12 passed** — round-trip binding, canonical hash, expiry, wrong key, access-token rejection, wrong audience/type/claims, default-secret refusal, auth-route rejection |
@@ -464,7 +465,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | CI | GitHub Actions runs **41672449680** (push) and **41672484107** (pull request) passed all five jobs: `lint`, `test`, `postgres-integration`, `frontend`, and `docker`. |
 | Scope | No schema change. Partial fills/liquidity and borrow/funding costs remained open at that point; borrow/funding is closed by slice 2 below. |
 
-## Paper realism slice 2 — borrow/funding carry (verified 2026-11-04; uncommitted)
+## Paper realism slice 2 — borrow/funding carry (merged 2026-11-04 as `b49223a`)
 
 | Piece | Evidence |
 |---|---|
@@ -473,8 +474,9 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Accounting | Open carry is a liability subtracted from equity. At close it is deducted from cash and from the trade's PnL. `PortfolioSummary.carry_cost` reports open plus closed carry. |
 | Persistence | `positions.carry_cost`, `positions.last_accrual_at`, and `trade_history.carry_cost`; migration `0007_carry_costs` (current head) adds the columns idempotently and backfills `last_accrual_at` from `opened_at`. The repository hydrates, upserts, closes, and writes trade history with all three. |
 | API | `/portfolio` exposes `carry_cost`; `/positions` exposes `carry_cost` and `last_accrual_at`; `/orders` exposes `carry_cost`. Frontend fields are optional so backtest payloads remain compatible. |
-| Tests | Engine: long funding, short borrow, idempotent/older timestamps, zero-rate clock, close settlement, per-symbol override/fallback, snapshot/reversal restore, invalid rates. Repository: hydration, persistence SQL, restart clock. Ledger: candle-timestamp accrual and no double-charge. Worker: forwarded candle timestamp. Config: defaults, JSON env parsing, validation. Router: factory wiring and response dicts. Schema: carry columns. The PostgreSQL module adds a restart/settlement round-trip that runs in CI. |
-| Verification | `pytest tests/ -q` → **1434 passed, 3 skipped, 84.44%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **216 source files**; `pytest tests/test_icm_structure.py tests/test_infra_config.py -q --no-cov` → **44 passed**. Targeted slice run: **199 passed** across the six paper/config/router/schema modules. |
+| Tests | Engine: long funding, short borrow, idempotent/older timestamps, zero-rate clock, close settlement, per-symbol override/fallback, snapshot/reversal restore, invalid rates. Repository: hydration, persistence SQL, restart clock. Ledger: candle-timestamp accrual and no double-charge. Worker: forwarded candle timestamp and fallback carry persistence. Config: defaults, JSON env parsing, validation. Router: factory wiring and response dicts. Schema: carry columns. The PostgreSQL module adds a restart/settlement round-trip that runs in CI. |
+| Verification | `pytest tests/ -q` → **1434 passed, 3 skipped, 84.44%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **216 source files**; `pytest tests/test_icm_structure.py tests/test_infra_config.py -q --no-cov` → **44 passed**. Targeted slice run: **199 passed** across the six paper/config/router/schema modules; the PostgreSQL ledger suite passed **6/6** locally on a disposable PostgreSQL 16 database. |
+| CI | Runs **41856026984** (branch push) and **41856038721** (pull request) passed all five jobs; the post-merge master run **41856711393** also passed all five, with `postgres-integration` at **24 passed** including `test_carry_survives_restart_and_settles_on_close`. |
 | Scope | Partial fills/liquidity remains the only unimplemented paper-realism item. |
 
 ## Red / known gaps
