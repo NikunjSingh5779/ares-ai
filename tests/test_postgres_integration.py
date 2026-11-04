@@ -119,6 +119,16 @@ async def _rows(sql: str, params: dict[str, Any] | None = None) -> list[tuple[An
         await engine.dispose()
 
 
+async def _execute(sql: str, params: dict[str, Any] | None = None) -> None:
+    """Commit a setup write through a separate engine, as an operator would."""
+    engine = _new_engine()
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(text(sql), params or {})
+    finally:
+        await engine.dispose()
+
+
 @pytest.fixture
 async def paper_db() -> AsyncIterator[None]:
     engine = _new_engine()
@@ -231,15 +241,17 @@ async def test_carry_survives_restart_and_settles_on_close(paper_db: None) -> No
             side="short",
             quantity=10.0,
             entry_price=100.0,
-            stop_loss=95.0,
+            stop_loss=105.0,
             strategy_name="carry-integration",
             client_order_id="itest-carry-1",
         )
         assert result["accepted"] is True
-        position = first.engine.get_open_positions()[0]
-        # Pretend the position has been open for one day so the accrual is
-        # deterministic, then persist the mark through the ledger.
-        position.last_accrual_at = now - timedelta(days=1)
+        # Backdate the persisted accrual clock. process_candle hydrates from
+        # PostgreSQL first, so an in-memory-only backdate would be discarded.
+        await _execute(
+            "UPDATE positions SET last_accrual_at = :accrual_at WHERE symbol = 'SOL/USDT'",
+            {"accrual_at": now - timedelta(days=1)},
+        )
         await first.process_candle(
             symbol="SOL/USDT",
             high=101.0,
@@ -247,7 +259,9 @@ async def test_carry_survives_restart_and_settles_on_close(paper_db: None) -> No
             close=100.0,
             as_of=now,
         )
+        position = first.engine.get_open_positions()[0]
         assert position.carry_cost == pytest.approx(expected_daily)
+        assert position.last_accrual_at == now
 
     async with _paper_process(borrow_rate_pct=0.10) as second:
         assert await second.initialize() is True
@@ -257,7 +271,7 @@ async def test_carry_survives_restart_and_settles_on_close(paper_db: None) -> No
 
         closed = await second.process_candle(
             symbol="SOL/USDT",
-            high=101.0,
+            high=106.0,
             low=90.0,
             close=90.0,
             as_of=now + timedelta(days=1),
@@ -265,7 +279,7 @@ async def test_carry_survives_restart_and_settles_on_close(paper_db: None) -> No
         assert len(closed) == 1
         assert closed[0].exit_reason == "stop_loss"
         assert closed[0].carry_cost == pytest.approx(expected_daily * 2)
-        assert closed[0].pnl == pytest.approx(50.0 - expected_daily * 2, abs=0.01)
+        assert closed[0].pnl == pytest.approx(-50.0 - expected_daily * 2, abs=0.01)
 
     async with _paper_process(borrow_rate_pct=0.10) as third:
         assert await third.initialize() is True
@@ -273,7 +287,7 @@ async def test_carry_survives_restart_and_settles_on_close(paper_db: None) -> No
         trade = third.engine.get_closed_trades()[0]
         assert trade.carry_cost == pytest.approx(expected_daily * 2)
         assert third.engine.get_summary().cash == pytest.approx(
-            _INITIAL_CAPITAL + 50.0 - expected_daily * 2,
+            _INITIAL_CAPITAL - 50.0 - expected_daily * 2,
             abs=0.01,
         )
 
