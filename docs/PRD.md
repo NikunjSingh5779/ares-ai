@@ -33,7 +33,7 @@ then records the outcome and lessons learned.
 | Analysis | Run the LangGraph pipeline over a symbol and return typed agent outputs with rationale. |
 | Consensus | Approve a trade only when Market Analyst and Quant both exceed 80% confidence, Risk approves, and drawdown/exposure limits pass. |
 | Risk | Enforce max drawdown, exposure, position size, and strategy boundaries before execution. |
-| Paper trading | Persist portfolio, positions, orders, trade history, and equity to PostgreSQL; simulate commission and slippage. |
+| Paper trading | Persist portfolio, positions, orders, trade history, and equity to PostgreSQL; simulate commission, slippage, and annualized borrow/funding carry. |
 | Live trading | Keep one gated order path; require human approval by default; require the paper-trading promotion gate for autonomous mode. |
 | Backtesting | Run historical simulations and report Sharpe, Sortino, win rate, profit factor, drawdown, expectancy, and recovery factor. |
 | Journal & memory | Record decisions, rationale, outcomes, and lessons in PostgreSQL, Redis, and ChromaDB. |

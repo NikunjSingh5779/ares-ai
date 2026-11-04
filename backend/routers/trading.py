@@ -55,6 +55,10 @@ def get_paper_trading_ledger() -> PaperTradingLedger:
             commission_pct=settings.paper_trading_commission_pct,
             slippage_pct=settings.paper_trading_slippage_pct,
             slippage_by_symbol=settings.paper_trading_slippage_by_symbol,
+            borrow_rate_pct=settings.paper_trading_borrow_rate_pct,
+            funding_rate_pct=settings.paper_trading_funding_rate_pct,
+            borrow_rate_by_symbol=settings.paper_trading_borrow_rate_by_symbol,
+            funding_rate_by_symbol=settings.paper_trading_funding_rate_by_symbol,
         )
         _ledger = PaperTradingLedger(
             engine=_engine,
@@ -90,6 +94,7 @@ async def portfolio() -> dict[str, Any]:
         "max_drawdown_pct": summary.max_drawdown_pct,
         "equity": summary.equity,
         "margin_used": summary.margin_used,
+        "carry_cost": summary.carry_cost,
     }
 
 
@@ -274,6 +279,10 @@ def _position_to_dict(position: PaperPosition) -> dict[str, Any]:
         "strategy_name": position.strategy_name,
         "entry_commission": position.entry_commission,
         "margin": position.margin,
+        "carry_cost": position.carry_cost,
+        "last_accrual_at": position.last_accrual_at.isoformat()
+        if position.last_accrual_at is not None and hasattr(position.last_accrual_at, "isoformat")
+        else None,
     }
 
 
@@ -293,5 +302,6 @@ def _trade_to_dict(trade: ClosedTrade) -> dict[str, Any]:
         "strategy_name": trade.strategy_name,
         "entry_commission": round(trade.entry_commission, 8),
         "exit_commission": round(trade.exit_commission, 8),
+        "carry_cost": round(trade.carry_cost, 8),
         "fees": round(trade.entry_commission + trade.exit_commission, 2),
     }

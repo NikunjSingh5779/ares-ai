@@ -98,8 +98,15 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
       overrides the global rate per symbol with global fallback. Tests cover long/
       short gaps, stop-first precedence, favourable gaps, invalid rates, and factory
       wiring.)
-- [ ] Paper realism — partial fills/liquidity and borrow/funding costs. (Still
-      missing; both need schema/persistence changes beyond the current fill model.)
+- [x] Paper realism — borrow/funding carry. (2026-11-03: annualized borrow on
+      shorts and funding on longs accrue from `last_accrual_at`, are subtracted
+      from equity while open, and settle into cash/PnL at close. Per-symbol
+      overrides fall back to the global rate. Persistence is
+      `positions.carry_cost`/`last_accrual_at` and `trade_history.carry_cost`
+      via migration `0007`. Tests cover idempotent accrual, restart hydration,
+      close settlement, and a real-PostgreSQL round-trip.)
+- [ ] Paper realism — partial fills/liquidity. (Still missing; needs order
+      status, volume-limited fills, partial closes, and persistence changes.)
 - [x] Close the paid-model bypass in `agents/web_collector.py`. (2026-10-28:
       the optional `browser_use` path now builds browser-use's native
       `ChatOpenRouter` only from the free-only `web_collector` roster entry,

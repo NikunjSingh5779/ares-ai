@@ -4,6 +4,16 @@
 Derived from `02-STATUS.md`. Each phase has an exit criterion that can be tested.
 Do not start a phase before the previous exit criterion is met unless a human says so.
 
+## Immediate next move (2026-11-04)
+
+Paper-realism slice 2 (borrow/funding carry) is implemented and verified locally but
+**uncommitted** on `master` at `7b9761f`. First: review the diff, create a feature
+branch, commit, push, open a PR, and watch CI — especially `postgres-integration`,
+which now includes the carry restart/settlement case. After merge, the next
+paper-realism slice is **partial fills/liquidity**. Operational items remain in
+`02-STATUS.md` gap #9 (`OPENROUTER_API_KEY` + catalog dispatch) and gap #10
+(pre-P1-A short-position reconciliation).
+
 ## Phase 0 — capital safety (block release)
 
 Completed 2026-10-21: **0.1 auth**, **0.2 one live-order path + fail-closed kill switch**,
@@ -32,7 +42,7 @@ slice `c322f23` passed run **40097868595** on all five jobs, including
 | 0.1 | Auth on every non-public route + frontend session/API-key flow | `backend/core/dependencies.py`, `backend/main.py`, `backend/routers/**`, `frontend/src/lib/api.ts`, `frontend/src/components/AuthGate.tsx`, `frontend/src/app/login/page.tsx` | Route test enumerates `/api/v1` and fails on any unprotected path; UI sends the header; default/empty key returns 503 | **Done** |
 | 0.2 | One fail-closed kill switch across API and runner; route all live orders through `execute_signal` | `live_trading/safety.py`, `live_trading/engine.py`, `agents/execution.py`, `scripts/run_live.py`, `backend/routers/live.py` | Integration test: Redis down → rejected; recovery still requires human re-arm; agent never calls `exchange.create_order`. Shared arm epoch: one `/live/arm` clears every process that had observed the store | **Done** |
 | 0.3 | Refresh model roster + universal fallback | `configs/models.yaml`, `agents/models.py` | Every configured ID resolves in the live free catalog; exhausted chain reaches `openrouter/free` | **Done** — the free-only shape is CI-tested, and `.github/workflows/model-catalog.yml` probes the live catalog weekly (requires the `OPENROUTER_API_KEY` secret) |
-| 0.4 | Realistic paper accounting: fees, slippage, mark-to-market, short proceeds; gap-through stops and per-symbol slippage | `paper_trading/engine.py`, `paper_trading/worker.py`, `paper_trading/ledger.py`, `agents/execution.py`, `configs/settings.py`, `backend/routers/trading.py`, `scripts/run_live.py` | Tests for fee-adjusted fill, intra-trade drawdown, and a profitable short; agent persists actual fill/quantity; a gapped stop fills at the candle open and a per-symbol override falls back to the global rate | **Done** — extended 2026-11-03 |
+| 0.4 | Realistic paper accounting: fees, slippage, mark-to-market, short proceeds; gap-through stops, per-symbol slippage, and borrow/funding carry | `paper_trading/engine.py`, `paper_trading/worker.py`, `paper_trading/ledger.py`, `agents/execution.py`, `configs/settings.py`, `backend/routers/trading.py`, `scripts/run_live.py`, schema/migration `0007` | Tests for fee-adjusted fill, intra-trade drawdown, and a profitable short; agent persists actual fill/quantity; a gapped stop fills at the candle open and a per-symbol override falls back to the global rate; carry accrues from `last_accrual_at`, is an open equity liability, and settles into cash/PnL at close | **Done** — extended 2026-11-04 |
 | 0.5 | Enforce production config | `docker-compose.prod.yml`, `docker/docker-compose.prod.yml`, `configs/settings.py`, `.env.example` | Compose overlay sets `ENVIRONMENT=production`; validator rejects default API/JWT/DB secrets | **Done** |
 
 ## Phase 1 — one source of truth
@@ -163,8 +173,13 @@ authenticated route shells; data-populated states remain an optional follow-up.
 - Paper realism slice 1 — gap-through stop fills and per-symbol slippage: **done
   2026-11-03** — `check_sl_tp` accepts the candle open and fills a gapped stop at
   that open; `PAPER_TRADING_SLIPPAGE_BY_SYMBOL` overrides the global rate with
-  global fallback. Remaining paper realism: partial fills/liquidity and
-  borrow/funding costs.
+  global fallback.
+- Paper realism slice 2 — borrow/funding carry: **done 2026-11-03** — annualized
+  `PAPER_TRADING_BORROW_RATE_PCT` (shorts) and `PAPER_TRADING_FUNDING_RATE_PCT`
+  (longs), with per-symbol JSON overrides, accrue from `last_accrual_at`, show as
+  an equity liability while open, and settle into cash/PnL at close. Persistence:
+  `positions.carry_cost`/`last_accrual_at`, `trade_history.carry_cost`, migration
+  `0007`. Remaining paper realism: partial fills/liquidity only.
 - Manual reconciliation of pre-P1-A short positions migrated as long: **open** —
   operational, needs production database access. See `02-STATUS.md` gap #10.
 

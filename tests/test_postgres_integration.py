@@ -20,6 +20,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -131,12 +132,21 @@ async def paper_db() -> AsyncIterator[None]:
 
 
 @asynccontextmanager
-async def _paper_process(*, writer_timeout_seconds: float = 5.0) -> AsyncIterator[PaperTradingLedger]:
+async def _paper_process(
+    *,
+    writer_timeout_seconds: float = 5.0,
+    borrow_rate_pct: float = 0.0,
+    funding_rate_pct: float = 0.0,
+) -> AsyncIterator[PaperTradingLedger]:
     """Build an API/worker-style ledger with its own engine and connection pool."""
     engine = _new_engine()
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     ledger = PaperTradingLedger(
-        PaperTradingEngine(initial_capital=_INITIAL_CAPITAL),
+        PaperTradingEngine(
+            initial_capital=_INITIAL_CAPITAL,
+            borrow_rate_pct=borrow_rate_pct,
+            funding_rate_pct=funding_rate_pct,
+        ),
         PaperLedgerRepository(session_factory),
         writer_timeout_seconds=writer_timeout_seconds,
     )
@@ -208,6 +218,73 @@ async def test_fill_survives_restart_and_close_persists(paper_db: None) -> None:
     assert len(portfolio_rows) == 1
     assert float(portfolio_rows[0][0]) == pytest.approx(105_000.0)
     assert float(portfolio_rows[0][1]) == pytest.approx(5_000.0)
+
+
+async def test_carry_survives_restart_and_settles_on_close(paper_db: None) -> None:
+    now = datetime.now(UTC)
+    expected_daily = 1000.0 * 0.10 / 365.0
+
+    async with _paper_process(borrow_rate_pct=0.10) as first:
+        assert await first.initialize() is True
+        result = await first.execute_signal(
+            symbol="SOL/USDT",
+            side="short",
+            quantity=10.0,
+            entry_price=100.0,
+            stop_loss=95.0,
+            strategy_name="carry-integration",
+            client_order_id="itest-carry-1",
+        )
+        assert result["accepted"] is True
+        position = first.engine.get_open_positions()[0]
+        # Pretend the position has been open for one day so the accrual is
+        # deterministic, then persist the mark through the ledger.
+        position.last_accrual_at = now - timedelta(days=1)
+        await first.process_candle(
+            symbol="SOL/USDT",
+            high=101.0,
+            low=99.0,
+            close=100.0,
+            as_of=now,
+        )
+        assert position.carry_cost == pytest.approx(expected_daily)
+
+    async with _paper_process(borrow_rate_pct=0.10) as second:
+        assert await second.initialize() is True
+        hydrated = second.engine.get_open_positions()[0]
+        assert hydrated.carry_cost == pytest.approx(expected_daily)
+        assert hydrated.last_accrual_at == now
+
+        closed = await second.process_candle(
+            symbol="SOL/USDT",
+            high=101.0,
+            low=90.0,
+            close=90.0,
+            as_of=now + timedelta(days=1),
+        )
+        assert len(closed) == 1
+        assert closed[0].exit_reason == "stop_loss"
+        assert closed[0].carry_cost == pytest.approx(expected_daily * 2)
+        assert closed[0].pnl == pytest.approx(50.0 - expected_daily * 2, abs=0.01)
+
+    async with _paper_process(borrow_rate_pct=0.10) as third:
+        assert await third.initialize() is True
+        assert third.engine.get_open_positions() == []
+        trade = third.engine.get_closed_trades()[0]
+        assert trade.carry_cost == pytest.approx(expected_daily * 2)
+        assert third.engine.get_summary().cash == pytest.approx(
+            _INITIAL_CAPITAL + 50.0 - expected_daily * 2,
+            abs=0.01,
+        )
+
+    trade_rows = await _rows("SELECT carry_cost FROM trade_history WHERE symbol = 'SOL/USDT'")
+    assert len(trade_rows) == 1
+    assert float(trade_rows[0][0]) == pytest.approx(expected_daily * 2)
+
+    position_rows = await _rows("SELECT carry_cost, last_accrual_at FROM positions WHERE symbol = 'SOL/USDT'")
+    assert len(position_rows) == 1
+    assert float(position_rows[0][0]) == pytest.approx(expected_daily * 2)
+    assert position_rows[0][1] is not None
 
 
 async def test_duplicate_client_order_id_is_rejected_after_restart(paper_db: None) -> None:

@@ -13,7 +13,7 @@ import json
 import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
@@ -222,7 +222,7 @@ class PaperLedgerRepository:
                     SELECT
                         id, symbol, side, quantity, entry_price, current_price,
                         stop_loss, take_profit, strategy_name, opened_at,
-                        entry_commission, margin
+                        entry_commission, margin, carry_cost, last_accrual_at
                     FROM positions
                     WHERE portfolio_id = :portfolio_id AND is_open = true
                     ORDER BY opened_at, id
@@ -252,6 +252,8 @@ class PaperLedgerRepository:
                     strategy_name=str(row["strategy_name"] or ""),
                     entry_commission=float(row["entry_commission"] or 0.0),
                     margin=float(row["margin"] or 0.0),
+                    carry_cost=float(row.get("carry_cost") or 0.0),
+                    last_accrual_at=row.get("last_accrual_at") or row["opened_at"] or datetime.now(UTC),
                 )
             )
             if mark > 0:
@@ -268,7 +270,7 @@ class PaperLedgerRepository:
                         symbol, position_side, side, quantity, entry_price,
                         exit_price, entry_at, exit_at, pnl, pnl_pct,
                         strategy_name, entry_commission, exit_commission,
-                        exit_reason
+                        carry_cost, exit_reason
                     FROM trade_history
                     WHERE account_id = :account_id AND is_closed = true
                     ORDER BY exit_at NULLS LAST, created_at, id
@@ -301,6 +303,7 @@ class PaperLedgerRepository:
                     strategy_name=str(row["strategy_name"] or ""),
                     entry_commission=float(row["entry_commission"] or 0.0),
                     exit_commission=float(row["exit_commission"] or 0.0),
+                    carry_cost=float(row.get("carry_cost") or 0.0),
                 )
             )
         return trades
@@ -403,12 +406,14 @@ class PaperLedgerRepository:
                     id, portfolio_id, symbol, asset_type, side, quantity,
                     entry_price, current_price, market_value, unrealized_pnl,
                     unrealized_pnl_pct, stop_loss, take_profit, strategy_name,
-                    opened_at, is_open, entry_commission, margin
+                    opened_at, is_open, entry_commission, margin,
+                    carry_cost, last_accrual_at
                 ) VALUES (
                     :id, :portfolio_id, :symbol, 'crypto', :side, :quantity,
                     :entry_price, :current_price, :market_value, :unrealized_pnl,
                     :unrealized_pnl_pct, :stop_loss, :take_profit, :strategy_name,
-                    :opened_at, true, :entry_commission, :margin
+                    :opened_at, true, :entry_commission, :margin,
+                    :carry_cost, :last_accrual_at
                 )
                 ON CONFLICT (id) DO UPDATE SET
                     symbol = EXCLUDED.symbol,
@@ -425,6 +430,8 @@ class PaperLedgerRepository:
                     is_open = true,
                     entry_commission = EXCLUDED.entry_commission,
                     margin = EXCLUDED.margin,
+                    carry_cost = EXCLUDED.carry_cost,
+                    last_accrual_at = EXCLUDED.last_accrual_at,
                     updated_at = NOW()
                 """
             ),
@@ -445,6 +452,8 @@ class PaperLedgerRepository:
                 "opened_at": position.entry_at,
                 "entry_commission": position.entry_commission,
                 "margin": position.margin,
+                "carry_cost": position.carry_cost,
+                "last_accrual_at": position.last_accrual_at or position.entry_at,
             },
         )
 
@@ -462,6 +471,7 @@ class PaperLedgerRepository:
                     SET is_open = false, closed_at = :closed_at,
                         current_price = :exit_price, market_value = 0,
                         unrealized_pnl = 0, unrealized_pnl_pct = 0,
+                        carry_cost = :carry_cost, last_accrual_at = :closed_at,
                         updated_at = NOW()
                     WHERE id = :position_id
                     """
@@ -469,6 +479,7 @@ class PaperLedgerRepository:
                 {
                     "closed_at": trade.exit_at,
                     "exit_price": trade.exit_price,
+                    "carry_cost": trade.carry_cost,
                     "position_id": trade.position_id,
                 },
             )
@@ -484,6 +495,7 @@ class PaperLedgerRepository:
                 SET is_open = false, closed_at = :closed_at,
                     current_price = :exit_price, market_value = 0,
                     unrealized_pnl = 0, unrealized_pnl_pct = 0,
+                    carry_cost = :carry_cost, last_accrual_at = :closed_at,
                     updated_at = NOW()
                 WHERE portfolio_id = :portfolio_id AND symbol = :symbol
                   AND side = :side AND is_open = true
@@ -492,6 +504,7 @@ class PaperLedgerRepository:
             {
                 "closed_at": trade.exit_at,
                 "exit_price": trade.exit_price,
+                "carry_cost": trade.carry_cost,
                 "portfolio_id": portfolio_id,
                 "symbol": trade.symbol,
                 "side": trade.side,
@@ -511,12 +524,12 @@ class PaperLedgerRepository:
                     account_id, symbol, position_side, side, quantity,
                     entry_price, exit_price, entry_at, exit_at, pnl, pnl_pct,
                     is_closed, strategy_name, entry_commission, exit_commission,
-                    exit_reason, agent_rationale
+                    carry_cost, exit_reason, agent_rationale
                 ) VALUES (
                     :account_id, :symbol, :position_side, :side, :quantity,
                     :entry_price, :exit_price, :entry_at, :exit_at, :pnl, :pnl_pct,
                     true, :strategy_name, :entry_commission, :exit_commission,
-                    :exit_reason, CAST(:rationale AS JSONB)
+                    :carry_cost, :exit_reason, CAST(:rationale AS JSONB)
                 )
                 """
             ),
@@ -535,6 +548,7 @@ class PaperLedgerRepository:
                 "strategy_name": trade.strategy_name,
                 "entry_commission": trade.entry_commission,
                 "exit_commission": trade.exit_commission,
+                "carry_cost": trade.carry_cost,
                 "exit_reason": trade.exit_reason,
                 "rationale": json.dumps(
                     {

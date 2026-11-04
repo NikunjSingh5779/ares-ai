@@ -15,6 +15,7 @@ files point at it. Start at the repo-root `AGENTS.md`.
 | `05-NEXT.md` | Prioritized work plan with acceptance criteria | Priorities change |
 | `milestone-roadmap.md` | Milestone-by-milestone history | A milestone is verified |
 | `map/AGENTS.md` | Codebase object + process map (change-impact) | A mapped object/process changes |
+| `HANDOFF.md` | Session snapshot: current branch, uncommitted work, next move, paste-ready prompt | Start of a new session |
 | `design.md` | Visual identity system (factory reference for frontend + landing) | Brand changes |
 | `architecture.md` | Historical M1 target — now a pointer to `03-ARCHITECTURE.md` | Never (historical) |
 

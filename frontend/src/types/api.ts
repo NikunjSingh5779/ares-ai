@@ -150,6 +150,7 @@ export interface PortfolioSummary {
   max_drawdown_pct: number;
   equity?: number;
   margin_used?: number;
+  carry_cost?: number;
 }
 
 export interface OpenPosition {
@@ -164,6 +165,8 @@ export interface OpenPosition {
   strategy_name: string;
   entry_commission?: number;
   margin?: number;
+  carry_cost?: number;
+  last_accrual_at?: string | null;
 }
 
 export interface ClosedTrade {
@@ -180,6 +183,7 @@ export interface ClosedTrade {
   strategy_name: string;
   entry_commission?: number;
   exit_commission?: number;
+  carry_cost?: number;
   fees?: number;
 }
 

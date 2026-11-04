@@ -211,8 +211,9 @@ the process to be constructed with the same configured fee/slippage settings; th
 settings are configuration, not part of the persisted portfolio state. Concurrent
 writers were last-writer-wins through P1-B; ADR-015 (P1-C) now serializes them.
 A 2026-11-03 extension adds gap-through stop fills (the candle open is the exit
-reference when it is already beyond the stop) and per-symbol slippage overrides with
-the global rate as fallback; partial fills and borrow/funding costs remain out of scope.
+reference when it is already beyond the stop), per-symbol slippage overrides with
+the global rate as fallback, and annualized borrow/funding carry (ADR-026); partial
+fills remain out of scope.
 
 ---
 
@@ -370,7 +371,7 @@ server only spoke v1 while the Python client was 1.5.9, with the volume mounted 
 - Keep `init.sql` as the fresh-volume schema bootstrap.
 - Before `alembic upgrade head`, the entrypoint checks whether `users` exists without an
   `alembic_version` row; if so, it runs `alembic stamp 0001`. The later revisions
-  (currently `0002`–`0006`) are idempotent and then bring the database to head.
+  (currently `0002`–`0007`) are idempotent and then bring the database to head.
 - Force LF for `*.sh` in `.gitattributes`, and keep `backend-entrypoint.sh` LF in the tree.
 - Force container-internal service hostnames in the backend environment. The root `.env`
   remains host-oriented; it is not the container network contract.
@@ -786,3 +787,45 @@ sufficient — treat it like a credential. Rotating `JWT_SECRET_KEY` invalidates
 outstanding approvals. Login access tokens carry no `typ=trade_approval` claim and are
 rejected by `/execute`. The frontend `executeTrade()` wrapper is unused, so no UI change
 is required; any future caller must send the new field.
+
+---
+
+## ADR-026 — Paper carry is annualized, non-negative, and settled at close
+
+**Status:** accepted 2026-11-03.
+
+**Context:** Paper fills modelled commission, slippage, and gap-through stops, but a
+short could be held indefinitely for free and a long paid no funding. That overstates
+paper results, especially for carry strategies, and distorts the promotion gate.
+
+**Decision:**
+- `PaperTradingEngine` accepts annualized decimal rates: borrow for shorts and funding
+  for longs. Application defaults are `0.10` and `0.0`; direct engine construction
+  defaults to zero for unit tests. Per-symbol maps override the global rate with the
+  global rate as fallback.
+- Accrual is `entry_notional * annual_rate * elapsed_seconds / (365 days)`, measured
+  from the position's `last_accrual_at`. Both are costs; there are no funding credits.
+- `process_candle`/`mark_to_market` accrue to the candle timestamp; `close_position`
+  accrues the final period before settling the total into cash and PnL. A timestamp at
+  or before the stored clock is ignored; a zero rate still advances the clock so a later
+  accrual cannot replay the whole holding period.
+- Open carry is a liability subtracted from equity. At close it is deducted from cash and
+  from the trade's PnL; `positions.carry_cost`/`last_accrual_at` and
+  `trade_history.carry_cost` persist the state across restart.
+- `PortfolioSummary.carry_cost` reports total carry (open plus closed); the API exposes
+  it as an optional field.
+
+**Alternatives considered:**
+- *Deduct carry from cash on every mark.* Rejected: it would mutate cash on reads and
+  make a failed persistence rollback ambiguous. Accruing into a per-position liability
+  keeps marks idempotent and settles once.
+- *Funding credits for shorts or negative rates.* Rejected for this slice: it complicates
+  the sign convention and the promotion gate; costs-only is conservative.
+- *Mark-to-market notional.* Deferred: entry notional is simpler, deterministic, and
+  consistent with the existing commission base.
+
+**Consequences:** Paper results are more conservative for leveraged shorts and for longs
+in positive-funding markets. Existing databases need migration `0007`, which adds the
+columns and backfills `last_accrual_at` from `opened_at`. Carry is configuration, not
+persisted state: every process must construct its engine with the same rates and maps.
+Partial fills/liquidity remains the only unimplemented paper-realism item.

@@ -140,7 +140,7 @@ The CI `docker` job copies `.env.example` to `.env`, validates
 |---|---|
 | Agent behavior or schema | Agent output schema, fallback, rejection path |
 | API route | Auth, role denial, validation, error codes |
-| Paper ledger / fill | Hydration, atomic write, duplicate, lock timeout, restart |
+| Paper ledger / fill | Hydration, atomic write, duplicate, lock timeout, restart, carry accrual/settlement |
 | Live safety gate | Kill switch, mode, promotion, exchange failure |
 | DB schema | `tests/test_schema.py`, migration chain, integration test |
 | Frontend page | Build, auth redirect, loading/empty/error states, no mock data |

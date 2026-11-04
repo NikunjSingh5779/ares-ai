@@ -14,6 +14,8 @@ Tests cover:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from paper_trading.engine import PaperTradingEngine
@@ -614,6 +616,173 @@ class TestPerSymbolSlippage:
     def test_blank_symbol_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="non-empty"):
             PaperTradingEngine(slippage_by_symbol={"  ": 0.001})
+
+
+class TestCarryCosts:
+    """Annualized borrow (short) and funding (long) accrual."""
+
+    T0 = datetime(2026, 1, 1, tzinfo=UTC)
+    T1 = T0 + timedelta(days=1)
+
+    @staticmethod
+    def _reset_clock(engine: PaperTradingEngine, at: datetime) -> None:
+        for position in engine.get_open_positions():
+            position.last_accrual_at = at
+
+    def test_long_pays_funding_on_entry_notional(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, funding_rate_pct=0.10)
+        assert engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)["accepted"] is True
+        position = engine.get_open_positions()[0]
+        self._reset_clock(engine, self.T0)
+
+        accrued = engine.accrue_carry(self.T1)
+
+        expected = 50000.0 * 0.10 / 365.0
+        assert accrued == pytest.approx(expected)
+        assert position.carry_cost == pytest.approx(expected)
+        assert position.last_accrual_at == self.T1
+        assert engine.get_summary().carry_cost == pytest.approx(expected, abs=0.01)
+        assert engine.get_summary().equity == pytest.approx(100000.0 - expected, abs=0.01)
+
+    def test_short_pays_borrow_not_funding(self) -> None:
+        engine = PaperTradingEngine(
+            initial_capital=100000.0,
+            borrow_rate_pct=0.10,
+            funding_rate_pct=0.50,
+        )
+        assert engine.execute_signal("BTC-USD", "short", 1.0, 50000.0)["accepted"] is True
+        position = engine.get_open_positions()[0]
+        self._reset_clock(engine, self.T0)
+
+        accrued = engine.accrue_carry(self.T1)
+
+        expected = 50000.0 * 0.10 / 365.0
+        assert accrued == pytest.approx(expected)
+        assert position.carry_cost == pytest.approx(expected)
+
+    def test_same_timestamp_is_idempotent(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, borrow_rate_pct=0.10)
+        engine.execute_signal("BTC-USD", "short", 1.0, 50000.0)
+        position = engine.get_open_positions()[0]
+        self._reset_clock(engine, self.T0)
+
+        first = engine.accrue_carry(self.T1)
+        second = engine.accrue_carry(self.T1)
+
+        assert first > 0.0
+        assert second == 0.0
+        assert position.carry_cost == pytest.approx(first)
+        assert position.last_accrual_at == self.T1
+
+    def test_older_timestamp_does_not_rewind_the_clock(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, borrow_rate_pct=0.10)
+        engine.execute_signal("BTC-USD", "short", 1.0, 50000.0)
+        position = engine.get_open_positions()[0]
+        self._reset_clock(engine, self.T0)
+
+        engine.accrue_carry(self.T1)
+        accrued = engine.accrue_carry(self.T0)
+
+        assert accrued == 0.0
+        assert position.last_accrual_at == self.T1
+
+    def test_zero_rate_still_advances_the_clock(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+        position = engine.get_open_positions()[0]
+        self._reset_clock(engine, self.T0)
+
+        assert engine.accrue_carry(self.T1) == 0.0
+        assert position.carry_cost == 0.0
+        assert position.last_accrual_at == self.T1
+
+    def test_close_settles_long_funding_into_cash_and_pnl(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, funding_rate_pct=0.10)
+        result = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+        self._reset_clock(engine, self.T0)
+
+        trade = engine.close_position(result["position_id"], 51000.0, exit_at=self.T1)
+
+        expected_carry = 50000.0 * 0.10 / 365.0
+        assert trade is not None
+        assert trade.carry_cost == pytest.approx(expected_carry)
+        assert trade.pnl == pytest.approx(1000.0 - expected_carry, abs=0.01)
+        assert engine.get_summary().cash == pytest.approx(101000.0 - expected_carry)
+        assert engine.get_summary().total_pnl == pytest.approx(1000.0 - expected_carry, abs=0.01)
+        assert engine.get_summary().carry_cost == pytest.approx(expected_carry, abs=0.01)
+
+    def test_close_settles_short_borrow_into_cash_and_pnl(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, borrow_rate_pct=0.10)
+        result = engine.execute_signal("BTC-USD", "short", 1.0, 50000.0)
+        self._reset_clock(engine, self.T0)
+
+        trade = engine.close_position(result["position_id"], 49000.0, exit_at=self.T1)
+
+        expected_carry = 50000.0 * 0.10 / 365.0
+        assert trade is not None
+        assert trade.carry_cost == pytest.approx(expected_carry)
+        assert trade.pnl == pytest.approx(1000.0 - expected_carry, abs=0.01)
+        assert engine.get_summary().cash == pytest.approx(101000.0 - expected_carry)
+        assert engine.get_summary().total_pnl == pytest.approx(1000.0 - expected_carry, abs=0.01)
+
+    def test_per_symbol_rate_overrides_and_falls_back(self) -> None:
+        engine = PaperTradingEngine(
+            initial_capital=100000.0,
+            borrow_rate_pct=0.10,
+            borrow_rate_by_symbol={"btc-usd": 0.20},
+        )
+        assert engine.execute_signal("BTC-USD", "short", 1.0, 50000.0)["accepted"] is True
+        assert engine.execute_signal("ETH-USD", "short", 1.0, 40000.0)["accepted"] is True
+        self._reset_clock(engine, self.T0)
+
+        engine.accrue_carry(self.T1)
+
+        by_symbol = {position.symbol: position.carry_cost for position in engine.get_open_positions()}
+        assert by_symbol["BTC-USD"] == pytest.approx(50000.0 * 0.20 / 365.0)
+        assert by_symbol["ETH-USD"] == pytest.approx(40000.0 * 0.10 / 365.0)
+
+    def test_snapshot_restore_keeps_carry_and_clock(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, borrow_rate_pct=0.10)
+        engine.execute_signal("BTC-USD", "short", 1.0, 50000.0)
+        self._reset_clock(engine, self.T0)
+        snapshot = engine.snapshot()
+        engine.accrue_carry(self.T1)
+
+        engine.restore_snapshot(snapshot)
+
+        position = engine.get_open_positions()[0]
+        assert position.carry_cost == 0.0
+        assert position.last_accrual_at == self.T0
+
+    def test_failed_reversal_restores_pre_close_carry(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, borrow_rate_pct=0.10)
+        engine.execute_signal("BTC-USD", "short", 1.0, 50000.0)
+        self._reset_clock(engine, self.T0)
+
+        # Closing the short at 200k drives cash negative, so the long reversal
+        # has no buying power and is rejected after the provisional close.
+        result = engine.execute_signal("BTC-USD", "long", 1.0, 200000.0)
+
+        assert result["accepted"] is False
+        restored = engine.get_open_positions()
+        assert len(restored) == 1
+        assert restored[0].side == "short"
+        assert restored[0].carry_cost == 0.0
+        assert restored[0].last_accrual_at == self.T0
+
+    @pytest.mark.parametrize("bad_rate", [-0.001, 10.0])
+    def test_invalid_global_carry_rate_is_rejected(self, bad_rate: float) -> None:
+        with pytest.raises(ValueError, match="between 0 and 10"):
+            PaperTradingEngine(borrow_rate_pct=bad_rate)
+
+    @pytest.mark.parametrize("bad_rate", [-0.001, 10.0])
+    def test_invalid_per_symbol_carry_rate_is_rejected(self, bad_rate: float) -> None:
+        with pytest.raises(ValueError, match="between 0 and 10"):
+            PaperTradingEngine(funding_rate_by_symbol={"BTC-USD": bad_rate})
+
+    def test_blank_carry_symbol_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            PaperTradingEngine(borrow_rate_by_symbol={"  ": 0.10})
 
 
 # ---------------------------------------------------------------------------

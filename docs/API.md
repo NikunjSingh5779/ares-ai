@@ -169,6 +169,10 @@ An invalid or expired token returns **401**; a valid token that does not match t
 submitted symbol, side, or payload returns **422**. A duplicate `client_order_id`
 returns `409`; a writer-lock timeout returns `503` with `Retry-After: 1`.
 
+`/portfolio` includes `carry_cost`; `/positions` includes `carry_cost` and
+`last_accrual_at`; `/orders` includes `carry_cost`. Carry is an annualized,
+non-negative cost: borrow on shorts, funding on longs, settled into cash/PnL at close.
+
 ### Live trading controls
 
 | Method | Path | Auth | Purpose |

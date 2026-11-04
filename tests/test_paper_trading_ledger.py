@@ -11,7 +11,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -134,6 +134,8 @@ def _position_row() -> dict[str, Any]:
         "opened_at": datetime(2026, 1, 1, tzinfo=UTC),
         "entry_commission": 50.0,
         "margin": 0.0,
+        "carry_cost": 12.5,
+        "last_accrual_at": datetime(2026, 1, 1, 12, tzinfo=UTC),
     }
 
 
@@ -152,6 +154,7 @@ def _trade_row() -> dict[str, Any]:
         "strategy_name": "mean_reversion",
         "entry_commission": 6.0,
         "exit_commission": 5.8,
+        "carry_cost": 3.25,
         "exit_reason": "take_profit",
     }
 
@@ -181,12 +184,38 @@ class TestPaperLedgerRepositoryHydration:
         assert position.side == "long"
         assert position.entry_commission == 50.0
         assert position.entry_at == datetime(2026, 1, 1, tzinfo=UTC)
+        assert position.carry_cost == 12.5
+        assert position.last_accrual_at == datetime(2026, 1, 1, 12, tzinfo=UTC)
 
         trade = engine.get_closed_trades()[0]
         assert trade.side == "short"
         assert trade.exit_reason == "take_profit"
         assert trade.exit_commission == 5.8
-        assert engine.get_equity_curve()[-1] == pytest.approx(102000.0)
+        assert trade.carry_cost == 3.25
+        # Open carry is a liability until the position closes.
+        assert engine.get_equity_curve()[-1] == pytest.approx(102000.0 - 12.5)
+
+    async def test_hydrated_carry_clock_continues_after_restart(self) -> None:
+        session = _FakeSession(
+            [
+                _FakeResult(row=_portfolio_row()),
+                _FakeResult(rows=[_position_row()]),
+                _FakeResult(rows=[]),
+            ]
+        )
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+        engine = PaperTradingEngine(initial_capital=1.0, funding_rate_pct=0.10)
+
+        assert await repository.hydrate(engine) is True
+
+        position = engine.get_open_positions()[0]
+        assert position.carry_cost == 12.5
+        assert position.last_accrual_at == datetime(2026, 1, 1, 12, tzinfo=UTC)
+
+        accrued = engine.accrue_carry(position.last_accrual_at + timedelta(days=1))
+
+        assert accrued == pytest.approx(50000.0 * 0.10 / 365.0)
+        assert position.carry_cost == pytest.approx(12.5 + 50000.0 * 0.10 / 365.0)
 
     async def test_returns_false_when_paper_account_is_not_seeded(self) -> None:
         session = _FakeSession([_FakeResult(row=None)])
@@ -255,7 +284,10 @@ class TestPaperLedgerRepositoryPersistence:
         result = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
         assert result["accepted"] is True
         position_id = result["position_id"]
-        engine.mark_to_market("BTC-USD", 51000.0)
+        position = engine.get_open_positions()[0]
+        position.carry_cost = 1.5
+        position.last_accrual_at = datetime(2026, 1, 1, 12, tzinfo=UTC)
+        engine.mark_to_market("BTC-USD", 51000.0, as_of=datetime(2026, 1, 1, 12, tzinfo=UTC))
 
         closed = ClosedTrade(
             symbol="ETH-USD",
@@ -271,6 +303,7 @@ class TestPaperLedgerRepositoryPersistence:
             strategy_name="mean_reversion",
             entry_commission=6.0,
             exit_commission=5.8,
+            carry_cost=4.25,
             position_id="closed-position-1",
         )
 
@@ -294,6 +327,15 @@ class TestPaperLedgerRepositoryPersistence:
         position_params = next(params for sql, params in session.calls if "INSERT INTO positions" in sql)
         assert position_params["side"] == "long"
         assert position_params["entry_commission"] >= 0.0
+        assert position_params["carry_cost"] == 1.5
+        assert position_params["last_accrual_at"] == datetime(2026, 1, 1, 12, tzinfo=UTC)
+
+        close_params = next(
+            params
+            for sql, params in session.calls
+            if "UPDATE positions" in sql and params.get("position_id") == "closed-position-1"
+        )
+        assert close_params["carry_cost"] == 4.25
 
         entry_order_params = next(
             params
@@ -310,6 +352,7 @@ class TestPaperLedgerRepositoryPersistence:
         assert trade_params["position_side"] == "short"
         assert trade_params["exit_reason"] == "take_profit"
         assert trade_params["entry_commission"] == 6.0
+        assert trade_params["carry_cost"] == 4.25
 
         portfolio_params = next(params for sql, params in session.calls if "UPDATE portfolio" in sql)
         curve = json.loads(portfolio_params["equity_curve"])
@@ -546,6 +589,54 @@ class TestPaperTradingLedgerService:
         assert closed[0].exit_reason == "stop_loss"
         assert closed[0].exit_price == pytest.approx(48000.0)
         repository.persist.assert_awaited_once()
+
+    async def test_process_candle_accrues_carry_to_candle_time(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, funding_rate_pct=0.10)
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+        position = engine.get_open_positions()[0]
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        position.last_accrual_at = start
+        ledger, repository = self._ledger(engine)
+
+        closed = await ledger.process_candle(
+            symbol="BTC-USD",
+            high=50500.0,
+            low=49500.0,
+            close=50000.0,
+            as_of=start + timedelta(days=1),
+        )
+
+        expected = 50000.0 * 0.10 / 365.0
+        assert closed == []
+        assert position.carry_cost == pytest.approx(expected)
+        assert position.last_accrual_at == start + timedelta(days=1)
+        repository.persist.assert_awaited_once()
+
+    async def test_process_candle_same_timestamp_does_not_double_charge(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, funding_rate_pct=0.10)
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+        position = engine.get_open_positions()[0]
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        position.last_accrual_at = start
+        ledger, _repository = self._ledger(engine)
+
+        await ledger.process_candle(
+            symbol="BTC-USD",
+            high=50500.0,
+            low=49500.0,
+            close=50000.0,
+            as_of=start + timedelta(days=1),
+        )
+        first = position.carry_cost
+        await ledger.process_candle(
+            symbol="BTC-USD",
+            high=50500.0,
+            low=49500.0,
+            close=50000.0,
+            as_of=start + timedelta(days=1),
+        )
+
+        assert position.carry_cost == pytest.approx(first)
 
     async def test_process_candle_rolls_back_marks_when_persist_fails(self) -> None:
         engine = PaperTradingEngine(initial_capital=100000.0)

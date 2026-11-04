@@ -20,13 +20,14 @@ Async sessions (`get_db`), ORM entities, schema on first container start.
 - One schema change updates: DDL, ORM (if mapped), migration, and tests.
 - `schema.sql` and `init.sql` stay byte-identical after line-ending normalization;
   `tests/test_schema.py` enforces it.
-- `migrations/versions/` is tracked and has exactly one head (`0006_improvement_history`).
+- `migrations/versions/` is tracked and has exactly one head (`0007_carry_costs`).
 - `users.role` is one of `viewer`, `operator`, `admin`, `super_admin`; the default is
   `viewer`. Legacy `user` rows are rewritten to `operator` by migration `0004`.
-- Paper state columns: `positions.side`, `entry_commission`, `margin`;
-  `portfolio.initial_capital`, `margin_used`, `equity_curve`;
-  `trade_history.position_side`, `entry_commission`, `exit_commission`, `exit_reason`;
-  `orders.client_order_id` with partial unique index `uq_orders_client_order_id`.
+- Paper state columns: `positions.side`, `entry_commission`, `margin`,
+  `carry_cost`, `last_accrual_at`; `portfolio.initial_capital`, `margin_used`,
+  `equity_curve`; `trade_history.position_side`, `entry_commission`,
+  `exit_commission`, `carry_cost`, `exit_reason`; `orders.client_order_id` with
+  partial unique index `uq_orders_client_order_id`.
 - Improvement history: `reflection_runs` stores structured reflection output;
   `improvement_records` stores advisory suggestions with a unique
   `(reflection_run_id, category, description)` retry guard. Applying a record only marks
@@ -49,5 +50,6 @@ must run `alembic upgrade head`; `init.sql` only applies on first container star
 Migration `0002` assumes pre-existing `positions` rows are long because the old table
 had no direction column; reconcile any historical shorts manually. `0003` adds the
 idempotency column/index; `0004` replaces the role check and default; `0005` creates
-`app_settings`; `0006` creates the improvement-history tables. Apply `0003`–`0006` to
+`app_settings`; `0006` creates the improvement-history tables; `0007` adds paper carry
+columns and backfills `last_accrual_at` from `opened_at`. Apply `0003`–`0007` to
 existing deployments with `alembic upgrade head`.
