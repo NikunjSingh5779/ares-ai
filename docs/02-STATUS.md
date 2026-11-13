@@ -479,6 +479,20 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | CI | Runs **41856026984** (branch push) and **41856038721** (pull request) passed all five jobs; the post-merge master run **41856711393** also passed all five, with `postgres-integration` at **24 passed** including `test_carry_survives_restart_and_settles_on_close`. |
 | Scope | Partial fills/liquidity remains the only unimplemented paper-realism item. |
 
+## Paper realism slice 3 — partial fills/liquidity (implemented 2026-11-04; ADR-027)
+
+| Piece | Evidence |
+|---|---|
+| IOC entry fills | `PaperTradingEngine.execute_signal(volume=)` caps the fill at `requested × max_volume_participation_pct × candle_volume`; the unfilled remainder is cancelled and the order persists as `partially_filled` (terminal). Results expose `requested_quantity`, `filled_quantity`, `unfilled_quantity`, `order_status`, `liquidity_capped`, `unfilled_reason`. Rejections distinguish "Insufficient liquidity" from "Insufficient cash". |
+| Participation cap | `PAPER_TRADING_MAX_VOLUME_PARTICIPATION_PCT` default `0.10`, range `[0, 1]`; `0` disables the cap; direct engine construction defaults `0.0` for unit tests. Missing or non-positive candle volume means "unknown" → no cap (never rejects). |
+| Volume-limited exits | `check_sl_tp(volume=)` closes at most the participation fraction of candle volume per triggered stop/TP; the remainder stays open with its stop and accrual clock and re-evaluates on the next candle; unknown volume closes in full. |
+| Partial closes | `close_position(quantity=)` realizes one lot: entry commission and accrued carry allocate proportionally; the remaining position keeps stop/TP, entry price, and accrual clock; short margin becomes `remaining_qty × entry_price`. Each lot appends one `ClosedTrade` (so trade counts count lots, not positions). |
+| Persistence | No schema change. Entry orders write `status`/`filled_quantity`/`failure_reason` from in-memory position metadata (`requested_quantity`, `entry_order_status`, `entry_order_reason`); a partial exit skips the closing `UPDATE positions` and upserts the remaining row instead, tagging the exit-order rationale `partial: true`. Hydration reports `requested_quantity = quantity`, status `filled`. |
+| Wiring | API `/execute` reads `current_volume` from the approved Market Analyst indicators (approval-hash-bound); `agents/market_analyst.py` emits `current_volume`; execution agent, worker, and runner pass the latest candle volume. `/execute` responses surface the new order fields. |
+| Tests | Engine: volume-cap entry, zero-capacity/unknown-volume handling, participation 1.0/0.0, cash+liquidity dual cap, rejection, invalid param, short cap; partial long/short close, proportional commission+carry allocation, invalid quantities, two-candle volume-limited stop, dust-volume no-op, snapshot/restore, reversal after partial close. Ledger fake-session: partial entry order params, partial-exit skips the closing UPDATE, exit rationale `partial`. Worker: forwarded candle volume. PostgreSQL: partial entry + volume-limited partial exit + restart round-trip. |
+| Verification | `pytest tests/ -q` → **1458 passed, 3 skipped, 84.51%**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **216 source files**; targeted slice run **196 passed**; the PostgreSQL ledger suite passed **7/7** locally on a disposable PostgreSQL 16 database. CI evidence will be added after the feature-branch run. |
+| Scope | No schema change (`database/schema.sql` byte-identical). All paper-realism slices are now implemented; remaining gaps are operational (#9 secret, #10 pre-P1-A short reconciliation). |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |

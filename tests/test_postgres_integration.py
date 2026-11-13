@@ -147,6 +147,7 @@ async def _paper_process(
     writer_timeout_seconds: float = 5.0,
     borrow_rate_pct: float = 0.0,
     funding_rate_pct: float = 0.0,
+    max_volume_participation_pct: float = 0.0,
 ) -> AsyncIterator[PaperTradingLedger]:
     """Build an API/worker-style ledger with its own engine and connection pool."""
     engine = _new_engine()
@@ -156,6 +157,7 @@ async def _paper_process(
             initial_capital=_INITIAL_CAPITAL,
             borrow_rate_pct=borrow_rate_pct,
             funding_rate_pct=funding_rate_pct,
+            max_volume_participation_pct=max_volume_participation_pct,
         ),
         PaperLedgerRepository(session_factory),
         writer_timeout_seconds=writer_timeout_seconds,
@@ -299,6 +301,114 @@ async def test_carry_survives_restart_and_settles_on_close(paper_db: None) -> No
     assert len(position_rows) == 1
     assert float(position_rows[0][0]) == pytest.approx(expected_daily * 2)
     assert position_rows[0][1] is not None
+
+
+async def test_partial_fill_and_partial_exit_round_trip(paper_db: None) -> None:
+    """IOC liquidity caps and volume-limited stops survive restarts.
+
+    The entry is capped at 10% of candle volume and one stop-out closes only
+    10% of the volume of its candle; the remainder stays open until a later
+    candle with unknown volume closes it in full.
+    """
+    now = datetime.now(UTC)
+
+    async with _paper_process(max_volume_participation_pct=0.10) as first:
+        assert await first.initialize() is True
+        result = await first.execute_signal(
+            symbol="ETH/USDT",
+            side="long",
+            quantity=1000.0,
+            entry_price=100.0,
+            stop_loss=90.0,
+            strategy_name="liquidity-integration",
+            client_order_id="itest-partial-1",
+            volume=5000.0,
+        )
+        assert result["accepted"] is True
+        assert result["order_status"] == "partially_filled"
+        assert result["filled_quantity"] == pytest.approx(500.0)
+        assert result["unfilled_quantity"] == pytest.approx(500.0)
+        assert result["liquidity_capped"] is True
+
+    # A new process hydrates the partial position from PostgreSQL alone.
+    async with _paper_process(max_volume_participation_pct=0.10) as second:
+        assert await second.initialize() is True
+        positions = second.engine.get_open_positions()
+        assert len(positions) == 1
+        assert positions[0].quantity == pytest.approx(500.0)
+        assert second.engine.get_summary().cash == pytest.approx(50_000.0)
+
+        # Stop is hit; volume 250 caps the exit at 25 units.
+        first_exit = await second.process_candle(
+            symbol="ETH/USDT",
+            high=95.0,
+            low=85.0,
+            close=94.0,
+            as_of=now,
+            volume=250.0,
+        )
+        assert len(first_exit) == 1
+        assert first_exit[0].quantity == pytest.approx(25.0)
+        assert first_exit[0].exit_reason == "stop_loss"
+        assert len(second.engine.get_open_positions()) == 1
+
+        # Unknown volume closes the remaining 475 units in full.
+        second_exit = await second.process_candle(
+            symbol="ETH/USDT",
+            high=95.0,
+            low=85.0,
+            close=89.0,
+            as_of=now + timedelta(minutes=1),
+        )
+        assert len(second_exit) == 1
+        assert second_exit[0].quantity == pytest.approx(475.0)
+        assert second.engine.get_open_positions() == []
+
+    async with _paper_process(max_volume_participation_pct=0.10) as third:
+        assert await third.initialize() is True
+        assert third.engine.get_open_positions() == []
+        trades = third.engine.get_closed_trades()
+        assert len(trades) == 2
+        assert {trade.quantity for trade in trades} == {25.0, 475.0}
+        # Both lots exit at the 90 stop: realized PnL is (90 - 100) * 500.
+        assert third.engine.get_summary().cash == pytest.approx(95_000.0)
+        assert third.engine.get_summary().total_pnl == pytest.approx(-5_000.0)
+
+    # One trade_history row per realized lot, plus the partial entry order and
+    # two exit orders.
+    trade_rows = await _rows("SELECT quantity, exit_reason FROM trade_history ORDER BY exit_at")
+    assert len(trade_rows) == 2
+    assert float(trade_rows[0][0]) == pytest.approx(25.0)
+    assert trade_rows[0][1] == "stop_loss"
+    assert float(trade_rows[1][0]) == pytest.approx(475.0)
+
+    order_rows = await _rows(
+        """
+        SELECT side, status, quantity, filled_quantity, failure_reason
+        FROM orders ORDER BY created_at
+        """
+    )
+    assert len(order_rows) == 3
+    assert order_rows[0][0] == "buy"
+    assert order_rows[0][1] == "partially_filled"
+    assert float(order_rows[0][2]) == pytest.approx(1000.0)
+    assert float(order_rows[0][3]) == pytest.approx(500.0)
+    assert "volume participation cap" in order_rows[0][4]
+    assert order_rows[1][0] == "sell"
+    assert order_rows[1][1] == "filled"
+    assert float(order_rows[1][2]) == pytest.approx(25.0)
+    assert order_rows[2][0] == "sell"
+    assert float(order_rows[2][2]) == pytest.approx(475.0)
+
+    position_rows = await _rows("SELECT is_open, quantity FROM positions WHERE symbol = 'ETH/USDT'")
+    assert len(position_rows) == 1
+    assert position_rows[0][0] is False
+    # The row keeps the last open remainder (475) that the final closure saw.
+    assert float(position_rows[0][1]) == pytest.approx(475.0)
+
+    portfolio_rows = await _rows("SELECT cash_balance, realized_pnl FROM portfolio")
+    assert float(portfolio_rows[0][0]) == pytest.approx(95_000.0)
+    assert float(portfolio_rows[0][1]) == pytest.approx(-5_000.0)
 
 
 async def test_duplicate_client_order_id_is_rejected_after_restart(paper_db: None) -> None:

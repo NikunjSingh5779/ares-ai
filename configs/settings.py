@@ -114,6 +114,12 @@ class Settings(BaseSettings):
     paper_trading_funding_rate_pct: float = Field(default=0.0, ge=0.0, lt=10.0)
     paper_trading_borrow_rate_by_symbol: dict[str, float] = Field(default_factory=dict)
     paper_trading_funding_rate_by_symbol: dict[str, float] = Field(default_factory=dict)
+    # Immediate-or-cancel market fills may consume at most this fraction of the
+    # candle volume (decimal: 0.10 = 10%). 0 disables the cap; the application
+    # wires a non-zero default while direct engine construction stays at 0 for
+    # unit tests. A missing or non-positive candle volume means "unknown", so
+    # no cap is applied rather than rejecting every fill.
+    paper_trading_max_volume_participation_pct: float = Field(default=0.10, ge=0.0, le=1.0)
     # How long a paper-ledger writer waits for the cross-process advisory lock
     # before the operation fails with 503 instead of mutating stale state.
     paper_trading_writer_lock_timeout_seconds: float = Field(default=10.0, gt=0.0)

@@ -837,3 +837,291 @@ class TestEdgeCases:
         closed = engine.check_sl_tp("BTC-USD", high=100000.0, low=0.0)
         assert closed == []
         assert len(engine._positions) == 1
+
+
+# ---------------------------------------------------------------------------
+# Volume participation (IOC liquidity cap)
+# ---------------------------------------------------------------------------
+
+
+class TestVolumeParticipation:
+    """IOC market fills capped at a fraction of candle volume."""
+
+    def test_fill_is_capped_at_participation_fraction(self) -> None:
+        engine = PaperTradingEngine(initial_capital=1_000_000.0, max_volume_participation_pct=0.10)
+        result = engine.execute_signal("ETH-USD", "long", 1000.0, 100.0, volume=5000.0)
+
+        assert result["accepted"] is True
+        assert result["order_status"] == "partially_filled"
+        assert result["requested_quantity"] == pytest.approx(1000.0)
+        assert result["filled_quantity"] == pytest.approx(500.0)  # 10% of 5000
+        assert result["unfilled_quantity"] == pytest.approx(500.0)
+        assert result["liquidity_capped"] is True
+        assert "volume participation cap" in result["unfilled_reason"]
+        assert "IOC" in result["unfilled_reason"]
+
+        position = engine.get_open_positions()[0]
+        assert position.quantity == pytest.approx(500.0)
+        assert position.requested_quantity == pytest.approx(1000.0)
+        assert position.entry_order_status == "partially_filled"
+
+        summary = engine.get_summary()
+        assert summary.cash == pytest.approx(1_000_000.0 - 500.0 * 100.0)
+        assert summary.open_positions == 1
+
+    def test_missing_volume_means_no_cap(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, max_volume_participation_pct=0.10)
+        assert engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, volume=None)["order_status"] == "filled"
+
+    def test_non_positive_volume_means_no_cap(self) -> None:
+        """Some sources report zero volume; unknown liquidity must not halt trading."""
+        engine = PaperTradingEngine(initial_capital=100000.0, max_volume_participation_pct=0.10)
+        assert engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, volume=0.0)["order_status"] == "filled"
+        assert engine.execute_signal("ETH-USD", "long", 1.0, 3000.0, volume=-5.0)["order_status"] == "filled"
+
+    def test_full_fill_when_volume_exceeds_request(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, max_volume_participation_pct=0.10)
+        result = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, volume=100.0)
+
+        assert result["order_status"] == "filled"
+        assert result["filled_quantity"] == pytest.approx(1.0)
+        assert result["unfilled_quantity"] == pytest.approx(0.0)
+        assert result["liquidity_capped"] is False
+        assert "unfilled_reason" not in result
+
+    def test_participation_one_allows_full_volume(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, max_volume_participation_pct=1.0)
+        result = engine.execute_signal("ETH-USD", "long", 100.0, 100.0, volume=100.0)
+
+        assert result["order_status"] == "filled"
+        assert result["filled_quantity"] == pytest.approx(100.0)
+
+    def test_short_fill_is_capped_too(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, max_volume_participation_pct=0.10)
+        result = engine.execute_signal("ETH-USD", "short", 50.0, 3000.0, volume=200.0)
+
+        assert result["order_status"] == "partially_filled"
+        assert result["filled_quantity"] == pytest.approx(20.0)
+        position = engine.get_open_positions()[0]
+        assert position.quantity == pytest.approx(20.0)
+        assert position.margin == pytest.approx(20.0 * 3000.0)
+
+    def test_cash_binds_below_liquidity_cap(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, max_volume_participation_pct=0.10)
+        # Volume capacity is 10 units; cash affords only 2.
+        result = engine.execute_signal("BTC-USD", "long", 10.0, 50000.0, volume=100.0)
+
+        assert result["accepted"] is True
+        assert result["order_status"] == "partially_filled"
+        assert result["filled_quantity"] == pytest.approx(2.0)
+        assert result["liquidity_capped"] is False
+        assert "insufficient buying power" in result["unfilled_reason"]
+
+    def test_rejection_when_nothing_fits(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, max_volume_participation_pct=0.10)
+        # Consumes all cash, so the next long has zero buying power.
+        engine.execute_signal("BTC-USD", "long", 2.0, 50000.0)
+
+        result = engine.execute_signal("ETH-USD", "long", 10.0, 100.0, volume=1000.0)
+
+        assert result["accepted"] is False
+        assert result["reason"] == "Insufficient cash"
+        assert result["order_status"] == "rejected"
+        assert result["filled_quantity"] == 0.0
+        assert result["unfilled_quantity"] == pytest.approx(10.0)
+        assert result["unfilled_reason"] == "Insufficient cash"
+        assert len(engine.get_open_positions()) == 1
+
+    @pytest.mark.parametrize("bad_pct", [-0.001, 1.01])
+    def test_invalid_participation_is_rejected(self, bad_pct: float) -> None:
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            PaperTradingEngine(max_volume_participation_pct=bad_pct)
+
+    def test_zero_participation_disables_the_cap(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, max_volume_participation_pct=0.0)
+        result = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, volume=1.0)
+
+        assert result["order_status"] == "filled"
+        assert result["filled_quantity"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Partial closes
+# ---------------------------------------------------------------------------
+
+
+class TestPartialCloses:
+    """Partial exits realize one lot and keep the remainder open."""
+
+    T0 = datetime(2026, 1, 1, tzinfo=UTC)
+    T1 = T0 + timedelta(days=1)
+
+    def _reset_clock(self, engine: PaperTradingEngine, at: datetime) -> None:
+        for position in engine.get_open_positions():
+            position.last_accrual_at = at
+
+    def test_partial_long_close_keeps_remainder_open(self) -> None:
+        engine = PaperTradingEngine(initial_capital=200000.0)
+        position_id = engine.execute_signal("BTC-USD", "long", 2.0, 50000.0, stop_loss=47000.0, take_profit=60000.0)[
+            "position_id"
+        ]
+
+        trade = engine.close_position(position_id, 55000.0, quantity=1.0)
+
+        assert trade is not None
+        assert trade.quantity == pytest.approx(1.0)
+        assert trade.position_id == position_id
+        remaining = engine.get_open_positions()
+        assert len(remaining) == 1
+        assert remaining[0].id == position_id
+        assert remaining[0].quantity == pytest.approx(1.0)
+        assert remaining[0].entry_price == pytest.approx(50000.0)
+        assert remaining[0].stop_loss == pytest.approx(47000.0)
+        assert remaining[0].take_profit == pytest.approx(60000.0)
+        assert engine.get_summary().open_positions == 1
+
+    def test_partial_close_allocates_commission_and_carry_proportionally(self) -> None:
+        engine = PaperTradingEngine(initial_capital=200000.0, commission_pct=0.001, funding_rate_pct=0.10)
+        position_id = engine.execute_signal("BTC-USD", "long", 2.0, 50000.0)["position_id"]
+        self._reset_clock(engine, self.T0)
+
+        trade = engine.close_position(position_id, 55000.0, exit_at=self.T1, quantity=1.0)
+
+        total_carry = 100000.0 * 0.10 / 365.0
+        half_carry = total_carry / 2.0
+        assert trade is not None
+        assert trade.entry_commission == pytest.approx(50.0)  # half of 100000 * 0.001
+        assert trade.exit_commission == pytest.approx(55.0)  # 55000 * 0.001
+        assert trade.carry_cost == pytest.approx(half_carry)
+        assert trade.pnl == pytest.approx(5000.0 - 50.0 - 55.0 - half_carry, abs=0.01)
+
+        remaining = engine.get_open_positions()[0]
+        assert remaining.entry_commission == pytest.approx(50.0)
+        assert remaining.carry_cost == pytest.approx(half_carry)
+        assert remaining.last_accrual_at == self.T1
+
+        # Closing the remainder at the same timestamp charges no extra carry;
+        # the two lots together settle the full one-day funding charge.
+        rest = engine.close_position(position_id, 56000.0, exit_at=self.T1)
+        assert rest is not None
+        assert rest.carry_cost == pytest.approx(half_carry)
+        assert engine.get_summary().cash == pytest.approx(
+            200000.0
+            - 100.0
+            - 100000.0  # entry
+            + 55000.0
+            - 55.0
+            - half_carry  # first lot
+            + 56000.0
+            - 56.0
+            - half_carry,  # second lot
+            abs=0.01,
+        )
+
+    def test_partial_short_close_updates_margin(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        position_id = engine.execute_signal("ETH-USD", "short", 10.0, 3000.0)["position_id"]
+
+        trade = engine.close_position(position_id, 2900.0, quantity=4.0)
+
+        assert trade is not None
+        assert trade.quantity == pytest.approx(4.0)
+        assert trade.pnl == pytest.approx(400.0)
+        remaining = engine.get_open_positions()[0]
+        assert remaining.quantity == pytest.approx(6.0)
+        assert remaining.margin == pytest.approx(6.0 * 3000.0)
+        summary = engine.get_summary()
+        assert summary.cash == pytest.approx(118400.0)  # 130000 - 4*2900
+        assert summary.margin_used == pytest.approx(18000.0)
+        assert summary.total_pnl == pytest.approx(400.0)
+
+    def test_quantity_at_least_position_closes_all(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        position_id = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)["position_id"]
+
+        trade = engine.close_position(position_id, 55000.0, quantity=5.0)
+
+        assert trade is not None
+        assert trade.quantity == pytest.approx(1.0)
+        assert engine.get_open_positions() == []
+
+    def test_invalid_partial_quantity_is_ignored(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        position_id = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)["position_id"]
+
+        assert engine.close_position(position_id, 55000.0, quantity=0.0) is None
+        assert engine.close_position(position_id, 55000.0, quantity=-1.0) is None
+        assert engine.close_position(position_id, 55000.0, quantity=float("nan")) is None
+        assert len(engine.get_open_positions()) == 1
+        assert engine.get_closed_trades() == []
+
+    def test_stop_close_is_limited_by_volume_and_rest_exits_later(self) -> None:
+        engine = PaperTradingEngine(initial_capital=1_000_000.0, max_volume_participation_pct=0.10)
+        engine.execute_signal("BTC-USD", "long", 10.0, 50000.0, stop_loss=47000.0)
+
+        first = engine.check_sl_tp("BTC-USD", high=51000.0, low=46000.0, open_price=50000.0, as_of=self.T0, volume=50.0)
+
+        assert len(first) == 1
+        assert first[0].quantity == pytest.approx(5.0)  # 10% of 50
+        remaining = engine.get_open_positions()
+        assert len(remaining) == 1
+        assert remaining[0].quantity == pytest.approx(5.0)
+
+        # Unknown volume on the next candle closes the remainder in full.
+        second = engine.check_sl_tp(
+            "BTC-USD",
+            high=51000.0,
+            low=46000.0,
+            open_price=50000.0,
+            as_of=self.T1,
+            volume=0.0,
+        )
+
+        assert len(second) == 1
+        assert second[0].quantity == pytest.approx(5.0)
+        assert engine.get_open_positions() == []
+        assert engine.get_summary().total_trades == 2
+
+    def test_dust_volume_exit_is_a_no_op(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0, max_volume_participation_pct=0.10)
+        engine.execute_signal("BTC-USD", "long", 1.0, 50000.0, stop_loss=47000.0)
+
+        closed = engine.check_sl_tp(
+            "BTC-USD",
+            high=51000.0,
+            low=46000.0,
+            open_price=50000.0,
+            as_of=self.T0,
+            volume=1e-11,
+        )
+
+        assert closed == []
+        assert len(engine.get_open_positions()) == 1
+
+    def test_reversal_after_partial_close(self) -> None:
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        position_id = engine.execute_signal("BTC-USD", "long", 2.0, 50000.0)["position_id"]
+        engine.close_position(position_id, 52000.0, quantity=1.0)
+
+        result = engine.execute_signal("BTC-USD", "short", 1.0, 51000.0)
+
+        assert result["accepted"] is True
+        assert result["reversal"] is True
+        assert result["closed_trade"] is not None
+        assert result["closed_trade"]["quantity"] == pytest.approx(1.0)
+        positions = engine.get_open_positions()
+        assert len(positions) == 1
+        assert positions[0].side == "short"
+
+    def test_snapshot_restore_preserves_entry_order_metadata(self) -> None:
+        engine = PaperTradingEngine(initial_capital=200000.0, max_volume_participation_pct=0.10)
+        engine.execute_signal("ETH-USD", "long", 1000.0, 100.0, volume=5000.0)
+        snapshot = engine.snapshot()
+
+        restored = PaperTradingEngine(initial_capital=200000.0)
+        restored.restore_snapshot(snapshot)
+
+        position = restored.get_open_positions()[0]
+        assert position.quantity == pytest.approx(500.0)
+        assert position.requested_quantity == pytest.approx(1000.0)
+        assert position.entry_order_status == "partially_filled"

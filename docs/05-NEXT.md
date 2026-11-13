@@ -6,13 +6,16 @@ Do not start a phase before the previous exit criterion is met unless a human sa
 
 ## Immediate next move (2026-11-04)
 
-Paper-realism slice 2 (borrow/funding carry) is **merged** as `b49223a` via PR #136.
-The branch/PR runs **41856026984** and **41856038721** and the post-merge master run
-**41856711393** passed all five jobs; `postgres-integration` ran the carry
-restart/settlement case and reported **24 passed**. The next paper-realism slice is
-**partial fills/liquidity**: design it before coding and do not start it until a human
-agrees. Operational items remain in `02-STATUS.md` gap #9 (`OPENROUTER_API_KEY` +
-catalog dispatch) and gap #10 (pre-P1-A short-position reconciliation).
+Paper-realism slice 3 (**partial fills/liquidity**, ADR-027) is **implemented** on a
+feature branch pending push/PR approval: IOC market orders with a volume-participation
+cap (`PAPER_TRADING_MAX_VOLUME_PARTICIPATION_PCT`, default `0.10`), volume-limited
+stop/TP exits, partial closes with proportional commission/carry allocation, and
+partial-aware persistence (`partially_filled` status, per-lot trade history) with **no
+schema change**. Local verification: **1458 passed, 3 skipped** full suite, ruff/mypy
+clean, PostgreSQL ledger suite **7/7** on a disposable PostgreSQL 16 database. After CI
+is green on the feature branch and the PR merges, all paper-realism slices are done;
+operational items remain in `02-STATUS.md` gap #9 (`OPENROUTER_API_KEY` + catalog
+dispatch) and gap #10 (pre-P1-A short-position reconciliation).
 
 ## Phase 0 — capital safety (block release)
 
@@ -179,7 +182,13 @@ authenticated route shells; data-populated states remain an optional follow-up.
   (longs), with per-symbol JSON overrides, accrue from `last_accrual_at`, show as
   an equity liability while open, and settle into cash/PnL at close. Persistence:
   `positions.carry_cost`/`last_accrual_at`, `trade_history.carry_cost`, migration
-  `0007`. Remaining paper realism: partial fills/liquidity only.
+  `0007`.
+- Paper realism slice 3 — partial fills/liquidity: **implemented 2026-11-04**
+  (ADR-027) — IOC market orders capped at
+  `PAPER_TRADING_MAX_VOLUME_PARTICIPATION_PCT` of candle volume, volume-limited
+  stop/TP exits, partial closes with proportional commission/carry allocation, and
+  partial-aware persistence (`partially_filled` status, per-lot trade history) with
+  no schema change. All paper-realism slices are now implemented.
 - Manual reconciliation of pre-P1-A short positions migrated as long: **open** —
   operational, needs production database access. See `02-STATUS.md` gap #10.
 

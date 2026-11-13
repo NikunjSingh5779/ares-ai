@@ -850,3 +850,103 @@ class TestPaperTradingLedgerService:
         assert positions == []
         assert trades == []
         assert repository.hydrate.await_count == 3
+
+
+class TestPaperLedgerPartialFillPersistence:
+    """Order rows and the partial-exit write path."""
+
+    async def test_partial_entry_order_records_requested_and_filled(self) -> None:
+        session = _FakeSession([_FakeResult(row=_portfolio_row())])
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+        engine = PaperTradingEngine(initial_capital=200000.0, max_volume_participation_pct=0.10)
+        result = engine.execute_signal("ETH-USD", "long", 1000.0, 100.0, volume=5000.0)
+        assert result["accepted"] is True
+        assert result["order_status"] == "partially_filled"
+
+        assert (
+            await repository.persist(
+                engine,
+                entry_position_ids=[result["position_id"]],
+                client_order_id="client-1",
+            )
+            is True
+        )
+
+        entry_order_params = next(
+            params
+            for sql, params in session.calls
+            if "INSERT INTO orders" in sql and params["client_order_id"] == "client-1"
+        )
+        assert entry_order_params["quantity"] == pytest.approx(1000.0)
+        assert entry_order_params["filled_quantity"] == pytest.approx(500.0)
+        assert entry_order_params["status"] == "partially_filled"
+        assert "volume participation cap" in entry_order_params["failure_reason"]
+        assert "IOC" in entry_order_params["failure_reason"]
+
+        position_params = next(params for sql, params in session.calls if "INSERT INTO positions" in sql)
+        assert position_params["quantity"] == pytest.approx(500.0)
+
+    async def test_full_entry_order_still_records_filled_status(self) -> None:
+        session = _FakeSession([_FakeResult(row=_portfolio_row())])
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        result = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)
+        assert result["order_status"] == "filled"
+
+        assert (
+            await repository.persist(engine, entry_position_ids=[result["position_id"]], client_order_id="client-1")
+            is True
+        )
+
+        entry_order_params = next(
+            params
+            for sql, params in session.calls
+            if "INSERT INTO orders" in sql and params["client_order_id"] == "client-1"
+        )
+        assert entry_order_params["quantity"] == pytest.approx(1.0)
+        assert entry_order_params["filled_quantity"] == pytest.approx(1.0)
+        assert entry_order_params["status"] == "filled"
+        assert entry_order_params["failure_reason"] is None
+
+    async def test_partial_exit_skips_the_closing_update(self) -> None:
+        session = _FakeSession([_FakeResult(row=_portfolio_row())])
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        position_id = engine.execute_signal("BTC-USD", "long", 2.0, 50000.0)["position_id"]
+        trade = engine.close_position(position_id, 55000.0, quantity=1.0)
+        assert trade is not None
+
+        assert await repository.persist(engine, closed_trades=[trade]) is True
+
+        statements = [sql for sql, _ in session.calls]
+        # The remaining position is upserted from engine state; the closure
+        # UPDATE must not fire or the open remainder would be marked closed.
+        assert any("INSERT INTO positions" in sql for sql in statements)
+        assert not any("is_open = false" in sql for sql in statements)
+        assert any("INSERT INTO trade_history" in sql for sql in statements)
+
+        exit_order_params = next(
+            params for sql, params in session.calls if "INSERT INTO orders" in sql and params["client_order_id"] is None
+        )
+        assert exit_order_params["quantity"] == pytest.approx(1.0)
+        rationale = json.loads(exit_order_params["rationale"])
+        assert rationale["event"] == "exit"
+        assert rationale["partial"] is True
+
+    async def test_full_exit_still_closes_the_position_row(self) -> None:
+        session = _FakeSession([_FakeResult(row=_portfolio_row())])
+        repository = PaperLedgerRepository(_FakeSessionFactory(session))  # type: ignore[arg-type]
+        engine = PaperTradingEngine(initial_capital=100000.0)
+        position_id = engine.execute_signal("BTC-USD", "long", 1.0, 50000.0)["position_id"]
+        trade = engine.close_position(position_id, 55000.0)
+        assert trade is not None
+
+        assert await repository.persist(engine, closed_trades=[trade]) is True
+
+        statements = [sql for sql, _ in session.calls]
+        assert any("is_open = false" in sql for sql in statements)
+        exit_order_params = next(
+            params for sql, params in session.calls if "INSERT INTO orders" in sql and params["client_order_id"] is None
+        )
+        rationale = json.loads(exit_order_params["rationale"])
+        assert rationale["partial"] is False

@@ -105,8 +105,16 @@ API; chat is multi-turn and read-only; axe/Lighthouse pass (met 2026-10-24).
       `positions.carry_cost`/`last_accrual_at` and `trade_history.carry_cost`
       via migration `0007`. Tests cover idempotent accrual, restart hydration,
       close settlement, and a real-PostgreSQL round-trip.)
-- [ ] Paper realism — partial fills/liquidity. (Still missing; needs order
-      status, volume-limited fills, partial closes, and persistence changes.)
+- [x] Paper realism — partial fills/liquidity. (2026-11-04, ADR-027: market orders
+      are immediate-or-cancel and capped at
+      `PAPER_TRADING_MAX_VOLUME_PARTICIPATION_PCT` of candle volume; the unfilled
+      remainder is cancelled and the order persists as `partially_filled`. Stop/TP
+      exits are volume-limited and leave the remainder open. `close_position`
+      realizes partial lots with proportional commission/carry allocation. No schema
+      change: entry orders write `status`/`filled_quantity`/`failure_reason`, and a
+      partial exit upserts the remaining position row instead of closing it. Tests
+      cover engine, fake-session persistence, worker wiring, and a real-PostgreSQL
+      partial-entry/partial-exit round-trip.)
 - [x] Close the paid-model bypass in `agents/web_collector.py`. (2026-10-28:
       the optional `browser_use` path now builds browser-use's native
       `ChatOpenRouter` only from the free-only `web_collector` roster entry,

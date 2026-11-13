@@ -23,7 +23,10 @@ invalid or expired token with **401** and a token that does not match the submit
 symbol, side, or payload with **422**; neither reaches the ledger.
 
 The ledger refreshes the `PaperTradingEngine` cache from `PaperLedgerRepository`, applies
-configured commission and adverse slippage (per-symbol override or global fallback), and
+configured commission and adverse slippage (per-symbol override or global fallback), caps
+the fill at the participation fraction of the approved `current_volume` (IOC: the
+unfilled remainder is cancelled and the order persists as `partially_filled`; a missing
+volume means no cap), and
 accrues annualized carry on the position, then writes `positions`, entry/exit orders,
 reversal `trade_history`, and `portfolio` in one transaction. Borrow charges short
 notional; funding charges long notional; per-symbol maps override the global rate. Open
@@ -36,10 +39,13 @@ serialize instead of overwriting each other. A writer that cannot get the lock w
 `client_order_id` is
 required on the API path and checked before mutation; a partial unique index on
 `orders(account_id, client_order_id)` protects concurrent retries. A duplicate returns
-**409** and never creates a second position. A failed or conflicting write restores the
+**409** and never creates a second position; a partially filled order needs a new
+`client_order_id` for a retry. A failed or conflicting write restores the
 cache snapshot; an accepted fill with no seeded account is rejected.
 `PaperTradingLedger.process_candle()` (used by `paper_trading/worker.py` and the
-runner) checks SL/TP, fills a gapped stop at the candle open, accrues carry to the
+runner) checks SL/TP, fills a gapped stop at the candle open, limits a triggered exit
+to the participation fraction of candle volume (the remainder stays open for the next
+candle), accrues carry to the
 candle timestamp, marks the remaining position, and persists the result. PnL is
 equity-based, including open marks, fees, and accrued carry.
 There is no manual `/execute` bypass; manual trades would need a separately designed
@@ -78,11 +84,13 @@ exits count and survive restart.
 
 ## Tests
 `tests/test_live_trading/*` (engine, safety, routes, audit, exchanges),
-`tests/test_agents/test_execution_live_routing.py`, `tests/test_paper_trading.py`.
+`tests/test_agents/test_execution_live_routing.py`, `tests/test_paper_trading.py`,
+`tests/test_postgres_integration.py`.
 
 ## Known gaps
-`get_open_orders()` returns `[]`; no balance reconciliation. Paper fills have no
-partial fills/liquidity limits. Carry is charged on entry notional only and has no
+`get_open_orders()` returns `[]`; no balance reconciliation. Paper liquidity is a hard
+participation cap on reported candle volume, not a price-impact model, and a partial
+entry is not retried. Carry is charged on entry notional only and has no
 funding credits. Paper writers serialize on a
 database-wide advisory lock (per account would be finer). `/execute` requires a signed,
 expiring approval token from `/signal` with `execute=false`, so an authenticated caller

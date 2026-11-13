@@ -26,6 +26,10 @@ from typing import Any, Literal
 # 365-day year keeps accrual deterministic across calendar boundaries.
 SECONDS_PER_YEAR = 365.0 * 24.0 * 60.0 * 60.0
 
+# Quantity comparisons closer than this are treated as equal, so floating-point
+# dust from proportional partial-close allocation cannot leave a ghost position.
+QUANTITY_EPSILON = 1e-12
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -49,6 +53,12 @@ class PaperPosition:
     # Accrued borrow (short) or funding (long) cost, settled into cash on close.
     carry_cost: float = 0.0
     last_accrual_at: datetime | None = None
+    # Entry-order metadata. The position stores the filled quantity; these
+    # fields preserve the requested size and the resulting IOC order status so
+    # the repository can record a partial fill without a second order table.
+    requested_quantity: float = 0.0
+    entry_order_status: str = "filled"
+    entry_order_reason: str = ""
 
 
 @dataclass
@@ -119,6 +129,7 @@ class PaperTradingEngine:
         funding_rate_pct: float = 0.0,
         borrow_rate_by_symbol: Mapping[str, float] | None = None,
         funding_rate_by_symbol: Mapping[str, float] | None = None,
+        max_volume_participation_pct: float = 0.0,
     ) -> None:
         """Create a paper portfolio.
 
@@ -135,6 +146,11 @@ class PaperTradingEngine:
         long notional. Both default to zero for frictionless unit tests; the
         application wires the configured defaults. Per-symbol maps override the
         global annual rate for the named symbol.
+
+        ``max_volume_participation_pct`` caps a fill at that fraction of the
+        supplied candle volume (0.10 = 10%). Zero disables the cap so direct
+        unit tests and callers without volume data keep filling the full
+        requested quantity. The application wires a non-zero default.
         """
         if not 0.0 <= commission_pct < 1.0:
             raise ValueError("commission_pct must be between 0 and 1")
@@ -144,6 +160,8 @@ class PaperTradingEngine:
             raise ValueError("borrow_rate_pct must be between 0 and 10")
         if not 0.0 <= funding_rate_pct < 10.0:
             raise ValueError("funding_rate_pct must be between 0 and 10")
+        if not 0.0 <= max_volume_participation_pct <= 1.0:
+            raise ValueError("max_volume_participation_pct must be between 0 and 1")
 
         self._initial_capital = max(initial_capital, 1000.0)
         self._cash: float = self._initial_capital
@@ -154,6 +172,7 @@ class PaperTradingEngine:
         self._funding_rate_pct = funding_rate_pct
         self._borrow_rate_by_symbol = self._normalize_rate_by_symbol(borrow_rate_by_symbol, "borrow_rate_by_symbol")
         self._funding_rate_by_symbol = self._normalize_rate_by_symbol(funding_rate_by_symbol, "funding_rate_by_symbol")
+        self._max_volume_participation_pct = max_volume_participation_pct
         self._positions: list[PaperPosition] = []
         self._closed_trades: list[ClosedTrade] = []
         self._equity_curve: list[float] = [self._initial_capital]
@@ -172,6 +191,7 @@ class PaperTradingEngine:
         stop_loss: float | None = None,
         take_profit: float | None = None,
         strategy_name: str = "",
+        volume: float | None = None,
     ) -> dict[str, Any]:
         """Execute a trade signal against the paper portfolio.
 
@@ -183,10 +203,15 @@ class PaperTradingEngine:
             stop_loss: Optional stop-loss price level.
             take_profit: Optional take-profit price level.
             strategy_name: Name of the strategy producing this signal.
+            volume: Optional candle volume. When the engine has a non-zero
+                volume-participation cap, the fill is limited to that fraction
+                of this volume. ``None`` or a non-positive value means volume
+                is unavailable and no liquidity cap is applied.
 
         Returns:
             Dict with keys ``accepted``, ``position_id``, ``reversal``,
-            ``closed_trade``, and ``reason``.
+            ``closed_trade``, ``requested_quantity``, ``filled_quantity``,
+            ``unfilled_quantity``, ``order_status``, and ``reason``.
         """
         if side not in ("long", "short"):
             return {"accepted": False, "reason": "Side must be 'long' or 'short'"}
@@ -195,12 +220,18 @@ class PaperTradingEngine:
         if entry_price <= 0:
             return {"accepted": False, "reason": "Entry price must be positive"}
 
+        requested_quantity = quantity
+        liquidity_capacity = self._liquidity_capacity(volume)
         result: dict[str, Any] = {
             "accepted": True,
             "position_id": None,
             "reversal": False,
             "closed_trade": None,
             "reason": "ok",
+            "requested_quantity": requested_quantity,
+            "filled_quantity": 0.0,
+            "unfilled_quantity": requested_quantity,
+            "order_status": "rejected",
         }
 
         # Check for existing position in the same symbol
@@ -251,11 +282,50 @@ class PaperTradingEngine:
         free_margin = max(equity - margin_used, 0.0)
         buying_power = min(self._cash, free_margin) if side == "long" else free_margin
         max_affordable = max(buying_power, 0.0) / (fill_price * (1.0 + self._commission_pct))
-        actual_quantity = min(quantity, max_affordable)
-        if actual_quantity <= 0:
+        actual_quantity = min(requested_quantity, max_affordable)
+        if liquidity_capacity is not None:
+            actual_quantity = min(actual_quantity, liquidity_capacity)
+
+        if actual_quantity <= QUANTITY_EPSILON:
             if reversal_state is not None:
                 self._restore_reversal_state(reversal_state)
-            return {"accepted": False, "reason": "Insufficient cash"}
+            reason = (
+                "Insufficient liquidity"
+                if liquidity_capacity is not None and liquidity_capacity <= max_affordable
+                else "Insufficient cash"
+            )
+            result.update(
+                accepted=False,
+                reason=reason,
+                filled_quantity=0.0,
+                unfilled_quantity=requested_quantity,
+                order_status="rejected",
+                unfilled_reason=reason,
+            )
+            return result
+
+        order_status = "filled" if actual_quantity >= requested_quantity - QUANTITY_EPSILON else "partially_filled"
+        unfilled_reason = ""
+        if order_status == "partially_filled":
+            reasons: list[str] = []
+            if liquidity_capacity is not None and liquidity_capacity <= max_affordable + QUANTITY_EPSILON:
+                reasons.append("volume participation cap")
+            cash_capacity = liquidity_capacity if liquidity_capacity is not None else math.inf
+            if max_affordable <= cash_capacity + QUANTITY_EPSILON:
+                reasons.append("insufficient buying power")
+            reasons.append("unfilled remainder cancelled (IOC)")
+            unfilled_reason = "; ".join(reasons)
+
+        result["filled_quantity"] = actual_quantity
+        result["unfilled_quantity"] = max(requested_quantity - actual_quantity, 0.0)
+        result["order_status"] = order_status
+        result["liquidity_capped"] = (
+            liquidity_capacity is not None
+            and actual_quantity >= liquidity_capacity - QUANTITY_EPSILON
+            and liquidity_capacity < requested_quantity - QUANTITY_EPSILON
+        )
+        if unfilled_reason:
+            result["unfilled_reason"] = unfilled_reason
 
         notional = actual_quantity * fill_price
         entry_commission = notional * self._commission_pct
@@ -281,6 +351,9 @@ class PaperTradingEngine:
             entry_commission=entry_commission,
             margin=margin,
             last_accrual_at=entry_at,
+            requested_quantity=requested_quantity,
+            entry_order_status=order_status,
+            entry_order_reason=unfilled_reason,
         )
         self._positions.append(pos)
         self._last_prices[symbol] = fill_price
@@ -311,8 +384,9 @@ class PaperTradingEngine:
         exit_price: float,
         exit_reason: str = "signal",
         exit_at: datetime | None = None,
+        quantity: float | None = None,
     ) -> ClosedTrade | None:
-        """Close an open position and record the trade.
+        """Close all or part of an open position and record the trade.
 
         Args:
             position_id: UUID of the position to close.
@@ -323,11 +397,20 @@ class PaperTradingEngine:
             exit_at: Optional exit timestamp. Carry is accrued from the
                 position's ``last_accrual_at`` to this time and settled into
                 cash and PnL. Defaults to the current UTC time.
+            quantity: Optional number of units to close. ``None`` or a value
+                at least the position quantity closes the whole position.
+                A smaller positive value realizes a partial close: the
+                position keeps its remaining quantity, stop, take-profit, and
+                accrual clock, and entry commission/carry are allocated
+                proportionally.
 
         Returns:
-            The ``ClosedTrade`` record, or ``None`` if position not found.
+            The ``ClosedTrade`` record for the closed quantity, or ``None`` if
+            the position is not found or the requested quantity is invalid.
         """
         if exit_price <= 0:
+            return None
+        if quantity is not None and (not math.isfinite(quantity) or quantity <= 0):
             return None
 
         exit_time = self._normalize_utc(exit_at) if exit_at is not None else self._utc_now()
@@ -349,24 +432,35 @@ class PaperTradingEngine:
                     # Keep the position rather than recording an invalid fill.
                     return None
 
-                self._positions.pop(i)
-                exit_value = pos.quantity * exit_fill
+                close_quantity = pos.quantity if quantity is None else min(quantity, pos.quantity)
+                if close_quantity <= QUANTITY_EPSILON:
+                    return None
+                full_close = close_quantity >= pos.quantity - QUANTITY_EPSILON
+                fraction = 1.0 if full_close else close_quantity / pos.quantity
+
+                # Allocate cumulative entry commission and carry to the closed
+                # quantity. The remaining position keeps the rest, so the sum of
+                # closed trades plus open liability still reconciles with the
+                # cash that was actually paid.
+                carry_closed = pos.carry_cost * fraction
+                entry_commission_closed = pos.entry_commission * fraction
+                exit_value = close_quantity * exit_fill
                 exit_commission = exit_value * self._commission_pct
                 if pos.side == "long":
-                    price_pnl = pos.quantity * (exit_fill - pos.entry_price)
-                    self._cash += exit_value - exit_commission - pos.carry_cost
+                    price_pnl = close_quantity * (exit_fill - pos.entry_price)
+                    self._cash += exit_value - exit_commission - carry_closed
                 else:
-                    price_pnl = pos.quantity * (pos.entry_price - exit_fill)
-                    self._cash -= exit_value + exit_commission + pos.carry_cost
+                    price_pnl = close_quantity * (pos.entry_price - exit_fill)
+                    self._cash -= exit_value + exit_commission + carry_closed
 
-                pnl = price_pnl - pos.entry_commission - exit_commission - pos.carry_cost
-                entry_value = pos.quantity * pos.entry_price
+                pnl = price_pnl - entry_commission_closed - exit_commission - carry_closed
+                entry_value = close_quantity * pos.entry_price
                 pnl_pct = (pnl / entry_value * 100.0) if entry_value > 0 else 0.0
 
                 trade = ClosedTrade(
                     symbol=pos.symbol,
                     side=pos.side,
-                    quantity=pos.quantity,
+                    quantity=close_quantity,
                     entry_price=pos.entry_price,
                     exit_price=exit_fill,
                     entry_at=pos.entry_at,
@@ -375,15 +469,23 @@ class PaperTradingEngine:
                     pnl_pct=round(pnl_pct, 4),
                     exit_reason=exit_reason,
                     strategy_name=pos.strategy_name,
-                    entry_commission=pos.entry_commission,
+                    entry_commission=entry_commission_closed,
                     exit_commission=exit_commission,
-                    carry_cost=pos.carry_cost,
+                    carry_cost=carry_closed,
                     position_id=pos.id,
                 )
                 self._closed_trades.append(trade)
-                self._last_prices.pop(pos.symbol, None)
 
-                # Track equity after the position is removed.
+                if full_close:
+                    self._positions.pop(i)
+                    self._last_prices.pop(pos.symbol, None)
+                else:
+                    pos.quantity -= close_quantity
+                    pos.entry_commission -= entry_commission_closed
+                    pos.carry_cost -= carry_closed
+                    pos.margin = pos.quantity * pos.entry_price if pos.side == "short" else 0.0
+
+                # Track equity after the position is removed or reduced.
                 self._equity_curve.append(self._compute_equity())
 
                 return trade
@@ -397,6 +499,7 @@ class PaperTradingEngine:
         low: float,
         open_price: float | None = None,
         as_of: datetime | None = None,
+        volume: float | None = None,
     ) -> list[ClosedTrade]:
         """Check open positions for a symbol against a candle's high/low/open for SL/TP.
 
@@ -410,9 +513,14 @@ class PaperTradingEngine:
                 high/low data.
             as_of: Optional candle timestamp. Carry is accrued to this time
                 before a position closes. ``None`` uses the current UTC time.
+            volume: Optional candle volume. When the engine has a non-zero
+                volume-participation cap, a triggered exit closes at most that
+                fraction of this volume. The remainder stays open and is
+                re-evaluated on the next candle. ``None`` or a non-positive
+                value closes the full position.
 
         Returns:
-            List of ``ClosedTrade`` records for any positions that were
+            List of ``ClosedTrade`` records for the quantities that were
             stopped out or took profit.
         """
         closed: list[ClosedTrade] = []
@@ -420,6 +528,7 @@ class PaperTradingEngine:
         # A non-positive open is unusable; fall back to the stop level rather
         # than recording an invalid fill.
         gap_open = open_price if open_price is not None and open_price > 0 else None
+        liquidity_capacity = self._liquidity_capacity(volume)
 
         for pos in list(self._positions):
             if pos.symbol != symbol:
@@ -452,7 +561,16 @@ class PaperTradingEngine:
                     reason = "take_profit"
 
             if reason is not None and exit_price is not None:
-                trade = self.close_position(pos.id, exit_price, exit_reason=reason, exit_at=exit_time)
+                exit_quantity = pos.quantity if liquidity_capacity is None else min(pos.quantity, liquidity_capacity)
+                if exit_quantity <= QUANTITY_EPSILON:
+                    continue
+                trade = self.close_position(
+                    pos.id,
+                    exit_price,
+                    exit_reason=reason,
+                    exit_at=exit_time,
+                    quantity=exit_quantity,
+                )
                 if trade is not None:
                     closed.append(trade)
 
@@ -652,6 +770,20 @@ class PaperTradingEngine:
         if side == "short":
             return self._borrow_rate_by_symbol.get(symbol.upper(), self._borrow_rate_pct)
         return self._funding_rate_by_symbol.get(symbol.upper(), self._funding_rate_pct)
+
+    def _liquidity_capacity(self, volume: float | None) -> float | None:
+        """Return the maximum fill quantity implied by candle volume.
+
+        ``None`` means the cap is disabled or volume is unavailable. A
+        non-positive volume is treated as unknown rather than zero liquidity:
+        some data sources (for example CoinGecko) report no volume, and
+        rejecting every fill in that case would halt paper trading.
+        """
+        if self._max_volume_participation_pct <= 0.0:
+            return None
+        if volume is None or not math.isfinite(volume) or volume <= 0.0:
+            return None
+        return float(volume) * self._max_volume_participation_pct
 
     @staticmethod
     def _normalize_utc(value: datetime) -> datetime:

@@ -84,8 +84,10 @@
   begins; results are stored per `session_id`. The gate and store are
   process-local, so a multi-worker deployment needs shared state.
 - Pre-P1-A short positions migrated as long need manual reconciliation.
-- Paper realism still lacks partial fills/liquidity. Carry is charged on entry
-  notional only and has no funding credits.
+- Paper realism slices are all implemented: gap-through stops + per-symbol
+  slippage, borrow/funding carry, and IOC partial fills capped by volume
+  participation (ADR-027). Carry is charged on entry notional only and has no
+  funding credits; liquidity is a hard participation cap, not a price-impact model.
 
 ## Read next
 

@@ -247,6 +247,7 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                 stop_loss=stop_loss,
                 take_profit=None,
                 strategy_name=strategy_name,
+                volume=float(latest_candle.volume),
             )
         else:
             result = self.engine.execute_signal(
@@ -257,6 +258,7 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
                 stop_loss=stop_loss,
                 take_profit=None,
                 strategy_name=strategy_name,
+                volume=float(latest_candle.volume),
             )
         if not result.get("accepted", False):
             return ExecutionOutput(
@@ -276,6 +278,12 @@ class ExecutionAgent(BaseAgent[ExecutionInput, ExecutionOutput]):
         if closed_trade:
             pnl = closed_trade.get("pnl", 0)
             parts.append(f"Closed previous trade with PnL=${pnl:.2f}")
+        if result.get("order_status") == "partially_filled":
+            requested = float(result.get("requested_quantity", quantity))
+            parts.append(
+                f"PARTIAL FILL {actual_quantity:g} of {requested:g} units "
+                f"({result.get('unfilled_reason', 'liquidity cap')})"
+            )
 
         # --- Persist to DB ---
         # The ledger path already wrote the fill, reversal, and portfolio in

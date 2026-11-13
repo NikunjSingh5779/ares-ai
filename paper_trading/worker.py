@@ -122,6 +122,7 @@ class PaperTradingWorker:
                     close=float(candle.close),
                     open_price=float(candle.open),
                     as_of=candle.timestamp,
+                    volume=float(candle.volume),
                 )
             else:
                 closed = self.engine.check_sl_tp(
@@ -130,6 +131,7 @@ class PaperTradingWorker:
                     low=float(candle.low),
                     open_price=float(candle.open),
                     as_of=candle.timestamp,
+                    volume=float(candle.volume),
                 )
                 self.engine.mark_to_market(result.symbol, float(candle.close), as_of=candle.timestamp)
             if closed:
@@ -169,28 +171,60 @@ class PaperTradingWorker:
                 invested_amount = sum(pos.quantity * pos.entry_price for pos in self.engine.get_open_positions())
 
                 for trade in closed_trades:
-                    # One open position per symbol is enforced by the paper
-                    # engine; side makes the closure unambiguous for shorts.
-                    await session.execute(
-                        text(
-                            """
-                            UPDATE positions
-                            SET is_open=False, closed_at=:closed_at, current_price=:exit_price,
-                                unrealized_pnl=0, unrealized_pnl_pct=0, market_value=0,
-                                carry_cost=:carry_cost, last_accrual_at=:closed_at
-                            WHERE portfolio_id=:portfolio_id AND symbol=:symbol
-                              AND side=:side AND is_open=True
-                            """
+                    # A partial exit leaves the position open. Update the
+                    # remaining row from engine state instead of closing it;
+                    # the closed lot still gets its trade_history record.
+                    remaining = next(
+                        (
+                            pos
+                            for pos in self.engine.get_open_positions()
+                            if trade.position_id and pos.id == trade.position_id
                         ),
-                        {
-                            "closed_at": trade.exit_at,
-                            "exit_price": trade.exit_price,
-                            "carry_cost": trade.carry_cost,
-                            "portfolio_id": portfolio_id,
-                            "symbol": trade.symbol,
-                            "side": trade.side,
-                        },
+                        None,
                     )
+                    if remaining is not None:
+                        await session.execute(
+                            text(
+                                """
+                                UPDATE positions
+                                SET quantity=:quantity, entry_commission=:entry_commission,
+                                    margin=:margin, carry_cost=:carry_cost,
+                                    last_accrual_at=:accrual_at, updated_at=NOW()
+                                WHERE id=:position_id
+                                """
+                            ),
+                            {
+                                "quantity": remaining.quantity,
+                                "entry_commission": remaining.entry_commission,
+                                "margin": remaining.margin,
+                                "carry_cost": remaining.carry_cost,
+                                "accrual_at": remaining.last_accrual_at or remaining.entry_at,
+                                "position_id": trade.position_id,
+                            },
+                        )
+                    else:
+                        # One open position per symbol is enforced by the paper
+                        # engine; side makes the closure unambiguous for shorts.
+                        await session.execute(
+                            text(
+                                """
+                                UPDATE positions
+                                SET is_open=False, closed_at=:closed_at, current_price=:exit_price,
+                                    unrealized_pnl=0, unrealized_pnl_pct=0, market_value=0,
+                                    carry_cost=:carry_cost, last_accrual_at=:closed_at
+                                WHERE portfolio_id=:portfolio_id AND symbol=:symbol
+                                  AND side=:side AND is_open=True
+                                """
+                            ),
+                            {
+                                "closed_at": trade.exit_at,
+                                "exit_price": trade.exit_price,
+                                "carry_cost": trade.carry_cost,
+                                "portfolio_id": portfolio_id,
+                                "symbol": trade.symbol,
+                                "side": trade.side,
+                            },
+                        )
 
                     # Fallback path only (no repository wired): mirror the
                     # direct-engine state into the portfolio row so tests and

@@ -390,6 +390,7 @@ async def test_worker_delegates_candle_processing_to_ledger(engine, ingestor, se
         close=55000.0,
         open_price=50000.0,
         as_of=candle.timestamp,
+        volume=float(candle.volume),
     )
     session = session_factory.return_value.__aenter__.return_value
     session.execute.assert_not_called()

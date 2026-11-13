@@ -79,12 +79,15 @@ class PaperTradingLedger:
         take_profit: float | None = None,
         strategy_name: str = "",
         client_order_id: str | None = None,
+        volume: float | None = None,
     ) -> dict[str, Any]:
         """Execute and persist one paper fill.
 
         ``client_order_id`` is required by the HTTP execution path and is
         checked before mutation. The unique database index is the race-free
         guard. The engine snapshot is rolled back if persistence fails.
+        ``volume`` is the candle volume used for the liquidity cap; ``None``
+        means volume is unavailable and the fill is not volume-capped.
         """
         async with self._cache_lock:
             async with self.repository.writer_lock(timeout_seconds=self.writer_timeout_seconds):
@@ -97,6 +100,7 @@ class PaperTradingLedger:
                     take_profit=take_profit,
                     strategy_name=strategy_name,
                     client_order_id=client_order_id,
+                    volume=volume,
                 )
 
     async def _execute_signal_locked(
@@ -110,6 +114,7 @@ class PaperTradingLedger:
         take_profit: float | None,
         strategy_name: str,
         client_order_id: str | None,
+        volume: float | None,
     ) -> dict[str, Any]:
         await self._hydrate()
         if client_order_id and await self.repository.client_order_id_exists(client_order_id):
@@ -124,6 +129,7 @@ class PaperTradingLedger:
             stop_loss=stop_loss,
             take_profit=take_profit,
             strategy_name=strategy_name,
+            volume=volume,
         )
         if not result.get("accepted", False):
             # Rejections must not leave a partial mutation in the cache (for
@@ -161,13 +167,16 @@ class PaperTradingLedger:
         close: float,
         open_price: float | None = None,
         as_of: datetime | None = None,
+        volume: float | None = None,
     ) -> list[ClosedTrade]:
         """Check exits, mark the position, and persist the resulting state.
 
         ``open_price`` lets a gap-through stop fill at the candle open; it is
         optional so callers with only high/low keep the stop-level fill.
         ``as_of`` is the candle timestamp used to accrue carry; repeated calls
-        with the same timestamp do not double-charge.
+        with the same timestamp do not double-charge. ``volume`` caps a
+        triggered exit to the configured fraction of candle volume; ``None``
+        closes the full position.
         """
         async with self._cache_lock:
             async with self.repository.writer_lock(timeout_seconds=self.writer_timeout_seconds):
@@ -178,6 +187,7 @@ class PaperTradingLedger:
                     close=close,
                     open_price=open_price,
                     as_of=as_of,
+                    volume=volume,
                 )
 
     async def _process_candle_locked(
@@ -189,6 +199,7 @@ class PaperTradingLedger:
         close: float,
         open_price: float | None,
         as_of: datetime | None,
+        volume: float | None,
     ) -> list[ClosedTrade]:
         await self._hydrate()
         snapshot = self.engine.snapshot()
@@ -198,6 +209,7 @@ class PaperTradingLedger:
             low=low,
             open_price=open_price,
             as_of=as_of,
+            volume=volume,
         )
         self.engine.mark_to_market(symbol, close, as_of=as_of)
         try:
