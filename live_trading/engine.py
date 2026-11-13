@@ -37,37 +37,40 @@ logger = logging.getLogger(__name__)
 # Pre-parameterized SQL for paper-record queries — avoids f-string
 # SQL construction that bandit flags as B608 injection vector.
 # Each statement uses :param IS NULL gating instead of dynamic WHERE clauses.
+# Every parameter is explicitly CAST: asyncpg cannot infer a parameter type
+# from ``(:p IS NULL OR col = :p)`` — the ``IS NULL`` comparison constrains
+# nothing, so the prepare fails with AmbiguousParameterError on every call.
 # ---------------------------------------------------------------------------
 
 _TRADES_COUNT_SQL = text("""
     SELECT COUNT(*) FROM trade_history th
     JOIN accounts a ON th.account_id = a.id
     WHERE a.exchange = 'paper' AND th.is_closed = true
-      AND (:account_id IS NULL OR th.account_id = :account_id)
-      AND (:strategy_name IS NULL OR th.strategy_name = :strategy_name)
+      AND (CAST(:account_id AS UUID) IS NULL OR th.account_id = :account_id)
+      AND (CAST(:strategy_name AS TEXT) IS NULL OR th.strategy_name = :strategy_name)
 """)
 
 _DAYS_COUNT_SQL = text("""
     SELECT COUNT(DISTINCT DATE(entry_at)) FROM trade_history th
     JOIN accounts a ON th.account_id = a.id
     WHERE a.exchange = 'paper'
-      AND (:account_id IS NULL OR th.account_id = :account_id)
-      AND (:strategy_name IS NULL OR th.strategy_name = :strategy_name)
+      AND (CAST(:account_id AS UUID) IS NULL OR th.account_id = :account_id)
+      AND (CAST(:strategy_name AS TEXT) IS NULL OR th.strategy_name = :strategy_name)
 """)
 
 _TOTAL_PNL_SQL = text("""
     SELECT COALESCE(SUM(th.pnl), 0) FROM trade_history th
     JOIN accounts a ON th.account_id = a.id
     WHERE a.exchange = 'paper' AND th.is_closed = true
-      AND (:account_id IS NULL OR th.account_id = :account_id)
-      AND (:strategy_name IS NULL OR th.strategy_name = :strategy_name)
+      AND (CAST(:account_id AS UUID) IS NULL OR th.account_id = :account_id)
+      AND (CAST(:strategy_name AS TEXT) IS NULL OR th.strategy_name = :strategy_name)
 """)
 
 _MAX_DRAWDOWN_SQL = text("""
     SELECT MAX(p.max_drawdown_pct) FROM portfolio p
     JOIN accounts a ON p.account_id = a.id
     WHERE a.exchange = 'paper'
-      AND (:account_id IS NULL OR a.id = :account_id)
+      AND (CAST(:account_id AS UUID) IS NULL OR a.id = :account_id)
 """)
 
 

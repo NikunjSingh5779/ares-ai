@@ -22,6 +22,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import text
@@ -29,6 +30,14 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from live_trading import (
+    ExchangeConnector,
+    KillSwitch,
+    LiveTradingEngine,
+    ModeManager,
+    PromotionGate,
+    TradingMode,
+)
 from paper_trading.engine import PaperTradingEngine
 from paper_trading.ledger import PaperTradingLedger
 from paper_trading.repository import (
@@ -530,3 +539,57 @@ async def test_busy_writer_fails_closed_then_retry_succeeds(paper_db: None) -> N
 
     order_rows = await _rows("SELECT count(*) FROM orders WHERE client_order_id = 'itest-busy-1'")
     assert int(order_rows[0][0]) == 1
+
+
+async def test_paper_record_query_tolerates_none_and_scoped_filters(paper_db: None) -> None:
+    """The live engine's paper-record SQL must type its parameters explicitly.
+
+    ``(:p IS NULL OR col = :p)`` without a CAST is ambiguous to asyncpg — the
+    ``IS NULL`` comparison constrains nothing, so the prepare failed with
+    ``AmbiguousParameterError`` on every call and ``/live/paper_record``
+    silently degraded to in-memory state. Only a real asyncpg prepare can
+    reproduce that failure, so this runs against actual PostgreSQL.
+    """
+    db_engine = _new_engine()
+    session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    exchange = AsyncMock(spec=ExchangeConnector)
+    engine = LiveTradingEngine(
+        exchange,
+        KillSwitch(max_drawdown_pct=15.0),
+        ModeManager(TradingMode.SEMI),
+        PromotionGate(min_paper_trades=10, min_paper_days=5),
+        session_factory=session_factory,
+    )
+    try:
+        # Unfiltered (None, None) — the exact call shape that used to fail.
+        record = await engine._query_paper_record_from_db()
+        # max_drawdown_pct comes back 0.0 because the seeded portfolio row uses
+        # the schema default 0 for an empty account.
+        assert record == {"trades": 0, "days": 0, "total_pnl": 0.0, "max_drawdown_pct": 0.0}
+
+        await _execute(
+            """
+            INSERT INTO trade_history (account_id, symbol, position_side, side, quantity,
+                                       entry_price, exit_price, pnl, is_closed,
+                                       strategy_name, exit_at)
+            SELECT a.id, 'BTC-USD', 'long', 'sell', 1.0, 100.0, 110.0, 10.0, true,
+                   'strat-a', NOW()
+            FROM accounts a WHERE a.exchange = 'paper'
+            """
+        )
+        await _execute("UPDATE portfolio SET max_drawdown_pct = 7.5")
+
+        record = await engine._query_paper_record_from_db()
+        assert record["trades"] == 1
+        assert record["days"] == 1
+        assert record["total_pnl"] == pytest.approx(10.0)
+        assert record["max_drawdown_pct"] == pytest.approx(7.5)
+
+        # Scoped filters exercise the typed-parameter path with real values.
+        account_id = str((await _rows("SELECT id FROM accounts WHERE exchange = 'paper'"))[0][0])
+        scoped = await engine._query_paper_record_from_db(account_id=account_id, strategy_name="strat-a")
+        assert scoped["trades"] == 1
+        other = await engine._query_paper_record_from_db(account_id=account_id, strategy_name="strat-b")
+        assert other["trades"] == 0
+    finally:
+        await db_engine.dispose()

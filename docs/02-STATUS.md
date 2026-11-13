@@ -2,11 +2,14 @@
 # Status — verified state
 
 **Last verified:** 2026-11-13
-**Branch:** `master` — the supervisor roster fix below is verified on top of the
-slice-3 merge `854428c`. The dashboard's "Analysis failed for BTC-USD" banner was
-every `POST /api/v1/analyze` returning **500**: `registry.register("kronos_predictor", ...)`
-raises `KeyError` because `configs/models.yaml` never had an entry for the ML-only
-agent. A yaml entry plus a source-scan regression test close it.
+**Branch:** `master` — the supervisor roster fix and the paper-record asyncpg fix
+below are verified on top of the slice-3 merge `854428c`. The dashboard's
+"Analysis failed for BTC-USD" banner was every `POST /api/v1/analyze` returning
+**500**: `registry.register("kronos_predictor", ...)` raises `KeyError` because
+`configs/models.yaml` never had an entry for the ML-only agent. A yaml entry plus
+a source-scan regression test close it. The same backend logs exposed the
+paper-record query failing on asyncpg parameter typing (gap #19), closed in the
+same change.
 **Branch history:** `master` at `b49223a`. PR #136 squash-merged paper-realism slice 2
 (borrow/funding carry) as `b49223a`; its branch/PR runs **41856026984** (push) and
 **41856038721** (pull request) passed all five jobs, and the post-merge master run
@@ -509,7 +512,17 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Test isolation fix | `tests/test_config.py::test_local_llm_defaults_are_opt_in_and_single_request` became environment-dependent once the operator `.env` set `LOCAL_LLM_BASE_URL` (Strata container): `Settings()` reads `.env` CWD-relative, so the test now runs from `tmp_path` and pins code defaults, not operator config. |
 | Verification | Real build check `python -c "from backend.routers.analysis import _get_supervisor; _get_supervisor()"` succeeds with all 12 agents; full suite `pytest tests/ -q` → **1459 passed, 3 skipped**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **216 source files**. |
 | Scope | Config + tests only; no agent, router, or schema change. Propagating to the dashboard additionally requires a backend image rebuild — the running container predates the current yaml. |
-| Found alongside | The same backend logs show `live_trading/engine.py::_query_paper_record_from_db` failing with `asyncpg AmbiguousParameterError` — non-fatal (the paper record falls back to in-memory state), tracked as gap #19. |
+| Found alongside | The same backend logs showed `live_trading/engine.py::_query_paper_record_from_db` failing with `asyncpg AmbiguousParameterError` — non-fatal (the paper record falls back to in-memory state); closed alongside in this change (next section). |
+
+## Paper-record query fix — asyncpg parameter typing (verified 2026-11-13)
+
+| Piece | Evidence |
+|---|---|
+| Root cause | `/live/paper_record` logged `asyncpg.exceptions.AmbiguousParameterError: could not determine data type of parameter $1` on every call: `(:param IS NULL OR col = :param)` gives asyncpg no type to prepare with, so `_query_paper_record_from_db` always fell back to in-memory engine state (still 200, degraded promotion-gate input). |
+| Fix | All four statements in `live_trading/engine.py` explicitly cast their parameters — `CAST(:account_id AS UUID)`, `CAST(:strategy_name AS TEXT)` — keeping the bandit-safe static `text()` construction (no dynamic WHERE). A sensitivity check confirms the old SQL reproduces the exact error and the new SQL prepares and executes. |
+| Tests | `tests/test_postgres_integration.py::test_paper_record_query_tolerates_none_and_scoped_filters` runs the real asyncpg path — unfiltered `(None, None)` (the shape that always failed), a seeded closed trade (counts, pnl, drawdown), and account/strategy-scoped filters. The module goes from 7 to 8 tests, so the CI `postgres-integration` job expects **26 passed**. |
+| Verification | With a disposable PostgreSQL 16 container: `pytest tests/test_postgres_integration.py -q --no-cov` → **8 passed**; `pytest tests/test_live_trading tests/test_postgres_strategy_integration.py tests/test_postgres_improvement_integration.py -q --no-cov` → **246 passed**; full suite `pytest tests/ -q` → **1459 passed, 3 skipped**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **216 source files**. |
+| Scope | Engine SQL only; no schema, route, or safety-gate change. The PromotionGate now receives real DB-backed paper numbers instead of the in-memory fallback. |
 
 ## Red / known gaps
 
@@ -533,7 +546,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 16 | Accessibility audit did not exercise data-populated states | The 2026-10-24 pass used a 503 API stub, so tables, charts, and dialogs with real data were not audited. The route shells, login, and loading/error states are clean. | P3 |
 | 17 | ~~Improvement history is in-memory and the engine is not wired into the pipeline~~ | Closed 2026-10-24: `reflection_runs`/`improvement_records` (migration `0006`) persist structured reflection and suggestions; the supervisor post-run hook calls the engine after every production pipeline run, best-effort; the API reads PostgreSQL and returns 503 on store failure. `analyze(history=...)` keeps trend context across restarts. | ~~P2~~ fixed |
 | 18 | ~~`web_collector` bypasses the free-only policy~~ | Closed 2026-10-28: the optional browser-use path reads its LLM only from the free-only `web_collector` roster entry via browser-use's native `ChatOpenRouter`, validates it with the shared `free_model_policy_violation` helper, and sets OpenRouter's zero-price `max_price` bound. Missing key, paid/missing roster entry, or missing dependency fails closed; no hardcoded paid model remains. | ~~P2~~ fixed |
-| 19 | Paper-record DB query fails on asyncpg parameter typing | `live_trading/engine.py::_TRADES_COUNT_SQL` uses `($1 IS NULL OR th.account_id = $1)`; asyncpg cannot infer the type of a parameter that only appears in an `IS NULL` comparison, so `_query_paper_record_from_db` raises `AmbiguousParameterError` on every call and the `/live/paper_record` response silently falls back to in-memory engine state (still 200). Fix is a parameter cast (`CAST($1 AS BIGINT)`/`CAST($2 AS TEXT)`) or building the WHERE clause in Python when filters are None. | P2 |
+| 19 | ~~Paper-record DB query fails on asyncpg parameter typing~~ | Closed 2026-11-13: the four paper-record statements in `live_trading/engine.py` cast their parameters (`CAST(:account_id AS UUID)`, `CAST(:strategy_name AS TEXT)`); the sensitivity check reproduces the old `AmbiguousParameterError` and the new SQL prepares cleanly. `tests/test_postgres_integration.py::test_paper_record_query_tolerates_none_and_scoped_filters` runs the real asyncpg path (unfiltered + seeded + scoped), so the CI `postgres-integration` job expects **26 passed**. `/live/paper_record` no longer degrades to in-memory state. | ~~P2~~ fixed |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 
