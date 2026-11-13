@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,8 @@ import pytest
 import yaml
 
 from agents.models import AgentModelConfig, ModelRoster, load_model_roster
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Sample model roster for testing
 SAMPLE_ROSTER = {
@@ -162,3 +165,25 @@ class TestLoadModelRoster:
 
         with pytest.raises(ValueError, match="missing 'agents' key"):
             load_model_roster(str(config_file))
+
+
+class TestRosterCoversRegisteredAgents:
+    """Every name the API passes to registry.register() must have a roster entry.
+
+    ``AgentRegistry.register`` raises ``KeyError`` for a name without a
+    ``configs/models.yaml`` entry, which fails the supervisor build and turns
+    every ``POST /api/v1/analyze`` into a 500. The router tests mock
+    ``_get_supervisor``, so only a source scan like this one catches the gap.
+    """
+
+    def test_every_registered_agent_has_a_roster_entry(self) -> None:
+        source = (PROJECT_ROOT / "backend" / "routers" / "analysis.py").read_text(encoding="utf-8")
+        registered = set(re.findall(r"registry\.register\(\s*\"([a-z_]+)\"", source))
+        assert registered, "scan found no registry.register() calls — check the regex"
+
+        roster = load_model_roster()
+        missing = [name for name in sorted(registered) if name not in roster.agent_names]
+        assert not missing, (
+            f"agents registered by backend/routers/analysis.py lack a "
+            f"configs/models.yaml entry (every /analyze call fails at startup): {missing}"
+        )

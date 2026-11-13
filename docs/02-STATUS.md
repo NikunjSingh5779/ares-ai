@@ -1,8 +1,13 @@
 <!-- docs/02-STATUS.md -->
 # Status — verified state
 
-**Last verified:** 2026-11-04
-**Branch:** `master` at `b49223a`. PR #136 squash-merged paper-realism slice 2
+**Last verified:** 2026-11-13
+**Branch:** `master` — the supervisor roster fix below is verified on top of the
+slice-3 merge `854428c`. The dashboard's "Analysis failed for BTC-USD" banner was
+every `POST /api/v1/analyze` returning **500**: `registry.register("kronos_predictor", ...)`
+raises `KeyError` because `configs/models.yaml` never had an entry for the ML-only
+agent. A yaml entry plus a source-scan regression test close it.
+**Branch history:** `master` at `b49223a`. PR #136 squash-merged paper-realism slice 2
 (borrow/funding carry) as `b49223a`; its branch/PR runs **41856026984** (push) and
 **41856038721** (pull request) passed all five jobs, and the post-merge master run
 **41856711393** passed all five, including the 24-test PostgreSQL job with the new
@@ -494,6 +499,18 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | CI | Branch/PR runs **43445079894** (push) and **43445130807** (pull request) passed all five jobs, with `postgres-integration` at **25 passed** including `test_partial_fill_and_partial_exit_round_trip`; the post-merge master run **43446142786** also passed all five at **25 passed**. Merged as `854428c` via PR #144. |
 | Scope | No schema change (`database/schema.sql` byte-identical). All paper-realism slices are now implemented; remaining gaps are operational (#9 secret, #10 pre-P1-A short reconciliation). |
 
+## Supervisor build fix — kronos_predictor roster entry (verified 2026-11-13)
+
+| Piece | Evidence |
+|---|---|
+| Root cause | Every `POST /api/v1/analyze` returned **500** with detail `Unknown agent 'kronos_predictor'...`: `AgentRegistry.register` requires a `configs/models.yaml` entry, the API registers the ML-only Kronos agent, and the roster never had one (git `-S` finds no commit adding it). The router tests mock `_get_supervisor`, so the suite stayed green while the real build failed on every request. Reproduced with an authenticated local POST. |
+| Fix | `configs/models.yaml` gains a `kronos_predictor` entry in the deterministic-agent shape (`journal`/`memory` style: free primary + `openrouter/free` fallback, timeout 15). The agent never routes through the LLM — the entry only satisfies the registry lookup, keeping model IDs out of source. |
+| Regression test | `tests/test_models.py::TestRosterCoversRegisteredAgents` scans every `registry.register("name", ...)` call in `backend/routers/analysis.py` and fails when any name lacks a roster entry, so a future registration without a yaml entry cannot reach a deploy silently. |
+| Test isolation fix | `tests/test_config.py::test_local_llm_defaults_are_opt_in_and_single_request` became environment-dependent once the operator `.env` set `LOCAL_LLM_BASE_URL` (Strata container): `Settings()` reads `.env` CWD-relative, so the test now runs from `tmp_path` and pins code defaults, not operator config. |
+| Verification | Real build check `python -c "from backend.routers.analysis import _get_supervisor; _get_supervisor()"` succeeds with all 12 agents; full suite `pytest tests/ -q` → **1459 passed, 3 skipped**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **216 source files**. |
+| Scope | Config + tests only; no agent, router, or schema change. Propagating to the dashboard additionally requires a backend image rebuild — the running container predates the current yaml. |
+| Found alongside | The same backend logs show `live_trading/engine.py::_query_paper_record_from_db` failing with `asyncpg AmbiguousParameterError` — non-fatal (the paper record falls back to in-memory state), tracked as gap #19. |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
@@ -516,6 +533,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 16 | Accessibility audit did not exercise data-populated states | The 2026-10-24 pass used a 503 API stub, so tables, charts, and dialogs with real data were not audited. The route shells, login, and loading/error states are clean. | P3 |
 | 17 | ~~Improvement history is in-memory and the engine is not wired into the pipeline~~ | Closed 2026-10-24: `reflection_runs`/`improvement_records` (migration `0006`) persist structured reflection and suggestions; the supervisor post-run hook calls the engine after every production pipeline run, best-effort; the API reads PostgreSQL and returns 503 on store failure. `analyze(history=...)` keeps trend context across restarts. | ~~P2~~ fixed |
 | 18 | ~~`web_collector` bypasses the free-only policy~~ | Closed 2026-10-28: the optional browser-use path reads its LLM only from the free-only `web_collector` roster entry via browser-use's native `ChatOpenRouter`, validates it with the shared `free_model_policy_violation` helper, and sets OpenRouter's zero-price `max_price` bound. Missing key, paid/missing roster entry, or missing dependency fails closed; no hardcoded paid model remains. | ~~P2~~ fixed |
+| 19 | Paper-record DB query fails on asyncpg parameter typing | `live_trading/engine.py::_TRADES_COUNT_SQL` uses `($1 IS NULL OR th.account_id = $1)`; asyncpg cannot infer the type of a parameter that only appears in an `IS NULL` comparison, so `_query_paper_record_from_db` raises `AmbiguousParameterError` on every call and the `/live/paper_record` response silently falls back to in-memory engine state (still 200). Fix is a parameter cast (`CAST($1 AS BIGINT)`/`CAST($2 AS TEXT)`) or building the WHERE clause in Python when filters are None. | P2 |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 

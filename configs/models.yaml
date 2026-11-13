@@ -56,6 +56,15 @@ agents:
       - open_router/xingchen-agi/xing4.0-29b-a4b:free
     timeout_seconds: 90
 
+  kronos_predictor:
+    # Kronos is an ML forecaster (torch), not an LLM agent. This entry exists
+    # only because AgentRegistry.register requires a roster entry for every
+    # registered agent name; the agent itself never routes through the LLM.
+    primary: open_router/google/gemma-4-26b-a4b-it:free
+    fallbacks:
+      - open_router/openrouter/free
+    timeout_seconds: 15
+
   risk:
     # Needs strict rule adherence, no hallucinations, and flawless JSON output
     primary: open_router/nvidia/nemotron-3-super-120b-a12b:free

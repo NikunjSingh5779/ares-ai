@@ -278,7 +278,7 @@ def test_production_allows_custom_secrets() -> None:
     assert s.api_secret_key == "a1b2c3d4e5-production-secret"
 
 
-def test_local_llm_defaults_are_opt_in_and_single_request(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_local_llm_defaults_are_opt_in_and_single_request(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     for key in (
         "LOCAL_LLM_ENABLED",
         "LOCAL_LLM_BASE_URL",
@@ -288,6 +288,11 @@ def test_local_llm_defaults_are_opt_in_and_single_request(monkeypatch: pytest.Mo
     ):
         monkeypatch.delenv(key, raising=False)
 
+    # The .env path in Settings.model_config is CWD-relative, so running from a
+    # bare directory isolates the assertion from any operator .env (e.g. one
+    # pointing LOCAL_LLM_BASE_URL at a Strata container) — the test pins code
+    # defaults, not operator config.
+    monkeypatch.chdir(tmp_path)
     s = Settings()
 
     assert s.local_llm_enabled is False
