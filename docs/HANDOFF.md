@@ -67,11 +67,14 @@ Paper realism slice 2 adds borrow/funding **carry** to paper trading:
    (post-merge master). All five jobs were green in each; `postgres-integration`
    reported **24 passed**, including
    `test_carry_survives_restart_and_settles_on_close`. Do not re-review or re-merge it.
-2. **Paper-realism slice 3 (partial fills/liquidity) is implemented** (ADR-027): IOC
-   market orders with a volume-participation cap, volume-limited stop/TP exits,
-   partial closes with proportional commission/carry allocation, and partial-aware
-   persistence with no schema change. It sits on a feature branch pending push/PR
-   approval; verify with the branch/PR CI runs after the push.
+2. **Paper-realism slice 3 (partial fills/liquidity) is merged** as `854428c` via PR
+   #144 (ADR-027): IOC market orders with a volume-participation cap, volume-limited
+   stop/TP exits, partial closes with proportional commission/carry allocation, and
+   partial-aware persistence with no schema change. Branch/PR/post-merge runs
+   **43445079894**, **43445130807**, and **43446142786** were all green
+   (`postgres-integration` 25 passed, including the partial-fill round-trip). Do not
+   re-review or re-merge it. The remote `feat/paper-partial-fills` branch still needs
+   deletion after approval.
 3. **Operational gaps (need credentials/production access, not code):**
    - Add the `OPENROUTER_API_KEY` repository secret and run the model-catalog workflow
      via `workflow_dispatch` (gap #9; the first scheduled run failed closed at the guard).
@@ -153,9 +156,9 @@ Current state (2026-11-04):
 
 Your first task:
 1. Read the docs above and confirm the working tree is clean (git status).
-2. Do not redo slices 1–3 or their review. Slice 3 (partial fills/liquidity) is
-   implemented on a feature branch; after its PR merges, update the merge evidence in
-   `docs/02-STATUS.md` and `docs/05-NEXT.md` like the earlier slices.
+2. Do not redo slices 1–3 or their review; all three are merged (slice 3 as `854428c`
+   via PR #144). The remote `feat/paper-partial-fills` branch deletion is the only
+   pending branch cleanup and needs approval.
 3. Nothing else is queued in code; the remaining items are operational gaps #9 and
    #10, which need credentials or production database access.
 

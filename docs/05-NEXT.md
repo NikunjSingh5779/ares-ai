@@ -6,16 +6,17 @@ Do not start a phase before the previous exit criterion is met unless a human sa
 
 ## Immediate next move (2026-11-04)
 
-Paper-realism slice 3 (**partial fills/liquidity**, ADR-027) is **implemented** on a
-feature branch pending push/PR approval: IOC market orders with a volume-participation
-cap (`PAPER_TRADING_MAX_VOLUME_PARTICIPATION_PCT`, default `0.10`), volume-limited
-stop/TP exits, partial closes with proportional commission/carry allocation, and
-partial-aware persistence (`partially_filled` status, per-lot trade history) with **no
-schema change**. Local verification: **1458 passed, 3 skipped** full suite, ruff/mypy
-clean, PostgreSQL ledger suite **7/7** on a disposable PostgreSQL 16 database. After CI
-is green on the feature branch and the PR merges, all paper-realism slices are done;
-operational items remain in `02-STATUS.md` gap #9 (`OPENROUTER_API_KEY` + catalog
-dispatch) and gap #10 (pre-P1-A short-position reconciliation).
+Paper-realism slice 3 (**partial fills/liquidity**, ADR-027) is **merged** as `854428c`
+via PR #144. The branch/PR runs **43445079894** and **43445130807** and the post-merge
+master run **43446142786** passed all five jobs; `postgres-integration` ran the
+partial-entry/partial-exit round-trip and reported **25 passed**. Scope: IOC market
+orders with a volume-participation cap (`PAPER_TRADING_MAX_VOLUME_PARTICIPATION_PCT`,
+default `0.10`), volume-limited stop/TP exits, partial closes with proportional
+commission/carry allocation, and partial-aware persistence (`partially_filled` status,
+per-lot trade history) with **no schema change**. All paper-realism slices are now
+done; operational items remain in `02-STATUS.md` gap #9 (`OPENROUTER_API_KEY` +
+catalog dispatch) and gap #10 (pre-P1-A short-position reconciliation). Any further
+paper-realism work (for example price-impact modelling) needs explicit human agreement.
 
 ## Phase 0 — capital safety (block release)
 
