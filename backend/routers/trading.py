@@ -59,6 +59,7 @@ def get_paper_trading_ledger() -> PaperTradingLedger:
             funding_rate_pct=settings.paper_trading_funding_rate_pct,
             borrow_rate_by_symbol=settings.paper_trading_borrow_rate_by_symbol,
             funding_rate_by_symbol=settings.paper_trading_funding_rate_by_symbol,
+            max_volume_participation_pct=settings.paper_trading_max_volume_participation_pct,
         )
         _ledger = PaperTradingLedger(
             engine=_engine,
@@ -216,6 +217,19 @@ async def execute(payload: ExecuteTradeRequest) -> dict[str, Any]:
         if payload.side == "short" and stop_loss <= entry_price:
             raise HTTPException(status_code=422, detail="Short stop_loss must be above the entry price")
 
+    # The approved Market Analyst snapshot carries the latest candle volume, so
+    # the liquidity cap uses agent-observed data bound by the approval token
+    # hash rather than a caller-supplied number. Missing volume means no cap.
+    candle_volume: float | None = None
+    for key in ("current_volume", "volume"):
+        try:
+            candidate = float(market.indicators.get(key))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(candidate) and candidate > 0:
+            candle_volume = candidate
+            break
+
     try:
         summary = await ledger.get_summary()
     except PaperLedgerError as exc:
@@ -247,6 +261,7 @@ async def execute(payload: ExecuteTradeRequest) -> dict[str, Any]:
             take_profit=None,
             strategy_name=quant.strategy_name or market.setup or "consensus",
             client_order_id=payload.client_order_id,
+            volume=candle_volume,
         )
     except PaperOrderConflictError as exc:
         raise HTTPException(status_code=409, detail="client_order_id has already been used") from exc

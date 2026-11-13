@@ -21,10 +21,11 @@
   cost/margin/equity fields, and `orders.client_order_id`.
 
 **Shape:** position = `{id, symbol, side, quantity, entry_price, entry_at, stop_loss,
-take_profit, entry_commission, margin, carry_cost, last_accrual_at}`; closed trade adds
-`exit_price`, `pnl`, `pnl_pct`, `entry_commission`, `exit_commission`, `carry_cost`,
-`exit_reason`; summary adds cash, equity, `margin_used`, `carry_cost`, return %, win
-rate, max drawdown.
+take_profit, entry_commission, margin, carry_cost, last_accrual_at, requested_quantity,
+entry_order_status, entry_order_reason}` (the last three are in-memory only and are
+never persisted); closed trade adds `exit_price`, `pnl`, `pnl_pct`, `entry_commission`,
+`exit_commission`, `carry_cost`, `exit_reason`; summary adds cash, equity,
+`margin_used`, `carry_cost`, return %, win rate, max drawdown.
 
 **Writers:** `PaperTradingLedger.execute_signal` / `process_candle`; `agents/execution.py`
 uses the ledger for paper fills (direct-SQL fallback only when no ledger is wired);
@@ -48,26 +49,33 @@ rate applies); annualized borrow (shorts) and funding (longs) accrue from
 close accrues the final period and settles the total into cash and PnL; a timestamp
 at or before the stored clock is ignored and a zero rate still advances it; a candle
 spanning both levels resolves to the stop; a stop that gaps beyond its level fills at
-the candle open; `total_pnl = equity - initial_capital`; shorts carry side/margin
+the candle open; market orders are IOC and capped at the participation fraction of
+candle volume (`partially_filled` is terminal, a missing/non-positive volume means no
+cap); a partial close allocates entry commission and accrued carry to the closed lot
+and leaves the remainder open with its stop and accrual clock; one `trade_history`
+row is written per realized lot, so trade counts count lots, not positions;
+`total_pnl = equity - initial_capital`; shorts carry side/margin
 explicitly. The API cannot supply its own price or quantity, and a duplicate
 `client_order_id` returns 409 before a second position is created.
 
 **Change impact:**
 - Add a field → DB column + migration + Pydantic model + `to_dict` + frontend type + tests.
-- Change fill logic → `paper_trading/engine.py`, fee/slippage/carry tests, promotion thresholds.
+- Change fill logic → `paper_trading/engine.py`, fee/slippage/carry/participation tests, promotion thresholds.
 - Change persistence → `repository.py`, `ledger.py`, `worker.py`, `run_live.py`, schema.
 - Change lock scope or timeout → `repository.py::writer_lock`, `paper_trading_writer_lock_timeout_seconds`,
   ADR-015, ledger tests; keep the writer paths (execute, candle, worker) inside the lock.
 
 **Tests:** `tests/test_paper_trading.py`, `tests/test_paper_trading_ledger.py`,
 `tests/test_paper_trading_worker.py`, `tests/test_execution_agent.py`,
-`tests/test_trading_router.py`, `tests/test_schema.py`.
+`tests/test_trading_router.py`, `tests/test_schema.py`,
+`tests/test_postgres_integration.py`.
 
 **Known gaps:** the advisory lock is database-wide rather than per account (fine at
 single-user scale); reads do not take it because each process has its own cache. `/execute`
 requires a signed, expiring approval token from `/signal`; the token is not single-use, so
 `client_order_id` remains the duplicate-order guard. Old short **positions** cannot be inferred
-during migration and default to long. Paper fills still have no partial fills/liquidity
-limits. Carry is charged on entry notional only (not mark-to-market notional), has no
+during migration and default to long. Liquidity is a hard participation cap on reported
+candle volume, not a price-impact model; a partial entry is not retried (IOC is terminal).
+Carry is charged on entry notional only (not mark-to-market notional), has no
 funding credits, and legacy `agents/execution.py`/worker direct-SQL fallbacks bypass the
 repository, so they do not persist carry.

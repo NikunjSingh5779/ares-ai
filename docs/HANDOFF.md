@@ -67,31 +67,33 @@ Paper realism slice 2 adds borrow/funding **carry** to paper trading:
    (post-merge master). All five jobs were green in each; `postgres-integration`
    reported **24 passed**, including
    `test_carry_survives_restart_and_settles_on_close`. Do not re-review or re-merge it.
-2. **Next paper-realism slice: partial fills/liquidity.** Design it before coding:
-   order status, volume-limited fills, partial closes, and persistence changes. It is
-   the only remaining item in the paper-realism sequence. **Do not start it until the
-   user agrees.**
+2. **Paper-realism slice 3 (partial fills/liquidity) is implemented** (ADR-027): IOC
+   market orders with a volume-participation cap, volume-limited stop/TP exits,
+   partial closes with proportional commission/carry allocation, and partial-aware
+   persistence with no schema change. It sits on a feature branch pending push/PR
+   approval; verify with the branch/PR CI runs after the push.
 3. **Operational gaps (need credentials/production access, not code):**
    - Add the `OPENROUTER_API_KEY` repository secret and run the model-catalog workflow
      via `workflow_dispatch` (gap #9; the first scheduled run failed closed at the guard).
    - Reconcile pre-P1-A short positions that migrated as long (gap #10; needs production
      database access).
-4. **Optional P2/P3:** local chat is chat-only/process-gated (gap #14); the accessibility
-   audit did not exercise data-populated states (gap #16).
+4. Nothing else is queued in code; a further paper-realism slice (for example
+   price-impact modelling) needs explicit human agreement first.
 
 ## Key files
 
 | Area | Files |
 |---|---|
-| Carry engine | `paper_trading/engine.py` — `PaperPosition.carry_cost`/`last_accrual_at`, `ClosedTrade.carry_cost`, `PortfolioSummary.carry_cost`, `accrue_carry`, `mark_to_market(as_of)`, `check_sl_tp(as_of)`, `close_position(exit_at)`, `_accrue_position` |
-| Persistence | `paper_trading/repository.py` — hydrate/upsert/close/trade-history SQL |
-| Service wiring | `paper_trading/ledger.py` (`process_candle(as_of)`), `paper_trading/worker.py`, `scripts/run_live.py` |
-| Settings | `configs/settings.py` — four carry fields and per-symbol validators |
-| API | `backend/routers/trading.py` — factory wiring and response dicts |
-| Schema | `database/schema.sql`, `database/init.sql` (must stay byte-identical), `migrations/versions/0007_carry_costs.py` |
+| Carry engine | `paper_trading/engine.py` — `PaperPosition.carry_cost`/`last_accrual_at`, `ClosedTrade.carry_cost`, `PortfolioSummary.carry_cost`, `accrue_carry`, `mark_to_market(as_of)`, `check_sl_tp(as_of, volume)`, `close_position(exit_at, quantity)`, `_accrue_position`, `_liquidity_capacity` |
+| Partial fills | `paper_trading/engine.py` — `execute_signal(volume=)` IOC result keys, `max_volume_participation_pct`, `PaperPosition.requested_quantity`/`entry_order_status`/`entry_order_reason`, `QUANTITY_EPSILON` |
+| Persistence | `paper_trading/repository.py` — hydrate/upsert/close/trade-history SQL; entry orders write `status`/`filled_quantity`/`failure_reason`; partial exits upsert instead of closing |
+| Service wiring | `paper_trading/ledger.py` (`process_candle(as_of, volume)`), `paper_trading/worker.py`, `scripts/run_live.py`, `agents/execution.py` (candle volume + partial-fill rationale), `agents/market_analyst.py` (`current_volume` indicator) |
+| Settings | `configs/settings.py` — carry fields, per-symbol validators, `paper_trading_max_volume_participation_pct`; `.env.example` mirrors them |
+| API | `backend/routers/trading.py` — factory wiring, `current_volume` extraction, response dicts |
+| Schema | `database/schema.sql`, `database/init.sql` (must stay byte-identical; no slice-3 change), `migrations/versions/0007_carry_costs.py` |
 | Tests | `tests/test_paper_trading.py`, `tests/test_paper_trading_ledger.py`, `tests/test_paper_trading_worker.py`, `tests/test_config.py`, `tests/test_trading_router.py`, `tests/test_schema.py`, `tests/test_postgres_integration.py` |
 | Contracts/map | `paper_trading/CONTEXT.md`, `database/CONTEXT.md`, `docs/map/objects/portfolio.md`, `docs/map/processes/execution.md` |
-| Status/plan | `docs/02-STATUS.md`, `docs/05-NEXT.md`, `docs/04-DECISIONS.md` (ADR-026), `docs/TASKS.md` |
+| Status/plan | `docs/02-STATUS.md`, `docs/05-NEXT.md`, `docs/04-DECISIONS.md` (ADR-026, ADR-027), `docs/TASKS.md` |
 
 ## Commands
 
@@ -151,10 +153,10 @@ Current state (2026-11-04):
 
 Your first task:
 1. Read the docs above and confirm the working tree is clean (git status).
-2. Do not redo the carry slice or its review.
-3. The next paper-realism slice is partial fills/liquidity. Design it before coding,
-   but do NOT start it until I explicitly agree.
-4. Nothing else is queued in code; the remaining items are operational gaps #9 and
+2. Do not redo slices 1–3 or their review. Slice 3 (partial fills/liquidity) is
+   implemented on a feature branch; after its PR merges, update the merge evidence in
+   `docs/02-STATUS.md` and `docs/05-NEXT.md` like the earlier slices.
+3. Nothing else is queued in code; the remaining items are operational gaps #9 and
    #10, which need credentials or production database access.
 
 Constraints:
@@ -165,5 +167,5 @@ Constraints:
 - Definition of done: tests pass, ruff + mypy clean, docs updated in the same change.
 - Update docs/02-STATUS.md when state changes.
 
-Do not start partial fills/liquidity until I agree.
+Do not start any further paper-realism work without my agreement.
 ```

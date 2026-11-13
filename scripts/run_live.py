@@ -118,6 +118,7 @@ async def main():
                 close=float(latest_candle.close),
                 open_price=float(latest_candle.open),
                 as_of=latest_candle.timestamp,
+                volume=float(latest_candle.volume),
             )
             if live_engine:
                 summary = engine.get_summary()

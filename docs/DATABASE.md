@@ -41,6 +41,12 @@
   (`carry_cost` plus the `last_accrual_at` clock), and the equity curve are
   persisted with the P1-A ledger. `trade_history.carry_cost` keeps the settled
   amount after close.
+- **Partial fills need no new columns.** `orders.status` (including
+  `partially_filled`), `orders.filled_quantity`, and `orders.failure_reason`
+  already exist, so an IOC partial entry writes those; the requested size and
+  order status live on the in-memory position only (ADR-027). A partial exit
+  records one `trade_history` lot per close and upserts the remaining
+  `positions` row instead of closing it.
 - **Schema changes are atomic.** One change updates the DDL, the ORM mapping
   where applicable, a migration, and tests.
 - **`app_settings` is one non-safety row.** `id` is constrained to `1`; preferences

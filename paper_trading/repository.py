@@ -254,6 +254,10 @@ class PaperLedgerRepository:
                     margin=float(row["margin"] or 0.0),
                     carry_cost=float(row.get("carry_cost") or 0.0),
                     last_accrual_at=row.get("last_accrual_at") or row["opened_at"] or datetime.now(UTC),
+                    # Entry-order metadata is written once at fill time and is
+                    # not a column; a hydrated position only reports its fill.
+                    requested_quantity=float(row["quantity"]),
+                    entry_order_status="filled",
                 )
             )
             if mark > 0:
@@ -323,6 +327,13 @@ class PaperLedgerRepository:
         history. ``client_order_id`` is attached to the new entry order for
         idempotency; exit orders keep their own generated identity.  Returns
         ``False`` when the seeded paper account is missing.
+
+        Entry orders are written from the position's own IOC metadata
+        (``requested_quantity``/``entry_order_status``), so a liquidity- or
+        cash-capped fill persists as ``partially_filled`` with the unfilled
+        remainder's reason. A closed trade whose position is still open (a
+        partial exit) only records history and an exit order; the remaining
+        position row was already upserted from the engine above.
         """
         try:
             async with self._session_factory() as session:
@@ -334,16 +345,18 @@ class PaperLedgerRepository:
                 account_id = str(portfolio["account_id"])
                 portfolio_id = str(portfolio["portfolio_id"])
                 entry_ids = set(entry_position_ids)
+                open_position_ids = {position.id for position in engine.get_open_positions()}
 
                 for position in engine.get_open_positions():
                     await self._upsert_position(session, portfolio_id, position, engine)
                     if position.id in entry_ids:
+                        requested = position.requested_quantity or position.quantity
                         await self._insert_order(
                             session,
                             account_id=account_id,
                             symbol=position.symbol,
                             side="buy" if position.side == "long" else "sell",
-                            quantity=position.quantity,
+                            quantity=requested,
                             price=position.entry_price,
                             position_id=position.id,
                             client_order_id=client_order_id,
@@ -352,10 +365,18 @@ class PaperLedgerRepository:
                                 "event": "entry",
                                 "side": position.side,
                             },
+                            filled_quantity=position.quantity,
+                            status=position.entry_order_status or "filled",
+                            failure_reason=position.entry_order_reason or None,
                         )
 
                 for trade in closed_trades:
-                    await self._close_position(session, portfolio_id, trade)
+                    # A partial exit leaves the position open; the upsert above
+                    # already persisted the remaining quantity, carry, and
+                    # margin, so closing the row here would lose it.
+                    is_partial_exit = bool(trade.position_id and trade.position_id in open_position_ids)
+                    if not is_partial_exit:
+                        await self._close_position(session, portfolio_id, trade)
                     await self._insert_trade_history(session, account_id, trade)
                     await self._insert_order(
                         session,
@@ -371,6 +392,7 @@ class PaperLedgerRepository:
                             "event": "exit",
                             "exit_reason": trade.exit_reason,
                             "side": trade.side,
+                            "partial": is_partial_exit,
                         },
                     )
 
@@ -572,18 +594,28 @@ class PaperLedgerRepository:
         position_id: str | None,
         client_order_id: str | None,
         rationale: dict[str, Any],
+        filled_quantity: float | None = None,
+        status: str = "filled",
+        failure_reason: str | None = None,
     ) -> None:
+        """Write one executed order row.
+
+        ``quantity`` is the requested size and ``filled_quantity`` the executed
+        size. Paper market orders are immediate-or-cancel, so
+        ``partially_filled`` is a terminal status: the unfilled remainder was
+        cancelled and its reason is recorded in ``failure_reason``.
+        """
         await session.execute(
             text(
                 """
                 INSERT INTO orders (
                     account_id, position_id, symbol, side, order_type, status,
                     quantity, price, filled_quantity, avg_fill_price,
-                    client_order_id, agent_rationale
+                    client_order_id, failure_reason, agent_rationale
                 ) VALUES (
-                    :account_id, :position_id, :symbol, :side, 'market', 'filled',
-                    :quantity, :price, :quantity, :price,
-                    :client_order_id, CAST(:rationale AS JSONB)
+                    :account_id, :position_id, :symbol, :side, 'market', :status,
+                    :quantity, :price, :filled_quantity, :price,
+                    :client_order_id, :failure_reason, CAST(:rationale AS JSONB)
                 )
                 """
             ),
@@ -592,9 +624,12 @@ class PaperLedgerRepository:
                 "position_id": position_id,
                 "symbol": symbol,
                 "side": side,
+                "status": status,
                 "quantity": quantity,
                 "price": price,
+                "filled_quantity": quantity if filled_quantity is None else filled_quantity,
                 "client_order_id": client_order_id,
+                "failure_reason": failure_reason,
                 "rationale": json.dumps(rationale),
             },
         )

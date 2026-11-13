@@ -165,9 +165,19 @@ already exists in the initial schema, so this slice adds no migration.
 token's signature, expiry, type, audience, issuer, symbol, side, and payload digest
 before re-running consensus, checking the Risk approval and max position size, deriving
 the fill from the approved `current_price`, and capping notional at 2% of paper equity.
-An invalid or expired token returns **401**; a valid token that does not match the
-submitted symbol, side, or payload returns **422**. A duplicate `client_order_id`
-returns `409`; a writer-lock timeout returns `503` with `Retry-After: 1`.
+Liquidity comes from the approved `current_volume` indicator: the fill is capped at
+`PAPER_TRADING_MAX_VOLUME_PARTICIPATION_PCT` of candle volume, and a missing volume
+means no cap. An invalid or expired token returns **401**; a valid token that does not
+match the submitted symbol, side, or payload returns **422**. A duplicate
+`client_order_id` returns `409` (IOC orders are terminal, so a retry after a partial
+fill needs a new ID); a writer-lock timeout returns `503` with `Retry-After: 1`.
+
+The `/execute` response reports the fill: `order_status` (`filled`,
+`partially_filled`, or `rejected`), `requested_quantity`, `filled_quantity`,
+`unfilled_quantity`, `liquidity_capped`, and `unfilled_reason` (for example
+`"volume participation cap; unfilled remainder cancelled (IOC)"`). The `/orders`
+endpoint lists closed trade history, so order status surfaces only here; each
+realized partial lot appears as its own trade row.
 
 `/portfolio` includes `carry_cost`; `/positions` includes `carry_cost` and
 `last_accrual_at`; `/orders` includes `carry_cost`. Carry is an annualized,

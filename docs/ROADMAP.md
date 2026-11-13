@@ -67,7 +67,8 @@
 - Keep the custom pure-Python backtest engine or adopt VectorBT/Backtrader.
 - Whether `/execute` approval tokens should be stored and single-use rather than
   short-lived bearer capabilities.
-- Paper realism depth: partial fills/liquidity.
+- Paper realism depth beyond the participation cap: price-impact (VWAP/slippage
+  curve) modelling and re-quoting unfilled remainders.
 
 ## Read next
 

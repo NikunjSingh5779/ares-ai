@@ -230,7 +230,7 @@ def _rule_based_analysis(
         confidence = min(score["flat"] / max(sum(score.values()), 1) * 100, 60)
     # Extract key indicator values for the output
     output_indicators = {}
-    for key in ["rsi_14", "sma_20", "sma_50", "current_price"]:
+    for key in ["rsi_14", "sma_20", "sma_50", "current_price", "current_volume"]:
         val = indicators.get(key)
         if val is not None:
             output_indicators[key] = round(val, 4) if isinstance(val, float) else val

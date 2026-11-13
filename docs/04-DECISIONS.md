@@ -828,4 +828,69 @@ paper results, especially for carry strategies, and distorts the promotion gate.
 in positive-funding markets. Existing databases need migration `0007`, which adds the
 columns and backfills `last_accrual_at` from `opened_at`. Carry is configuration, not
 persisted state: every process must construct its engine with the same rates and maps.
-Partial fills/liquidity remains the only unimplemented paper-realism item.
+
+---
+
+## ADR-027 — Paper fills are immediate-or-cancel and capped by volume participation
+
+**Status:** accepted 2026-11-04.
+
+**Context:** Paper market orders always filled their full requested quantity. An order of
+any size filled instantly at one price, so backtests and the promotion gate rewarded
+strategies that could never fill that size in a real market. The last open paper-realism
+item is partial fills/liquidity, which needs order status, volume-limited fills, partial
+closes, and persistence changes.
+
+**Decision:**
+- Paper market orders are immediate-or-cancel (IOC). `execute_signal` accepts the candle
+  volume; the fill is capped at `requested × max_volume_participation_pct × candle_volume`.
+  The unfilled remainder is cancelled, and `partially_filled` is a terminal order status
+  (a new attempt needs a new `client_order_id`; duplicates still return 409).
+- `PAPER_TRADING_MAX_VOLUME_PARTICIPATION_PCT` defaults to `0.10` with range `[0, 1]`;
+  `0` disables the cap. Direct engine construction defaults to `0.0` so unit tests and
+  callers without volume data fill the full requested quantity. A missing or non-positive
+  candle volume means "unknown", so no cap is applied rather than rejecting every fill —
+  some sources (for example CoinGecko) report no volume, and rejecting on unknown
+  liquidity would halt paper trading.
+- Rejections distinguish "Insufficient liquidity" (cap binds below request) from
+  "Insufficient cash" (buying power binds below request). When both bind, the lower cap
+  wins and `unfilled_reason` names both. `liquidity_capped` flags fills limited by volume.
+- Exits are volume-limited too: a triggered stop/take-profit closes at most
+  `participation × candle_volume`; the remainder stays open with its stop and accrual
+  clock and re-evaluates on the next candle. Unknown volume closes the full position.
+- `close_position(quantity=)` realizes a partial close. Entry commission and accrued
+  carry are allocated proportionally by closed fraction; the remaining position keeps its
+  stop/take-profit, entry price, and accrual clock; short margin becomes
+  `remaining_qty × entry_price`. Each partial close appends one `ClosedTrade` lot.
+- Persistence needs no schema migration. `orders.status` (includes `partially_filled`),
+  `orders.filled_quantity`, and `orders.failure_reason` already exist; entry orders are
+  written from position metadata (`requested_quantity`, `entry_order_status`,
+  `entry_order_reason`) held in memory only. A closed trade whose position is still open
+  is a partial exit: the repository skips the closing `UPDATE positions` and instead
+  upserts the remaining quantity/commission/margin/carry/clock from engine state, and
+  tags the exit-order rationale `partial: true`. Hydration cannot recover the requested
+  size, so a restarted position reports `requested_quantity = quantity` and status
+  `filled`.
+- Volume input sources: API `/execute` reads `current_volume` from the approved Market
+  Analyst indicators (hash-bound to the approval token, so a caller cannot inflate
+  liquidity); the execution agent, worker, and runner pass the latest candle's volume.
+
+**Alternatives considered:**
+- *Always reject orders above the participation cap.* Rejected: cancelling the unfilled
+  remainder is what a real IOC order does, and the filled part is still useful signal.
+- *Persist `requested_quantity` on the positions table.* Rejected: it adds a migration
+  for metadata that only matters until the position row is written once; hydration
+  defaults are documented instead.
+- *Rate-of-change or average-price impact models (VWAP slippage).* Deferred: a hard
+  participation cap is deterministic, conservative, and testable; an impact model can
+  replace the cap later without changing the order-status plumbing.
+- *Re-queue the unfilled remainder on later candles.* Rejected: the API contract is one
+  approved order per `client_order_id`; a re-queue would need a new order lifecycle and
+  approval chain.
+
+**Consequences:** Paper results now penalize oversized orders, and one position can close
+as several `trade_history` lots, so trade counts and win rate count realized lots, not
+positions — the promotion gate sees more, smaller trades for the same position. Cash
+accounting for partial closes allocates accrued carry by fraction; carry accrued after a
+backdated partial close can allocate to a later clock, matching the existing full-close
+property. `docs/DATABASE.md` shows no schema change; `database/schema.sql` is untouched.
