@@ -374,7 +374,9 @@ server only spoke v1 while the Python client was 1.5.9, with the volume mounted 
   (currently `0002`–`0007`) are idempotent and then bring the database to head.
 - Force LF for `*.sh` in `.gitattributes`, and keep `backend-entrypoint.sh` LF in the tree.
 - Force container-internal service hostnames in the backend environment. The root `.env`
-  remains host-oriented; it is not the container network contract.
+  remains host-oriented; it is not the container network contract. The application
+  composes and percent-encodes `DATABASE_URL` from `POSTGRES_*`, so the Compose files
+  never interpolate a raw password into a URL.
 - Pin the Chroma server to the client-compatible 1.5.9 image and mount the persistent
   volume at **`/data`**, the 1.x persistence path. The old `/chroma/chroma-data` mount was
   a 0.5.0 convention and would silently discard memory data. The 1.x image has no

@@ -47,6 +47,9 @@ revocation list.
 - Inside Compose, the host is `postgres`, not `localhost`.
 - The host `.env` may point at `localhost`; the Compose files force internal
   service hostnames for containers.
+- The app composes `DATABASE_URL` from `POSTGRES_*` and percent-encodes the
+  password, so reserved characters such as `@` are safe in `.env`. An explicit
+  `DATABASE_URL` overrides the composed one.
 - Check `docker compose ... ps postgres` and
   `docker compose ... logs postgres`.
 - Verify `DATABASE_URL` uses `postgresql+asyncpg://` for the Python app and

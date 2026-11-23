@@ -97,7 +97,10 @@ services:
         condition: service_started
     environment:
       # Container-internal service names, not the host-oriented values in .env.
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ares}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-ares_ai}
+      # DATABASE_URL is composed by the application from these POSTGRES_* parts,
+      # which percent-encodes reserved characters in the password.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}

@@ -79,7 +79,9 @@ def test_fullstack_backend_forces_container_service_hosts() -> None:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     environment = data["services"]["backend"]["environment"]
 
-    assert "@postgres:5432/" in environment["DATABASE_URL"]
+    assert "DATABASE_URL" not in environment
+    assert environment["POSTGRES_HOST"] == "postgres"
+    assert environment["POSTGRES_PORT"] == 5432
     assert environment["REDIS_HOST"] == "redis"
     assert environment["CHROMA_HOST"] == "chromadb"
 
@@ -319,13 +321,27 @@ def test_fullstack_compose_uses_internal_service_hostnames() -> None:
     compose = yaml.safe_load(path.read_text(encoding="utf-8"))
     backend_env = compose["services"]["backend"]["environment"]
 
-    assert backend_env["DATABASE_URL"] == (
-        "postgresql+asyncpg://${POSTGRES_USER:-ares}:${POSTGRES_PASSWORD:-changeme_in_production}"
-        "@postgres:5432/${POSTGRES_DB:-ares_ai}"
-    )
+    assert "DATABASE_URL" not in backend_env
+    assert backend_env["POSTGRES_HOST"] == "postgres"
+    assert backend_env["POSTGRES_PORT"] == 5432
     assert backend_env["REDIS_HOST"] == "redis"
     assert backend_env["CHROMA_HOST"] == "chromadb"
     assert backend_env["CHROMA_PORT"] == 8000
+
+
+def test_root_compose_uses_internal_service_hostnames() -> None:
+    """Every app service must override the host-oriented .env database host.
+
+    The .env DATABASE_URL template is gone; the app composes and percent-encodes
+    the URL from POSTGRES_* so a password containing '@' cannot break DNS.
+    """
+    compose = yaml.safe_load((PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+
+    for service in ("backend", "run-live", "daily-reporter"):
+        env = compose["services"][service]["environment"]
+        assert not any(str(item).startswith("DATABASE_URL=") for item in env), service
+        assert "POSTGRES_HOST=postgres" in env, service
+        assert "POSTGRES_PORT=5432" in env, service
 
 
 # ── Scheduled model-catalog workflow ────────────────────────────────────

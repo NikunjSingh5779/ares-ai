@@ -18,8 +18,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set the database URL from settings (overrides alembic.ini)
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Set the database URL from settings (overrides alembic.ini). ConfigParser
+# interpolation treats '%' specially, so percent-encoded passwords must be
+# escaped; get_main_option() restores the single '%'.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 # Import all models so Alembic can detect schema changes
 # Currently no ORM models — schema is managed via raw SQL migrations

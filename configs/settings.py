@@ -13,6 +13,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings
+from sqlalchemy.engine import URL
 
 # Root project directory (two levels up from this file)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -33,8 +34,16 @@ class Settings(BaseSettings):
     # Runtime environment — used for production-safety gates
     environment: Literal["development", "test", "production"] = "development"
 
-    # Database
-    database_url: str = "postgresql+asyncpg://ares:changeme_in_production@localhost:5432/ares_ai"
+    # Database. When ``database_url`` is empty the URL is composed from the
+    # POSTGRES_* parts with RFC-1738 quoting, so reserved characters in the
+    # password (``@``, ``/``, ``:``) cannot corrupt the host. Set
+    # ``database_url`` only to point at an external database.
+    database_url: str = ""
+    postgres_user: str = "ares"
+    postgres_password: str = "changeme_in_production"
+    postgres_host: str = "localhost"
+    postgres_port: int = Field(default=5432, ge=1, le=65535)
+    postgres_db: str = "ares_ai"
 
     # Redis
     redis_host: str = "localhost"
@@ -207,6 +216,33 @@ class Settings(BaseSettings):
                 raise ValueError(f"{field_name}[{raw_symbol!r}] must be between 0 and 10")
             normalized[symbol] = float(rate)
         return normalized
+
+    # ── Database URL composition ─────────────────────────────────────
+
+    @model_validator(mode="after")
+    def _compose_database_url(self) -> Settings:
+        """Build ``database_url`` from ``POSTGRES_*`` when it is not set.
+
+        ``URL.create`` percent-encodes the password, so a password such as
+        ``Abcd@1234`` becomes ``Abcd%401234`` and the ``@`` is not parsed as
+        the user/password separator.
+        """
+        if "${" in self.database_url:
+            raise ValueError(
+                "database_url still contains an unresolved '${...}' placeholder; "
+                "remove DATABASE_URL from .env and let it be composed from "
+                "POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_HOST/POSTGRES_PORT/POSTGRES_DB"
+            )
+        if not self.database_url:
+            self.database_url = URL.create(
+                drivername="postgresql+asyncpg",
+                username=self.postgres_user,
+                password=self.postgres_password,
+                host=self.postgres_host,
+                port=self.postgres_port,
+                database=self.postgres_db,
+            ).render_as_string(hide_password=False)
+        return self
 
     # ── Production-safety validator ──────────────────────────────────
 

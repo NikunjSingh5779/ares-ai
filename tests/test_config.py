@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 from pydantic import ValidationError
+from sqlalchemy.engine import make_url
 
 from agents.risk import MAX_POSITION_SIZE_PCT
 from configs.settings import Settings, settings
@@ -28,6 +29,31 @@ def test_settings_defaults() -> None:
     assert settings.paper_trading_initial_capital == 100000.0
     assert settings.default_trading_mode == "human_approval"
     assert settings.max_drawdown_pct == 20.0
+
+
+def test_database_url_is_composed_and_quotes_reserved_password_characters() -> None:
+    """A password containing '@' must land in the password, not the host."""
+    s = Settings(
+        database_url="",
+        postgres_user="ares",
+        postgres_password="p@ss/word:42",
+        postgres_host="postgres",
+        postgres_port=5432,
+        postgres_db="ares_ai",
+    )
+
+    parsed = make_url(s.database_url)
+    assert parsed.host == "postgres"
+    assert parsed.port == 5432
+    assert parsed.username == "ares"
+    assert parsed.password == "p@ss/word:42"
+    assert "%40" in s.database_url
+
+
+def test_database_url_rejects_unexpanded_placeholders() -> None:
+    """A literal compose template must fail loudly instead of as a DNS error."""
+    with pytest.raises(ValueError, match="unresolved"):
+        Settings(database_url="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ares_ai")
 
 
 def test_position_cap_is_code_enforced_not_environment_configurable() -> None:

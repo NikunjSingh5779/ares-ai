@@ -1,7 +1,7 @@
 <!-- docs/02-STATUS.md -->
 # Status — verified state
 
-**Last verified:** 2026-11-13
+**Last verified:** 2026-11-24
 **Branch:** `master` — the supervisor roster fix and the paper-record asyncpg fix
 below are verified on top of the slice-3 merge `854428c`. The dashboard's
 "Analysis failed for BTC-USD" banner was every `POST /api/v1/analyze` returning
@@ -524,6 +524,17 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | Verification | With a disposable PostgreSQL 16 container: `pytest tests/test_postgres_integration.py -q --no-cov` → **8 passed**; `pytest tests/test_live_trading tests/test_postgres_strategy_integration.py tests/test_postgres_improvement_integration.py -q --no-cov` → **246 passed**; full suite `pytest tests/ -q` → **1459 passed, 3 skipped**; `ruff check .` and `ruff format --check .` clean; `mypy .` clean on **216 source files**. |
 | Scope | Engine SQL only; no schema, route, or safety-gate change. The PromotionGate now receives real DB-backed paper numbers instead of the in-memory fallback. |
 
+## Compose database URL fix — reserved password characters (verified 2026-11-24)
+
+| Piece | Evidence |
+|---|---|
+| Root cause | After the image rebuild that carried the roster and paper-record fixes, `ares-backend` crash-looped in the Alembic bootstrap with `socket.gaierror: [Errno -2] Name or service not known`. Both Compose files interpolated the raw `POSTGRES_PASSWORD` into `DATABASE_URL`; the local password contains `@`, and SQLAlchemy parsed `postgresql+asyncpg://ares:p@ss@postgres:5432/ares_ai` as password `p` with host `ss@postgres`. The container DNS was healthy; the URL was not. |
+| Fix | `Settings` now composes `DATABASE_URL` with `sqlalchemy.engine.URL.create` from `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_DB`, which percent-encodes reserved characters. An explicit `DATABASE_URL` still wins (CI and external databases); a literal `${...}` template now raises an actionable error instead of becoming a DNS failure. Both Compose files pass `POSTGRES_HOST=postgres`/`POSTGRES_PORT=5432` for `backend`, `run-live`, and `daily-reporter` instead of interpolating the secret. `migrations/env.py` escapes `%` before `set_main_option` so offline mode can read the encoded URL. |
+| Tests | `tests/test_config.py` asserts a password containing `@`, `/`, and `:` parses back to the real host and password, and that an unexpanded `${...}` template is rejected. `tests/test_infra_config.py` asserts both Compose files carry the internal host/port and no raw `DATABASE_URL`. |
+| Verification | Targeted `pytest tests/test_config.py tests/test_infra_config.py -q --no-cov` → **62 passed**; full suite `pytest tests/ -q` → **1462 passed, 3 skipped** (84.70% coverage); `ruff check .` and `ruff format --check .` clean; `mypy .` clean. `docker compose --env-file .env -f docker/docker-compose.yml config --quiet` passes. Rebuilt backend is **healthy** on host `8080`; `/health` reports `database/redis/chromadb = ok`; `POST /api/v1/analyze` returns **202** and the BTC-USD run completed nine nodes with **0 failed** (`risk`/`execution` skipped because the 45% Market Analyst confidence did not clear the 80% gate — no signal = no trade); `/api/v1/live/paper_record` returns **200** with no `AmbiguousParameterError`. |
+| Operational note | The existing PostgreSQL volume's `ares` role password predated the current `.env`, so the role was aligned with `ALTER ROLE` (value never printed) before the backend could authenticate. This is local volume state, not a code change. |
+| Scope | Config, Compose, migration bootstrap, and tests; no schema, agent, router, safety-gate, or trading-threshold change. |
+
 ## Red / known gaps
 
 | # | Gap | Evidence | Severity |
@@ -547,6 +558,7 @@ paths; the symbol name was the only test seam. The Chroma volume was migrated fr
 | 17 | ~~Improvement history is in-memory and the engine is not wired into the pipeline~~ | Closed 2026-10-24: `reflection_runs`/`improvement_records` (migration `0006`) persist structured reflection and suggestions; the supervisor post-run hook calls the engine after every production pipeline run, best-effort; the API reads PostgreSQL and returns 503 on store failure. `analyze(history=...)` keeps trend context across restarts. | ~~P2~~ fixed |
 | 18 | ~~`web_collector` bypasses the free-only policy~~ | Closed 2026-10-28: the optional browser-use path reads its LLM only from the free-only `web_collector` roster entry via browser-use's native `ChatOpenRouter`, validates it with the shared `free_model_policy_violation` helper, and sets OpenRouter's zero-price `max_price` bound. Missing key, paid/missing roster entry, or missing dependency fails closed; no hardcoded paid model remains. | ~~P2~~ fixed |
 | 19 | ~~Paper-record DB query fails on asyncpg parameter typing~~ | Closed 2026-11-13: the four paper-record statements in `live_trading/engine.py` cast their parameters (`CAST(:account_id AS UUID)`, `CAST(:strategy_name AS TEXT)`); the sensitivity check reproduces the old `AmbiguousParameterError` and the new SQL prepares cleanly. `tests/test_postgres_integration.py::test_paper_record_query_tolerates_none_and_scoped_filters` runs the real asyncpg path (unfiltered + seeded + scoped), so the CI `postgres-integration` job expects **26 passed**. `/live/paper_record` no longer degrades to in-memory state. | ~~P2~~ fixed |
+| 20 | Free-tier roster contains a model that is no longer free | The 2026-11-24 dashboard verification logged OpenRouter **404** for `nvidia/nemotron-3-super-120b-a12b:free` ("This model is unavailable for free..."), then fell through the fallback chain and completed with 0 failed nodes. The roster still uses that slug as a primary/fallback in several entries; the scheduled model-catalog check would catch it, but the missing `OPENROUTER_API_KEY` repository secret (gap #9) prevents that run. | P2 |
 
 Full plan and acceptance criteria: `docs/05-NEXT.md`. Decisions: `docs/04-DECISIONS.md`.
 

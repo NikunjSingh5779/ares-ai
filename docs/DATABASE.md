@@ -12,7 +12,7 @@
 |---|---|
 | Engine | PostgreSQL 16 (`postgres:16-alpine` in CI and Compose) |
 | Python driver | `asyncpg` through SQLAlchemy async (`postgresql+asyncpg://`) |
-| Connection setting | `DATABASE_URL` from `configs/settings.py` / environment |
+| Connection setting | Composed by `configs/settings.py` from `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_DB` (password percent-encoded); an explicit `DATABASE_URL` overrides it |
 | Migrations | Alembic in `migrations/versions/` |
 | Bootstrap | `database/init.sql` on first postgres volume, then Alembic |
 | ORM | `backend/db/models.py` (partial mapping; `app_settings` and most domain access use raw SQL) |

@@ -24,7 +24,9 @@ mode, promotion, and exchange gates still apply.
 1. `.env` exists and is not committed; `.env.example` is the template.
 2. `API_SECRET_KEY` is unique and non-default.
 3. `JWT_SECRET_KEY` is unique and non-default.
-4. `POSTGRES_PASSWORD` is unique and matches `DATABASE_URL`.
+4. `POSTGRES_PASSWORD` is unique. The app composes `DATABASE_URL` from the
+   `POSTGRES_*` values and percent-encodes the password, so reserved characters
+   such as `@` need no manual escaping in `.env`.
 5. `OPENROUTER_API_KEY` or `OPENCODE_API_KEY` is set if agent reasoning is
    required.
 6. `LIVE_TRADING_ENABLED=false` unless a human has completed every live gate.
